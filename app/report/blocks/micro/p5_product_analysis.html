@@ -1,0 +1,27 @@
+{# P5: Product Analysis — B2B only #}
+{% from '_macros.html' import info_tip %}
+
+{% if products %}
+<div class="card">
+    <h3>Продуктовый анализ</h3>
+    <p style="color:var(--text2); font-size:0.9em; margin-bottom:16px;">
+        Ключевые продукты / модули / тарифы компании
+    </p>
+    <div class="grid-2">
+        {% for product in products %}
+        <div style="background:var(--bg3); border:1px solid var(--border); border-radius:10px; padding:20px;">
+            <h4 style="color:var(--gold2); margin-bottom:8px;">{{ product.name }}</h4>
+            {% if product.price %}<div style="font-size:1.2em; font-weight:700; color:var(--gold); margin-bottom:8px;">{{ product.price }}</div>{% endif %}
+            {% if product.description %}<p style="color:var(--text2); font-size:0.88em; line-height:1.5;">{{ product.description }}</p>{% endif %}
+            {% if product.features %}
+            <ul style="margin-top:10px; padding-left:16px;">
+                {% for f in product.features %}
+                <li style="color:var(--text2); font-size:0.85em; padding:3px 0;">{{ f }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}

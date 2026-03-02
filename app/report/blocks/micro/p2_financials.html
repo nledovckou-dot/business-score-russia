@@ -1,0 +1,62 @@
+{# P2: Financial Analysis — bars + table #}
+{% from '_macros.html' import metric_card, chart_wrap, info_tip %}
+
+{% if financials %}
+<div class="card">
+    <h3>Финансовый анализ (ФНС)</h3>
+
+    {# Key metrics from latest year #}
+    {% set latest = financials[-1] %}
+    <div class="grid-4" style="margin-bottom:20px;">
+        {% if latest.revenue is not none %}
+        {{ metric_card('{:,.0f}'.format(latest.revenue) ~ ' тыс. ₽', 'Выручка ' ~ latest.year, 'gold') }}
+        {% endif %}
+        {% if latest.net_profit is not none %}
+        {{ metric_card('{:,.0f}'.format(latest.net_profit) ~ ' тыс. ₽', 'Чистая прибыль ' ~ latest.year, 'green' if latest.net_profit >= 0 else 'red') }}
+        {% endif %}
+        {% if latest.assets is not none %}
+        {{ metric_card('{:,.0f}'.format(latest.assets) ~ ' тыс. ₽', 'Активы ' ~ latest.year, 'blue') }}
+        {% endif %}
+        {% if latest.employees is not none %}
+        {{ metric_card(latest.employees, 'Сотрудников', 'purple') }}
+        {% endif %}
+    </div>
+
+    {# Revenue chart #}
+    {% if financials_chart_svg %}
+    {{ chart_wrap("Динамика финансовых показателей", "Выручка и чистая прибыль по годам (тыс. ₽)", financials_chart_svg, financials_legend) }}
+    {% endif %}
+
+    {# Detailed table #}
+    <div style="overflow-x:auto; margin-top:16px;">
+    <table>
+        <thead>
+            <tr>
+                <th>Год</th>
+                <th>Выручка</th>
+                <th>Чистая прибыль</th>
+                <th>Активы</th>
+                <th>Собственный капитал</th>
+                <th>Сотрудники</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for fy in financials|reverse %}
+            <tr>
+                <td style="font-weight:600;">{{ fy.year }}</td>
+                <td class="r">{{ '{:,.0f}'.format(fy.revenue) if fy.revenue is not none else '—' }}</td>
+                <td class="r {% if fy.net_profit is not none %}{{ 'pos' if fy.net_profit >= 0 else 'neg' }}{% endif %}">
+                    {{ '{:,.0f}'.format(fy.net_profit) if fy.net_profit is not none else '—' }}
+                </td>
+                <td class="r">{{ '{:,.0f}'.format(fy.assets) if fy.assets is not none else '—' }}</td>
+                <td class="r">{{ '{:,.0f}'.format(fy.equity) if fy.equity is not none else '—' }}</td>
+                <td class="r">{{ fy.employees if fy.employees is not none else '—' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+
+    {{ info_tip("Финансовые данные из бухгалтерской отчётности ФНС (ground truth). Суммы в тыс. ₽.") }}
+</div>
+{% endif %}

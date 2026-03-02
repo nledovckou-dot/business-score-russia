@@ -1,0 +1,24 @@
+{# C6: Geography of Competitors — B2C only #}
+{% from '_macros.html' import info_tip %}
+
+{% if competitors %}
+<div class="card">
+    <h3>Географическая карта конкурентов</h3>
+    <p style="color:var(--text2); font-size:0.9em; margin-bottom:16px;">
+        Расположение конкурентов относительно {{ company.name }}
+    </p>
+    <div class="grid-3">
+        {% for comp in competitors %}
+        {% if comp.address %}
+        <div style="background:var(--bg3); border:1px solid var(--border); border-radius:10px; padding:16px;">
+            <div style="font-weight:700; color:var(--gold2); margin-bottom:4px;">{{ comp.name }}</div>
+            <div style="font-size:0.85em; color:var(--text2);">{{ comp.address }}</div>
+            {% if comp.metrics.get('distance') %}
+            <div style="font-size:0.85em; color:var(--text3); margin-top:6px;">{{ comp.metrics.distance }}</div>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+</div>
+{% endif %}

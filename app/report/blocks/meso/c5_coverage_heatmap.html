@@ -1,0 +1,12 @@
+{# C5: Module Coverage Heatmap — B2B only #}
+{% from '_macros.html' import chart_wrap, info_tip %}
+
+{% if coverage_heatmap_svg %}
+<div class="card">
+    <h3>Heatmap покрытия модулей / функций</h3>
+    <p style="color:var(--text2); font-size:0.9em; margin-bottom:16px;">
+        Какие функции / модули покрывает каждый конкурент. Чем ярче ячейка — тем глубже функциональность.
+    </p>
+    {{ chart_wrap("Покрытие функциональности", "Сравнение модулей платформ", coverage_heatmap_svg) }}
+</div>
+{% endif %}

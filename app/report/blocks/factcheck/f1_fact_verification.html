@@ -1,0 +1,30 @@
+{# F1: Fact Verification — table with lock/warning icons #}
+{% from '_macros.html' import fact_row, info_tip %}
+
+{% if factcheck %}
+<div class="card">
+    <h3>Верификация фактов</h3>
+    <p style="color:var(--text2); font-size:0.9em; margin-bottom:16px;">
+        Каждый факт проверен по 2+ независимым источникам.
+        &#128274; = подтверждено (2+ источника), &#9888; = один источник.
+    </p>
+    <div style="overflow-x:auto;">
+    <table>
+        <thead>
+            <tr>
+                <th style="width:40px;">St</th>
+                <th>Факт</th>
+                <th style="width:60px;">Src</th>
+                <th>Источники</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for fact in factcheck %}
+            {{ fact_row(fact) }}
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {{ info_tip("Иерархия источников: A (ФНС, ЕГРЮЛ) > B (деловые СМИ) > C (отраслевые) > D (агрегаторы) > E (самоотчёт).") }}
+</div>
+{% endif %}

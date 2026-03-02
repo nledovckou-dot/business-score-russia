@@ -1,0 +1,206 @@
+{# ===== Reusable Jinja2 macros for report blocks ===== #}
+
+{# --- Metric Card --- #}
+{% macro metric_card(value, label, color="gold", delta=None) %}
+<div class="metric">
+    <div class="val val-{{ color }}">{{ value }}{% if delta %}<span class="delta delta-{{ 'up' if delta > 0 else 'down' }}">{{ '+' if delta > 0 else '' }}{{ delta }}%</span>{% endif %}</div>
+    <div class="lbl">{{ label }}</div>
+</div>
+{% endmacro %}
+
+{# --- Section Header (inline, for sub-sections within a block) --- #}
+{% macro section_header(number, title, subtitle="") %}
+<div class="section-head" style="margin-top:32px;">
+    <div class="section-num">{{ number }}</div>
+    <h2>{{ title }}</h2>
+</div>
+{% if subtitle %}<div class="section-desc">{{ subtitle }}</div>{% endif %}
+{% endmacro %}
+
+{# --- Info Tip (source attribution) --- #}
+{% macro info_tip(text, sources=None) %}
+<div class="info-tip">
+    <span>{{ text }}{% if sources %} <strong>Источники:</strong> {{ sources|join(', ') }}{% endif %}</span>
+</div>
+{% endmacro %}
+
+{# --- Badge --- #}
+{% macro badge(text, color="gold") %}
+<span class="badge b-{{ color }}">{{ text }}</span>
+{% endmacro %}
+
+{# --- SWOT Grid --- #}
+{% macro swot_grid(swot) %}
+<div class="swot-grid">
+    <div class="swot-box swot-s">
+        <h4>Сильные стороны (S)</h4>
+        <ul>{% for item in swot.strengths %}<li>{{ item }}</li>{% endfor %}</ul>
+    </div>
+    <div class="swot-box swot-w">
+        <h4>Слабые стороны (W)</h4>
+        <ul>{% for item in swot.weaknesses %}<li>{{ item }}</li>{% endfor %}</ul>
+    </div>
+    <div class="swot-box swot-o">
+        <h4>Возможности (O)</h4>
+        <ul>{% for item in swot.opportunities %}<li>{{ item }}</li>{% endfor %}</ul>
+    </div>
+    <div class="swot-box swot-t">
+        <h4>Угрозы (T)</h4>
+        <ul>{% for item in swot.threats %}<li>{{ item }}</li>{% endfor %}</ul>
+    </div>
+</div>
+{% endmacro %}
+
+{# --- Competitor Card --- #}
+{% macro competitor_card(comp) %}
+<div class="comp-card">
+    <div class="name">{{ comp.name }}</div>
+    <div class="meta">
+        {% if comp.address %}{{ comp.address }}{% endif %}
+        {% if comp.website %} | <a href="{{ comp.website }}" style="color:var(--blue);">{{ comp.website }}</a>{% endif %}
+        {% if comp.threat_level %} | <span class="threat-{{ comp.threat_level }}">{{ {'high': 'Высокая угроза', 'med': 'Средняя угроза', 'low': 'Низкая угроза'}[comp.threat_level] }}</span>{% endif %}
+    </div>
+    {% if comp.metrics %}
+    <div class="stats">
+        {% for key, val in comp.metrics.items() %}
+        <div class="stat">
+            <div class="v">{{ val }}</div>
+            <div class="l">{{ key }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% if comp.description %}
+    <p style="color:var(--text2); font-size:0.88em; line-height:1.6;">{{ comp.description }}</p>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{# --- Chart Container wrapper --- #}
+{% macro chart_wrap(title, subtitle="", chart_svg="", legend_items=None) %}
+<div class="chart-container">
+    <h3>{{ title }}</h3>
+    {% if subtitle %}<div class="subtitle">{{ subtitle }}</div>{% endif %}
+    {{ chart_svg }}
+    {% if legend_items %}
+    <div class="chart-legend">
+        {% for item in legend_items %}
+        <div class="leg-item">
+            <div class="leg-swatch" style="background:{{ item.color }};"></div>
+            {{ item.label }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{# --- Timeline --- #}
+{% macro timeline(items) %}
+<div class="timeline">
+    {% for item in items %}
+    <div class="timeline-item">
+        <div class="timeline-date">{{ item.date }}</div>
+        <div class="timeline-text">
+            {% if item.title %}<strong>{{ item.title }}</strong> — {% endif %}{{ item.description or '' }}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endmacro %}
+
+{# --- Quote Card --- #}
+{% macro quote_card(opinion) %}
+<div class="quote-card">
+    <div class="quote-header">
+        <div class="quote-avatar" style="background:var(--gold-bg); color:var(--gold);">{{ opinion.author[0] }}</div>
+        <div>
+            <div class="quote-name">{{ opinion.author }}</div>
+            {% if opinion.role %}<div class="quote-role">{{ opinion.role }}</div>{% endif %}
+        </div>
+    </div>
+    <div class="quote-body">
+        <div class="quote-text">{{ opinion.quote }}</div>
+    </div>
+    <div class="quote-footer">
+        {% if opinion.date %}<div class="quote-date">{{ opinion.date }}</div>{% endif %}
+        {% if opinion.source %}<div class="quote-source">{{ opinion.source }}</div>{% endif %}
+    </div>
+</div>
+{% endmacro %}
+
+{# --- Founder Card --- #}
+{% macro founder_card(founder) %}
+<div class="founder-card">
+    <div class="founder-head">
+        <h4>{{ founder.name }}</h4>
+        {% if founder.role %}<div class="role">{{ founder.role }}{% if founder.share %} | {{ founder.share }}{% endif %}</div>{% endif %}
+    </div>
+    <div class="founder-body">
+        <table>
+            {% if founder.company %}<tr><td>Компания</td><td>{{ founder.company }}</td></tr>{% endif %}
+            {% for platform, handle in founder.social.items() %}
+            <tr><td>{{ platform }}</td><td>{{ handle }}</td></tr>
+            {% endfor %}
+        </table>
+    </div>
+</div>
+{% endmacro %}
+
+{# --- Callout --- #}
+{% macro callout(title, text, variant="") %}
+<div class="callout{% if variant %} callout-{{ variant }}{% endif %}">
+    <h4>{{ title }}</h4>
+    <p>{{ text }}</p>
+</div>
+{% endmacro %}
+
+{# --- Fact Verification Row --- #}
+{% macro fact_row(fact) %}
+<tr>
+    <td>{% if fact.verified %}&#128274;{% else %}&#9888;{% endif %}</td>
+    <td>{{ fact.fact }}{% if fact.correction %} <span class="neg" style="text-decoration:line-through;">ошибка</span> &rarr; <span class="pos">{{ fact.correction }}</span>{% endif %}</td>
+    <td>{{ fact.sources_count }}</td>
+    <td style="font-size:0.82em; color:var(--text3);">{{ fact.sources|join(', ') }}</td>
+</tr>
+{% endmacro %}
+
+{# --- Calc Trace Confidence Badge (v2.0) --- #}
+{% macro calc_trace(confidence) %}
+{% if confidence == "FACT" or confidence.value is defined and confidence.value == "FACT" %}
+<span class="ct-fact">&#128274; Факт</span>
+{% elif confidence == "CALC" or confidence.value is defined and confidence.value == "CALC" %}
+<span class="ct-calc">&#128290; Расчёт</span>
+{% else %}
+<span class="ct-estimate">&#9888; Оценка</span>
+{% endif %}
+{% endmacro %}
+
+{# --- Lifecycle Stage Badge (v2.0) --- #}
+{% macro lifecycle_badge(stage) %}
+{% set stage_str = stage.value if stage.value is defined else stage %}
+{% if stage_str == "startup" %}
+<span class="badge b-purple">Стартап</span>
+{% elif stage_str == "growth" %}
+<span class="badge b-green">Рост</span>
+{% elif stage_str == "investment" %}
+<span class="badge b-orange">Инвест. фаза</span>
+{% elif stage_str == "mature" %}
+<span class="badge b-blue">Зрелость</span>
+{% else %}
+<span class="badge b-gold">{{ stage_str }}</span>
+{% endif %}
+{% endmacro %}
+
+{# --- Sales Channel Row (v2.0) --- #}
+{% macro channel_row(channel) %}
+<td>
+{% if channel.exists == true %}
+<span style="color:var(--green); font-weight:600;">&#10003;</span>
+{% elif channel.exists == false %}
+<span style="color:var(--red);">&#10007;</span>
+{% else %}
+<span style="color:var(--text3);">?</span>
+{% endif %}
+</td>
+{% endmacro %}

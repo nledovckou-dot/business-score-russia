@@ -1,0 +1,44 @@
+{# P6: Menu / Pricing Analysis — B2C only #}
+{% from '_macros.html' import metric_card, info_tip, chart_wrap %}
+
+{% if menu %}
+<div class="card">
+    <h3>Анализ меню / прайса</h3>
+
+    {% if menu.metrics %}
+    <div class="grid-4" style="margin-bottom:20px;">
+        {% for m in menu.metrics %}
+        {{ metric_card(m.value, m.label, m.get('color', 'gold')) }}
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if menu.categories %}
+    <h4 style="color:var(--gold2); font-size:0.95em; margin:16px 0 12px;">Структура по категориям</h4>
+    <table>
+        <thead>
+            <tr>
+                <th>Категория</th>
+                <th>Позиций</th>
+                <th>Ср. цена</th>
+                <th>Доля выручки</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cat in menu.categories %}
+            <tr>
+                <td style="font-weight:600;">{{ cat.name }}</td>
+                <td class="r">{{ cat.count }}</td>
+                <td class="r">{{ cat.avg_price }}</td>
+                <td class="r">{{ cat.revenue_share }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    {% if menu_chart_svg %}
+    {{ chart_wrap("Структура меню", "Распределение по категориям", menu_chart_svg) }}
+    {% endif %}
+</div>
+{% endif %}

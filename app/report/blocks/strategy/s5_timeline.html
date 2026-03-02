@@ -1,0 +1,12 @@
+{# S5: Implementation Timeline — 12 months #}
+{% from '_macros.html' import timeline, info_tip %}
+
+{% if implementation_timeline %}
+<div class="card">
+    <h3>Таймлайн внедрения (12 месяцев)</h3>
+    <p style="color:var(--text2); font-size:0.9em; margin-bottom:16px;">
+        Пошаговый план реализации рекомендаций
+    </p>
+    {{ timeline(implementation_timeline) }}
+</div>
+{% endif %}

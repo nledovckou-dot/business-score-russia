@@ -1,0 +1,34 @@
+{% from "_macros.html" import calc_trace %}
+
+{# ─── A4: Прозрачность вычислений (Calc Traces) ─── #}
+
+{% if calc_traces %}
+<div class="card">
+    <h3>Прозрачность вычислений</h3>
+    <p style="color:var(--text2); font-size:0.88em; margin-bottom:16px;">
+        Каждый расчётный показатель содержит формулу, входные данные и уровень достоверности.
+    </p>
+    <table>
+        <thead>
+            <tr>
+                <th>Показатель</th>
+                <th>Значение</th>
+                <th>Формула</th>
+                <th>Источники</th>
+                <th>Уровень</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ct in calc_traces %}
+            <tr>
+                <td style="font-weight:600;">{{ ct.metric_name }}</td>
+                <td class="r">{{ ct.value }}</td>
+                <td style="font-size:0.82em; color:var(--text2);">{{ ct.formula or '—' }}</td>
+                <td style="font-size:0.82em; color:var(--text3);">{{ ct.sources|join(', ') if ct.sources else '—' }}</td>
+                <td>{{ calc_trace(ct.confidence) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}

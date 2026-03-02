@@ -1,0 +1,12 @@
+{# C3: Comparative Radar — SVG radar chart #}
+{% from '_macros.html' import chart_wrap, info_tip %}
+
+{% if radar_svg %}
+<div class="card">
+    <h3>Сравнительный радар</h3>
+    <p style="color:var(--text2); font-size:0.9em; margin-bottom:8px;">
+        Оценка по {{ radar_dimensions|length }} ключевым параметрам (шкала 0–10). {{ company.name }} выделена золотым цветом.
+    </p>
+    {{ chart_wrap("Радар компетенций", "Сравнение " ~ company.name ~ " с ключевыми конкурентами", radar_svg, radar_legend) }}
+</div>
+{% endif %}

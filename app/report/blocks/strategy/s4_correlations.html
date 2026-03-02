@@ -1,0 +1,15 @@
+{# S4: Correlation Matrix — heatmap #}
+{% from '_macros.html' import chart_wrap, info_tip %}
+
+{% if correlations_svg %}
+<div class="card">
+    <h3>Корреляции метрик</h3>
+    <p style="color:var(--text2); font-size:0.9em; margin-bottom:16px;">
+        Взаимосвязи между ключевыми показателями (от -1 до +1).
+        <span style="color:var(--green);">Зелёный</span> = положительная корреляция,
+        <span style="color:var(--red);">красный</span> = отрицательная.
+    </p>
+    {{ chart_wrap("Матрица корреляций", "Сила и направление связи между метриками", correlations_svg) }}
+    {{ info_tip("Корреляции рассчитаны на основе доступных временных рядов. Значения < 0.3 статистически незначимы.") }}
+</div>
+{% endif %}

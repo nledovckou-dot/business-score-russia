@@ -1,0 +1,14 @@
+[Unit]
+Description=BSR Business Analysis (FastAPI)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/business-score-russia
+EnvironmentFile=/opt/business-score-russia/.env
+ExecStart=/opt/business-score-russia/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8083
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,31 @@
+{# S3: Financial Scenarios — 3 paths, grouped bars #}
+{% from '_macros.html' import info_tip, chart_wrap %}
+
+{% if scenarios %}
+<div class="card">
+    <h3>Финансовые сценарии (3 пути)</h3>
+    <p style="color:var(--text2); font-size:0.9em; margin-bottom:16px;">
+        Прогнозные показатели на 12 месяцев при разных стратегиях
+    </p>
+
+    {% if scenarios_chart_svg %}
+    {{ chart_wrap("Сравнение сценариев", "Ключевые метрики по трём сценариям", scenarios_chart_svg, scenarios_legend) }}
+    {% endif %}
+
+    <div class="grid-3" style="margin-top:20px;">
+        {% for sc in scenarios %}
+        <div style="background:var(--bg3); border:1px solid var(--border); border-radius:12px; padding:20px;">
+            <h4 style="color:{{ {'optimistic':'var(--green)', 'base':'var(--gold)', 'pessimistic':'var(--red)'}[sc.name] }}; margin-bottom:12px;">{{ sc.label }}</h4>
+            <table style="margin:0;">
+                {% for metric, val in sc.metrics.items() %}
+                <tr>
+                    <td style="color:var(--text3); font-size:0.85em; padding:4px 8px;">{{ metric }}</td>
+                    <td class="r" style="font-weight:600; font-size:0.85em; padding:4px 8px;">{{ val }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}

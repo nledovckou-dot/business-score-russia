@@ -1,0 +1,83 @@
+name: Deploy BSR to VPS
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          REPO_URL: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FNS_API_KEY: ${{ secrets.FNS_API_KEY }}
+          FALLBACK_LLM_API_KEY: ${{ secrets.FALLBACK_LLM_API_KEY }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          command_timeout: 10m
+          envs: REPO_URL,GEMINI_API_KEY,FNS_API_KEY,FALLBACK_LLM_API_KEY
+          script: |
+            set -e
+            APP_DIR=/opt/business-score-russia
+
+            # Clone or update repo
+            if [ ! -d "$APP_DIR" ]; then
+              sudo -n mkdir -p "$APP_DIR"
+              sudo -n chown $(whoami):$(whoami) "$APP_DIR"
+              cd "$APP_DIR"
+              git init -b main
+            else
+              cd "$APP_DIR"
+            fi
+            git remote set-url origin "$REPO_URL" 2>/dev/null || git remote add origin "$REPO_URL"
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Setup .env
+            cat > "$APP_DIR/.env" <<ENVEOF
+            REPORT_OUTPUT_DIR=app/storage/reports
+            GEMINI_API_KEY=${GEMINI_API_KEY}
+            FNS_API_KEY=${FNS_API_KEY}
+            FALLBACK_LLM_API_KEY=${FALLBACK_LLM_API_KEY}
+            ENVEOF
+
+            # Python venv
+            if [ ! -d "$APP_DIR/.venv" ]; then
+              python3 -m venv "$APP_DIR/.venv"
+            fi
+            "$APP_DIR/.venv/bin/pip" install -q -r "$APP_DIR/requirements.txt"
+
+            # Create reports directory
+            mkdir -p "$APP_DIR/app/storage/reports"
+
+            # Systemd service
+            sudo -n cp "$APP_DIR/scripts/bsr.service" /etc/systemd/system/bsr.service
+            sudo -n systemctl daemon-reload
+            sudo -n systemctl enable bsr
+
+            # Nginx config
+            sudo -n cp "$APP_DIR/scripts/nginx-bsr.conf" /etc/nginx/sites-enabled/bsr.conf
+            sudo -n nginx -t && sudo -n systemctl reload nginx
+
+            # Restart service
+            sudo -n systemctl restart bsr
+            sleep 3
+
+            # Firewall
+            sudo -n ufw allow 8090/tcp 2>/dev/null || true
+            sudo -n iptables -C INPUT -p tcp --dport 8090 -j ACCEPT 2>/dev/null || sudo -n iptables -I INPUT -p tcp --dport 8090 -j ACCEPT
+
+            # Diagnostics
+            echo "=== BSR service status ==="
+            sudo -n systemctl status bsr --no-pager | head -10
+            echo "=== Checking port 8083 ==="
+            curl -s -o /dev/null -w "%{http_code}" http://localhost:8083/ || echo "not yet ready"
+            echo ""
+            echo "=== Checking port 8090 (nginx) ==="
+            curl -s -o /dev/null -w "%{http_code}" http://localhost:8090/ || echo "not yet ready"

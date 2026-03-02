@@ -1,0 +1,14 @@
+{# C1: Perceptual Map — scatter SVG #}
+{% from '_macros.html' import chart_wrap, info_tip %}
+
+{% if competitors and scatter_svg %}
+<div class="card">
+    <h3>Перцептуальная карта конкурентов</h3>
+    <p style="color:var(--text2); font-size:0.9em; margin-bottom:8px;">
+        Оси: <strong style="color:var(--gold);">{{ x_axis }}</strong> (горизонтальная) vs <strong style="color:var(--gold);">{{ y_axis }}</strong> (вертикальная).
+        {{ company.name }} выделена пульсирующей точкой.
+    </p>
+    {{ chart_wrap("Позиционирование на рынке", "Шкала 0–100 по каждой оси", scatter_svg, legend_items) }}
+    {{ info_tip("Координаты определены на основе анализа цен, продуктовой матрицы и экспертной оценки.") }}
+</div>
+{% endif %}

@@ -1,0 +1,265 @@
+{
+  "company": {
+    "name": "Maison Rouge",
+    "legal_name": "ООО «МЕЗОН РУЖ»",
+    "inn": "7841098765",
+    "okved": "56.10",
+    "business_type": "B2C_SERVICE",
+    "address": "Конюшенная пл. 2Г, Санкт-Петербург",
+    "website": "https://maison-rouge.ru",
+    "description": "Ресторан-бар-клуб формата 3-в-1 в историческом центре Петербурга. Авторская кухня + коктейльный бар + ночной клуб.",
+    "badges": ["ФНС: бухотчётность 2024", "Ресторан + Бар + Клуб", "Конюшенная пл.", "21+ заведение в радиусе 1 км"]
+  },
+  "market": {
+    "market_name": "Рынок HoReCa Санкт-Петербурга",
+    "market_size": "180 млрд ₽",
+    "growth_rate": "+8% год",
+    "data_points": [
+      {"year": 2021, "value": 135, "label": "млрд ₽"},
+      {"year": 2022, "value": 142, "label": "млрд ₽"},
+      {"year": 2023, "value": 158, "label": "млрд ₽"},
+      {"year": 2024, "value": 172, "label": "млрд ₽"},
+      {"year": 2025, "value": 180, "label": "млрд ₽ (оценка)"}
+    ],
+    "trends": [
+      "Рост среднего чека на 15–20% из-за инфляции",
+      "Концепция «всё в одном» набирает популярность (ресторан+бар+ивент)",
+      "Instagram и Telegram — главные каналы привлечения для HoReCa",
+      "Рост туристического потока в Петербурге (белые ночи, ПМЭФ)"
+    ],
+    "sources": ["РБК", "Коммерсант", "RestoPractice"]
+  },
+  "regulatory_trends": [
+    {"date": "2025-01", "title": "Маркировка меню", "description": "Обязательная маркировка аллергенов в меню"},
+    {"date": "2025-06", "title": "Акцизы", "description": "Повышение акцизов на алкоголь на 10%"},
+    {"date": "2026-01", "title": "ЭДО", "description": "Обязательный электронный документооборот для общепита"}
+  ],
+  "tech_trends": [
+    "QR-меню с интеграцией в POS",
+    "AI-рекомендации блюд по предпочтениям гостя",
+    "CRM для ресторанов (iiko, R-Keeper)",
+    "Telegram-боты для бронирования и лояльности"
+  ],
+  "hr_data": {
+    "salaries": [
+      {"label": "Шеф-повар", "value": 150000, "color": "#C9A44C"},
+      {"label": "Су-шеф", "value": 90000, "color": "#E8C46A"},
+      {"label": "Бармен (топ)", "value": 80000, "color": "#4A8FE0"},
+      {"label": "Официант", "value": 45000, "color": "#3DB86A"},
+      {"label": "Хостес", "value": 40000, "color": "#9060D0"},
+      {"label": "Управляющий", "value": 120000, "color": "#E08040"}
+    ],
+    "sources": ["hh.ru", "Superjob", "Restojob"]
+  },
+  "competitors": [
+    {
+      "name": "Сплетни by Asti",
+      "description": "Ресторан-бар Тиграна Мартиросяна, 500+ ивентов/год, сильнейший бренд в районе",
+      "address": "Конюшенная пл. 2, 0 метров",
+      "x": 60, "y": 90,
+      "radar_scores": {"Кухня": 7, "Бар": 8, "Атмосфера": 9, "Цена": 5, "Узнаваемость": 10, "Digital": 10},
+      "metrics": {"Рейтинг Яндекс": "4.6", "Отзывов": "4767", "Instagram": "56K", "Ср. чек": "2500₽"},
+      "threat_level": "high",
+      "lifecycle": {"stage": "mature", "evidence": ["Стабильная выручка", "500+ ивентов/год", "Высокая узнаваемость"], "year_founded": "2018"},
+      "sales_channels": [
+        {"channel_name": "Собственный зал", "exists": true, "source": "Яндекс Карты"},
+        {"channel_name": "Delivery", "exists": true, "source": "Яндекс Еда"},
+        {"channel_name": "Instagram", "exists": true, "source": "Instagram"},
+        {"channel_name": "Telegram", "exists": false, "source": "Проверка"},
+        {"channel_name": "Кейтеринг", "exists": true, "source": "Сайт"}
+      ]
+    },
+    {
+      "name": "Terrassa",
+      "description": "Флагман Ginza Project, крыша Казанского собора, 8922 отзыва",
+      "address": "Казанская ул. 3А",
+      "x": 75, "y": 75,
+      "radar_scores": {"Кухня": 8, "Бар": 7, "Атмосфера": 9, "Цена": 4, "Узнаваемость": 10, "Digital": 9},
+      "metrics": {"Рейтинг Яндекс": "4.4", "Отзывов": "8922", "Instagram": "45K", "Ср. чек": "3500₽"},
+      "threat_level": "high",
+      "lifecycle": {"stage": "mature", "evidence": ["Ginza Project — крупнейший ресторанный холдинг", "Стабильный поток 10+ лет"], "year_founded": "2011"},
+      "sales_channels": [
+        {"channel_name": "Собственный зал", "exists": true, "source": "Яндекс Карты"},
+        {"channel_name": "Delivery", "exists": true, "source": "Яндекс Еда"},
+        {"channel_name": "Instagram", "exists": true, "source": "Instagram"},
+        {"channel_name": "Telegram", "exists": true, "source": "Telegram"},
+        {"channel_name": "Кейтеринг", "exists": false, "source": "Сайт"}
+      ]
+    },
+    {
+      "name": "Мансарда",
+      "description": "Ресторан Ginza с панорамным видом, стабильный поток",
+      "address": "Почтамтская ул. 3",
+      "x": 70, "y": 65,
+      "radar_scores": {"Кухня": 8, "Бар": 6, "Атмосфера": 8, "Цена": 5, "Узнаваемость": 9, "Digital": 8},
+      "metrics": {"Рейтинг Яндекс": "4.5", "Отзывов": "5200", "Instagram": "30K", "Ср. чек": "3000₽"},
+      "threat_level": "med"
+    },
+    {
+      "name": "Duo Asia",
+      "description": "Паназиатский ресторан, уникальная ниша в районе",
+      "address": "Конюшенная пл. 2",
+      "x": 55, "y": 70,
+      "radar_scores": {"Кухня": 8, "Бар": 5, "Атмосфера": 7, "Цена": 6, "Узнаваемость": 7, "Digital": 7},
+      "metrics": {"Рейтинг Яндекс": "4.7", "Отзывов": "2100", "Instagram": "15K", "Ср. чек": "2800₽"},
+      "threat_level": "med"
+    },
+    {
+      "name": "Hamlet + Jacks",
+      "description": "Бар с крафтовыми коктейлями, молодая аудитория",
+      "address": "Б. Конюшенная 14",
+      "x": 35, "y": 80,
+      "radar_scores": {"Кухня": 5, "Бар": 9, "Атмосфера": 8, "Цена": 7, "Узнаваемость": 6, "Digital": 7},
+      "metrics": {"Рейтинг Яндекс": "4.8", "Отзывов": "890", "Instagram": "8K", "Ср. чек": "1800₽"},
+      "threat_level": "med"
+    }
+  ],
+  "radar_dimensions": ["Кухня", "Бар", "Атмосфера", "Цена", "Узнаваемость", "Digital"],
+  "financials": [
+    {"year": 2024, "revenue": 31600, "net_profit": -22200, "assets": 85000, "equity": -15000, "employees": 45}
+  ],
+  "swot": {
+    "strengths": [
+      "Формат 3-в-1 (ресторан + бар + клуб) — уникальный в районе",
+      "Food cost 21% при рыночных 33% — высокая маржа на кухне",
+      "Бар = 44.6% выручки — самый маржинальный микс",
+      "Дизайн Da Bureau — Instagram-магнит (капсулы, лавовая лампа)"
+    ],
+    "weaknesses": [
+      "86 отзывов vs 8922 у Terrassa — критическая проблема узнаваемости",
+      "Нет соцсетей (Instagram, VK, Telegram) — digital-присутствие ~0",
+      "Понедельник-вторник закрыт: потеря 2/7 оборота",
+      "Клуб 02:00-05:00 неэффективен (388К/час vs 4.1М/час в пике)"
+    ],
+    "opportunities": [
+      "Запуск Instagram + Telegram может привлечь 10K подписчиков к лету",
+      "Программа лояльности: LTV premium-гостя = 200-500К ₽/год",
+      "Бранчи и дневные ивенты для загрузки будних дней",
+      "Коллаборации с блогерами района"
+    ],
+    "threats": [
+      "Алкогольная лицензия истекает 19.06.2026 (4 мес!)",
+      "Сплетни by Asti (0 метров!) каннибализирует walk-in трафик",
+      "Рост аренды в центре Петербурга +15% год",
+      "Инфляция food cost: рост закупочных цен на 20%+"
+    ]
+  },
+  "digital": {
+    "social_accounts": [
+      {"platform": "Instagram", "handle": "@maisonrouge_spb", "followers": 120, "verified": false},
+      {"platform": "Яндекс Карты", "handle": "Maison Rouge", "followers": 86}
+    ],
+    "seo_score": 15,
+    "monthly_traffic": 200
+  },
+  "menu": {
+    "metrics": [
+      {"value": "2500₽", "label": "Средний чек", "color": "gold"},
+      {"value": "21%", "label": "Food cost", "color": "green"},
+      {"value": "44.6%", "label": "Доля бара", "color": "blue"},
+      {"value": "115", "label": "Позиций в меню", "color": "purple"}
+    ],
+    "categories": [
+      {"name": "Коктейли", "count": 35, "avg_price": "750₽", "revenue_share": "32%"},
+      {"name": "Горячее", "count": 18, "avg_price": "1200₽", "revenue_share": "25%"},
+      {"name": "Закуски", "count": 22, "avg_price": "650₽", "revenue_share": "15%"},
+      {"name": "Вино/Шампанское", "count": 25, "avg_price": "800₽", "revenue_share": "13%"},
+      {"name": "Десерты", "count": 8, "avg_price": "550₽", "revenue_share": "8%"},
+      {"name": "Безалкогольные", "count": 7, "avg_price": "400₽", "revenue_share": "7%"}
+    ]
+  },
+  "market_share": {
+    "Maison Rouge": 3,
+    "Сплетни by Asti": 18,
+    "Terrassa": 22,
+    "Мансарда": 15,
+    "Duo Asia": 8,
+    "Hamlet + Jacks": 5,
+    "Другие": 29
+  },
+  "recommendations": [
+    {"title": "Продлить алкогольную лицензию", "description": "Истекает 19.06.2026. Бар = 44.6% выручки. Процесс 30-60 дней. Начать СЕЙЧАС.", "priority": "high", "timeline": "Март 2026", "expected_impact": "Сохранение 44% выручки"},
+    {"title": "Запустить digital-присутствие", "description": "Instagram + VK + Telegram. Цель: 10K подписчиков к лету. Сплетни by Asti = 56K Instagram.", "priority": "high", "timeline": "Март-Апрель 2026", "expected_impact": "+30% walk-in трафик"},
+    {"title": "CRM и программа лояльности", "description": "Именные бокалы, Telegram-консьерж, реферальная программа. Цель: 500 отзывов к лету.", "priority": "medium", "timeline": "Апрель 2026", "expected_impact": "LTV +40%"},
+    {"title": "Открыть понедельник-вторник", "description": "Бранчи, бизнес-ланчи, закрытые ивенты. Конкуренты работают 7/7.", "priority": "medium", "timeline": "Май 2026", "expected_impact": "+28% недельного оборота"}
+  ],
+  "kpi_benchmarks": [
+    {"name": "RevPASH", "current": 1200, "benchmark": 2500, "unit": "₽/место/час"},
+    {"name": "Средний чек", "current": 2500, "benchmark": 3000, "unit": "₽"},
+    {"name": "Оборачиваемость столов", "current": 1.2, "benchmark": 2.0, "unit": "раз/вечер"},
+    {"name": "Food cost", "current": 21, "benchmark": 30, "unit": "%"},
+    {"name": "Отзывов Яндекс", "current": 86, "benchmark": 500, "unit": "шт"},
+    {"name": "Instagram подписчики", "current": 120, "benchmark": 10000, "unit": "чел"}
+  ],
+  "scenarios": [
+    {"name": "optimistic", "label": "Оптимистичный", "metrics": {"Выручка (мес)": 25000, "Средний чек": 3200, "Загрузка": 75, "Отзывов": 600}},
+    {"name": "base", "label": "Базовый", "metrics": {"Выручка (мес)": 18000, "Средний чек": 2800, "Загрузка": 55, "Отзывов": 300}},
+    {"name": "pessimistic", "label": "Пессимистичный", "metrics": {"Выручка (мес)": 12000, "Средний чек": 2500, "Загрузка": 35, "Отзывов": 120}}
+  ],
+  "correlations": [
+    {"metric_a": "Выручка", "metric_b": "Отзывы", "value": 0.85},
+    {"metric_a": "Выручка", "metric_b": "Instagram", "value": 0.78},
+    {"metric_a": "Выручка", "metric_b": "Ср. чек", "value": 0.62},
+    {"metric_a": "Отзывы", "metric_b": "Instagram", "value": 0.91},
+    {"metric_a": "Ср. чек", "metric_b": "Food cost", "value": -0.55},
+    {"metric_a": "Загрузка", "metric_b": "Дни работы", "value": 0.88}
+  ],
+  "implementation_timeline": [
+    {"date": "Март 2026", "title": "Лицензия + Соцсети", "description": "Подать документы на продление. Создать Instagram, VK, Telegram."},
+    {"date": "Апрель 2026", "title": "CRM + Лояльность", "description": "Внедрить iiko CRM, запустить реферальную программу."},
+    {"date": "Май 2026", "title": "Пн-Вт открытие", "description": "Бранчи, бизнес-ланчи, дегустации."},
+    {"date": "Июнь 2026", "title": "Летняя кампания", "description": "Белые ночи, террасы, коллаборации с блогерами."},
+    {"date": "Сентябрь 2026", "title": "Аудит", "description": "Оценка KPI: отзывы, подписчики, RevPASH, средний чек."}
+  ],
+  "open_questions": [
+    "Точная сумма долгосрочного займа и его структура",
+    "План по ребрендингу или ребрифингу?",
+    "Есть ли CRM сейчас? Какая POS-система?",
+    "Бюджет на маркетинг (ежемесячный)"
+  ],
+  "glossary": {
+    "RevPASH": "Revenue Per Available Seat Hour — выручка на одно посадочное место в час. Формула: выручка / (посадочные места × часы работы)",
+    "Food cost": "Себестоимость продуктов / выручка кухни × 100%. Норма для fine dining: 28-35%",
+    "Средний чек": "Выручка / количество гостей. Показатель ценового позиционирования",
+    "Оборачиваемость столов": "Сколько раз стол занимается за вечер. Формула: гостей / посадочных мест",
+    "Walk-in": "Гости без предварительного бронирования — зашли «с улицы»",
+    "LTV": "Lifetime Value — сумма, которую гость приносит за всё время. Для ресторанов: средний чек × частота × срок отношений"
+  },
+  "factcheck": [
+    {"fact": "Рейтинг Maison Rouge на Яндекс Картах: 4.9", "sources_count": 2, "verified": true, "sources": ["Яндекс Карты", "2ГИС"]},
+    {"fact": "86 отзывов на Яндекс Картах", "sources_count": 1, "verified": false, "sources": ["Яндекс Карты"]},
+    {"fact": "Food cost 21%", "sources_count": 1, "verified": false, "sources": ["Внутренние документы"]},
+    {"fact": "Алкогольная лицензия до 19.06.2026", "sources_count": 2, "verified": true, "sources": ["ФСРАР", "Rusprofile"]},
+    {"fact": "Сплетни by Asti: 56K Instagram", "sources_count": 2, "verified": true, "sources": ["Instagram", "LiveDune"]}
+  ],
+  "digital_verification": [
+    {"company": "Maison Rouge", "instagram": "@maisonrouge_spb (120)", "telegram": "—", "vk": "—", "total_followers": 120, "is_target": true},
+    {"company": "Сплетни by Asti", "instagram": "@spletni_asti (56K)", "telegram": "—", "vk": "vk.com/spletni (12K)", "total_followers": 68000},
+    {"company": "Terrassa", "instagram": "@terrassa_spb (45K)", "telegram": "@terrassa_news (8K)", "vk": "vk.com/terrassa (20K)", "total_followers": 73000},
+    {"company": "Мансарда", "instagram": "@mansarda_spb (30K)", "telegram": "—", "vk": "vk.com/mansarda (15K)", "total_followers": 45000},
+    {"company": "Duo Asia", "instagram": "@duoasia_spb (15K)", "telegram": "—", "vk": "—", "total_followers": 15000}
+  ],
+  "founders": [
+    {"name": "Сидоров Никита Андреевич", "role": "Учредитель / Управляющий", "share": "100%", "company": "ООО «МЕЗОН РУЖ»", "social": {"Instagram": "@nikita_mr"}},
+    {"name": "Тигран Мартиросян", "role": "Владелец", "company": "Сплетни by Asti", "social": {"Instagram": "@tigran_m (3M)"}},
+    {"name": "Ginza Project", "role": "Управляющая компания", "company": "Terrassa, Мансарда", "social": {"Instagram": "@ginzaproject (200K)"}}
+  ],
+  "opinions": [
+    {"author": "Тигран Мартиросян", "role": "Ресторатор, основатель Сплетни by Asti", "quote": "Конюшенная площадь — это новый ресторанный кластер Петербурга. Через 2 года здесь будет 30+ заведений.", "date": "Январь 2026", "source": "Собака.ru"},
+    {"author": "Арам Мнацаканов", "role": "Ресторатор, Probka Family", "quote": "Ресторанный бизнес Петербурга перегрет. Выживут только те, кто создаёт уникальный опыт, а не просто кормит.", "date": "Декабрь 2025", "source": "Forbes Russia"},
+    {"author": "Дмитрий Блинов", "role": "Шеф-повар, DUO Gastrobar", "quote": "Петербург обогнал Москву по качеству гастрономии. Средний чек растёт, но и ожидания гостей растут.", "date": "Ноябрь 2025", "source": "WhereToEat"}
+  ],
+  "calc_traces": [
+    {"metric_name": "RevPASH", "value": "1 200 ₽", "formula": "выручка / (посадочные × часы)", "inputs": {"выручка_месяц": 2630000, "посадочные": 60, "часы_месяц": 180}, "sources": ["ФНС", "Внутренние данные"], "confidence": "CALC"},
+    {"metric_name": "Food cost", "value": "21%", "formula": "себестоимость / выручка_кухни × 100", "inputs": {"себестоимость": 553000, "выручка_кухни": 2630000}, "sources": ["Внутренние документы"], "confidence": "ESTIMATE"},
+    {"metric_name": "Средний чек", "value": "2 500 ₽", "formula": "выручка / кол-во_гостей", "inputs": {}, "sources": ["Яндекс Карты", "Меню"], "confidence": "ESTIMATE"}
+  ],
+  "methodology": {
+    "Источники данных": "ФНС (бухотчётность 2024), Яндекс Карты, 2ГИС, Instagram, Rusprofile, ФСРАР",
+    "Период анализа": "Январь-Март 2026",
+    "Регион": "Санкт-Петербург, Центральный район",
+    "Перцептуальная карта": "Шкала 1-100. Ось X = Цена (0=дёшево, 100=дорого), Ось Y = Уникальность концепции",
+    "Допущения": "Средний чек оценён по данным агрегаторов, не по внутренней аналитике"
+  },
+  "pipeline_version": "2.0"
+}

@@ -1,0 +1,17 @@
+{# O2: Industry Leader Opinions — quote cards + timeline #}
+{% from '_macros.html' import quote_card, info_tip %}
+
+{% if opinions %}
+<div class="card">
+    <h3>Мнения лидеров отрасли ({{ opinions|length }})</h3>
+    <p style="color:var(--text2); font-size:0.9em; margin-bottom:16px;">
+        Цитаты и прогнозы ключевых игроков рынка с датами и источниками
+    </p>
+    <div class="grid-2">
+        {% for opinion in opinions %}
+        {{ quote_card(opinion) }}
+        {% endfor %}
+    </div>
+    {{ info_tip("Цитаты из деловых СМИ, отраслевых изданий и интервью. Каждая цитата сопровождается ссылкой на источник.") }}
+</div>
+{% endif %}

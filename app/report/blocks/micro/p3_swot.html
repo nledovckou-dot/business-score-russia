@@ -1,0 +1,13 @@
+{# P3: SWOT Analysis — 2x2 grid #}
+{% from '_macros.html' import swot_grid, info_tip %}
+
+{% if swot %}
+<div class="card">
+    <h3>SWOT-анализ</h3>
+    <p style="color:var(--text2); font-size:0.9em; margin-bottom:16px;">
+        Strengths (сильные стороны) / Weaknesses (слабые) / Opportunities (возможности) / Threats (угрозы)
+    </p>
+    {{ swot_grid(swot) }}
+    {{ info_tip("SWOT сформирован на основе финансовых данных ФНС, анализа конкурентов и digital-аудита.") }}
+</div>
+{% endif %}

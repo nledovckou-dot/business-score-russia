@@ -1,0 +1,41 @@
+{% from "_macros.html" import lifecycle_badge, info_tip %}
+
+{# ─── C7: Жизненный цикл конкурентов ─── #}
+
+{% set has_lifecycle = [] %}
+{% for c in competitors %}
+  {% if c.lifecycle %}{% if has_lifecycle.append(1) %}{% endif %}{% endif %}
+{% endfor %}
+
+{% if has_lifecycle %}
+<div class="card">
+    <h3>Стадии жизненного цикла конкурентов</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Компания</th>
+                <th>Стадия</th>
+                <th>Обоснование</th>
+                <th>Год основания</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in competitors %}
+            {% if c.lifecycle %}
+            <tr>
+                <td style="font-weight:600;">{{ c.name }}</td>
+                <td>{{ lifecycle_badge(c.lifecycle.stage) }}</td>
+                <td style="font-size:0.85em; color:var(--text2);">
+                    {% for ev in c.lifecycle.evidence %}
+                    {{ ev }}{% if not loop.last %}; {% endif %}
+                    {% endfor %}
+                </td>
+                <td>{{ c.lifecycle.year_founded or '—' }}</td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+    {{ info_tip("Стадия жизненного цикла влияет на интерпретацию финансовых показателей. Компания в инвестиционной фазе может показывать убытки из-за CAPEX, а не из-за операционной неэффективности.") }}
+</div>
+{% endif %}

@@ -1,0 +1,5 @@
+.env
+__pycache__/
+*.pyc
+app/storage/reports/*.html
+.venv/

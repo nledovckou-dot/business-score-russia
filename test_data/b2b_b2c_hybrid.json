@@ -1,0 +1,222 @@
+{
+  "company": {
+    "name": "CosmoBeauty",
+    "legal_name": "ООО «КосмоБьюти»",
+    "inn": "7710123456",
+    "okved": "20.42",
+    "business_type": "B2B_B2C_HYBRID",
+    "address": "Москва, ул. Бутырская 77",
+    "website": "https://cosmobeauty.ru",
+    "description": "Производство профессиональной косметики для салонов красоты (B2B) и продажа через маркетплейсы (B2C D2C).",
+    "badges": ["B2B + B2C", "Собственное производство", "WB + Ozon", "200+ партнёров"]
+  },
+  "market": {
+    "market_name": "Рынок профессиональной косметики России",
+    "market_size": "95 млрд ₽",
+    "growth_rate": "+12% CAGR",
+    "data_points": [
+      {"year": 2022, "value": 65, "label": "млрд ₽"},
+      {"year": 2023, "value": 75, "label": "млрд ₽"},
+      {"year": 2024, "value": 85, "label": "млрд ₽"},
+      {"year": 2025, "value": 95, "label": "млрд ₽ (оценка)"}
+    ],
+    "trends": [
+      "Импортозамещение: рост российских брендов на 40%",
+      "D2C через маркетплейсы — основной канал роста",
+      "Рост сегмента «clean beauty» и натуральной косметики",
+      "HoReCa-канал: салоны переходят на российские бренды"
+    ],
+    "sources": ["InterCHARM", "РБК", "Косметический рынок России 2025"]
+  },
+  "regulatory_trends": [
+    {"date": "2025-07", "title": "Маркировка", "description": "Обязательная маркировка парфюмерии и косметики (Честный знак)"},
+    {"date": "2026-01", "title": "ГОСТ", "description": "Новый ГОСТ на профессиональную косметику"}
+  ],
+  "tech_trends": [
+    "AI-подбор составов по типу кожи",
+    "Персонализация через анкетирование",
+    "Подписочная модель для салонов"
+  ],
+  "hr_data": {
+    "salaries": [
+      {"label": "Технолог-химик", "value": 120000, "color": "#C9A44C"},
+      {"label": "Менеджер B2B", "value": 90000, "color": "#4A8FE0"},
+      {"label": "Маркетолог", "value": 100000, "color": "#3DB86A"},
+      {"label": "Оператор производства", "value": 55000, "color": "#9060D0"}
+    ],
+    "sources": ["hh.ru", "ANCOR"]
+  },
+  "competitors": [
+    {
+      "name": "Mixit",
+      "description": "D2C бренд косметики, 2 собственных завода, 150+ бутиков",
+      "website": "https://mixit.ru",
+      "x": 40, "y": 85,
+      "radar_scores": {"Качество": 7, "Цена": 8, "Digital": 10, "B2B": 3, "Ассортимент": 9, "Узнаваемость": 10},
+      "metrics": {"Выручка": "5.2 млрд ₽", "SKU": "800+", "Бутиков": "150+"},
+      "threat_level": "high",
+      "lifecycle": {"stage": "investment", "evidence": ["Строительство 2 заводов", "Убыток -420М объясняется CAPEX"], "year_founded": "2014"},
+      "sales_channels": [
+        {"channel_name": "Сайт D2C", "exists": true, "source": "mixit.ru"},
+        {"channel_name": "WB", "exists": true, "source": "mpstats"},
+        {"channel_name": "Ozon", "exists": true, "source": "mpstats"},
+        {"channel_name": "Собственные бутики", "exists": true, "source": "Сайт"},
+        {"channel_name": "B2B/опт", "exists": false, "source": "Сайт"},
+        {"channel_name": "HoReCa", "exists": false, "source": "Проверка 3 источников"},
+        {"channel_name": "Lamoda", "exists": true, "source": "Lamoda"}
+      ]
+    },
+    {
+      "name": "Levrana",
+      "description": "Натуральная косметика, сильный WB-канал, экологичное позиционирование",
+      "website": "https://levrana.ru",
+      "x": 30, "y": 75,
+      "radar_scores": {"Качество": 8, "Цена": 9, "Digital": 8, "B2B": 5, "Ассортимент": 7, "Узнаваемость": 7},
+      "metrics": {"Выручка": "1.8 млрд ₽", "SKU": "300+"},
+      "threat_level": "med",
+      "lifecycle": {"stage": "growth", "evidence": ["Рост выручки >30% г/г", "Расширение ассортимента"], "year_founded": "2014"},
+      "sales_channels": [
+        {"channel_name": "Сайт D2C", "exists": true, "source": "levrana.ru"},
+        {"channel_name": "WB", "exists": true, "source": "mpstats"},
+        {"channel_name": "Ozon", "exists": true, "source": "mpstats"},
+        {"channel_name": "Собственные бутики", "exists": false, "source": "Проверка"},
+        {"channel_name": "B2B/опт", "exists": true, "source": "Раздел 'Оптовым клиентам'"},
+        {"channel_name": "HoReCa", "exists": true, "source": "Сайт"},
+        {"channel_name": "Lamoda", "exists": false, "source": "Проверка"}
+      ]
+    },
+    {
+      "name": "Natura Siberica",
+      "description": "Крупнейший российский бренд натуральной косметики",
+      "website": "https://naturasiberica.ru",
+      "x": 45, "y": 70,
+      "radar_scores": {"Качество": 8, "Цена": 7, "Digital": 7, "B2B": 7, "Ассортимент": 10, "Узнаваемость": 9},
+      "metrics": {"Выручка": "8 млрд ₽", "SKU": "1500+"},
+      "threat_level": "high",
+      "lifecycle": {"stage": "mature", "evidence": ["15+ лет на рынке", "Стабильная маржа"], "year_founded": "2007"},
+      "sales_channels": [
+        {"channel_name": "Сайт D2C", "exists": true, "source": "naturasiberica.ru"},
+        {"channel_name": "WB", "exists": true, "source": "mpstats"},
+        {"channel_name": "Ozon", "exists": true, "source": "mpstats"},
+        {"channel_name": "Собственные бутики", "exists": true, "source": "2ГИС"},
+        {"channel_name": "B2B/опт", "exists": true, "source": "Сайт"},
+        {"channel_name": "HoReCa", "exists": true, "source": "СМИ"},
+        {"channel_name": "Lamoda", "exists": true, "source": "Lamoda"}
+      ]
+    }
+  ],
+  "radar_dimensions": ["Качество", "Цена", "Digital", "B2B", "Ассортимент", "Узнаваемость"],
+  "financials": [
+    {"year": 2022, "revenue": 180000, "net_profit": 12000, "assets": 95000, "equity": 40000, "employees": 85},
+    {"year": 2023, "revenue": 250000, "net_profit": 18000, "assets": 120000, "equity": 58000, "employees": 110},
+    {"year": 2024, "revenue": 350000, "net_profit": 25000, "assets": 160000, "equity": 83000, "employees": 140}
+  ],
+  "swot": {
+    "strengths": [
+      "Двухканальная модель (B2B салоны + B2C маркетплейсы) — диверсификация",
+      "Собственное производство — контроль качества и маржи",
+      "Рост выручки +40% г/г (2023→2024)",
+      "200+ активных B2B партнёров"
+    ],
+    "weaknesses": [
+      "Слабый бренд в B2C vs Mixit (56K Instagram vs 5K)",
+      "Нет собственных бутиков — зависимость от маркетплейсов",
+      "B2B средний заказ 42K ₽ vs рынок 65K ₽",
+      "Высокая зависимость от WB (60% B2C выручки)"
+    ],
+    "opportunities": [
+      "HoReCa-канал: салоны переходят на российские бренды",
+      "Запуск Lamoda и Яндекс.Маркет — дополнительные каналы",
+      "Подписочная модель для B2B партнёров",
+      "Clean beauty тренд — совпадает с позиционированием"
+    ],
+    "threats": [
+      "Mixit строит 2 завода — вертикальная интеграция",
+      "Маркировка «Честный знак» — доп. расходы 2-3%",
+      "Рост комиссий WB (с 15% до 22%)",
+      "Усиление международных брендов после параллельного импорта"
+    ]
+  },
+  "digital": {
+    "social_accounts": [
+      {"platform": "Instagram", "handle": "@cosmobeauty_pro", "followers": 5200},
+      {"platform": "Telegram", "handle": "@cosmobeauty_channel", "followers": 1800},
+      {"platform": "VK", "handle": "vk.com/cosmobeauty", "followers": 3400}
+    ],
+    "seo_score": 45,
+    "monthly_traffic": 15000
+  },
+  "products": [
+    {"name": "Линейка для лица (B2C)", "description": "Кремы, сыворотки, маски", "price": "500-2000 ₽"},
+    {"name": "Профессиональная линейка (B2B)", "description": "Средства для процедур в салонах", "price": "1500-5000 ₽"}
+  ],
+  "market_share": {
+    "CosmoBeauty": 4,
+    "Mixit": 18,
+    "Levrana": 8,
+    "Natura Siberica": 25,
+    "Другие": 45
+  },
+  "recommendations": [
+    {"title": "Усилить бренд в B2C", "description": "Instagram-стратегия, коллаборации с блогерами. Цель: 20K подписчиков к концу года.", "priority": "high", "timeline": "Q2-Q3 2026", "expected_impact": "+50% B2C продаж"},
+    {"title": "Подписочная модель B2B", "description": "Автоматические поставки для салонов с дисконтом 10%. Увеличит LTV и retention.", "priority": "high", "timeline": "Q2 2026", "expected_impact": "LTV B2B +35%"},
+    {"title": "Выход на Lamoda", "description": "Новый канал, аудитория premium-сегмента.", "priority": "medium", "timeline": "Q3 2026", "expected_impact": "+15% B2C GMV"},
+    {"title": "Маркировка «Честный знак»", "description": "Подготовить инфраструктуру до обязательного срока.", "priority": "medium", "timeline": "Q2 2026", "expected_impact": "Compliance"}
+  ],
+  "kpi_benchmarks": [
+    {"name": "GMV B2C", "current": 210000, "benchmark": 350000, "unit": "тыс. ₽/год"},
+    {"name": "Средний заказ B2B", "current": 42000, "benchmark": 65000, "unit": "₽"},
+    {"name": "Активная база B2B", "current": 200, "benchmark": 350, "unit": "партнёров"},
+    {"name": "EBITDA margin", "current": 12, "benchmark": 18, "unit": "%"},
+    {"name": "Средний чек B2C (WB)", "current": 850, "benchmark": 1200, "unit": "₽"}
+  ],
+  "scenarios": [
+    {"name": "optimistic", "label": "Оптимистичный", "metrics": {"Выручка B2C, тыс.": 300000, "Выручка B2B, тыс.": 200000, "EBITDA margin, %": 18}},
+    {"name": "base", "label": "Базовый", "metrics": {"Выручка B2C, тыс.": 230000, "Выручка B2B, тыс.": 160000, "EBITDA margin, %": 14}},
+    {"name": "pessimistic", "label": "Пессимистичный", "metrics": {"Выручка B2C, тыс.": 180000, "Выручка B2B, тыс.": 120000, "EBITDA margin, %": 8}}
+  ],
+  "open_questions": [
+    "Точная доля B2B vs B2C в выручке (оценка 40/60)",
+    "Условия контракта с WB (комиссия, фулфилмент)",
+    "Планы по строительству собственного производства"
+  ],
+  "glossary": {
+    "GMV": "Gross Merchandise Value — общий объём продаж через канал",
+    "LTV": "Lifetime Value — пожизненная ценность клиента",
+    "D2C": "Direct to Consumer — продажа напрямую покупателю, минуя посредников",
+    "HoReCa": "Hotels, Restaurants, Catering — канал продаж в сегмент гостеприимства",
+    "CAC": "Customer Acquisition Cost — стоимость привлечения клиента",
+    "EBITDA margin": "Операционная прибыль до вычета амортизации / выручка × 100%"
+  },
+  "factcheck": [
+    {"fact": "Выручка CosmoBeauty 350 млн ₽ (2024)", "sources_count": 2, "verified": true, "sources": ["ФНС", "Rusprofile"]},
+    {"fact": "Mixit строит 2 завода", "sources_count": 2, "verified": true, "sources": ["РБК", "Коммерсант"]},
+    {"fact": "200+ активных B2B партнёров", "sources_count": 1, "verified": false, "sources": ["Сайт компании"]}
+  ],
+  "digital_verification": [
+    {"company": "CosmoBeauty", "instagram": "@cosmobeauty_pro (5.2K)", "telegram": "@cosmobeauty_channel (1.8K)", "vk": "vk.com/cosmobeauty (3.4K)", "total_followers": 10400, "is_target": true},
+    {"company": "Mixit", "instagram": "@miaboratory (560K)", "telegram": "@mixit_official (45K)", "vk": "vk.com/mixit (120K)", "total_followers": 725000},
+    {"company": "Levrana", "instagram": "@levrana (85K)", "telegram": "@levrana_shop (12K)", "vk": "vk.com/levrana (25K)", "total_followers": 122000}
+  ],
+  "founders": [
+    {"name": "Иванова Мария Сергеевна", "role": "Генеральный директор / Учредитель", "share": "60%", "company": "ООО «КосмоБьюти»", "social": {"Instagram": "@maria_cosmo"}},
+    {"name": "Петров Алексей Николаевич", "role": "Сооснователь / Технолог", "share": "40%", "company": "ООО «КосмоБьюти»", "social": {}}
+  ],
+  "opinions": [
+    {"author": "Наталья Фишман", "role": "Эксперт InterCHARM", "quote": "Российские бренды косметики показывают рост в 3 раза быстрее рынка. Импортозамещение стало реальным драйвером.", "date": "Февраль 2026", "source": "InterCHARM"},
+    {"author": "Олег Леонов", "role": "CEO Mixit", "quote": "Мы строим 2 завода, потому что спрос на российскую косметику превышает наши мощности.", "date": "Январь 2026", "source": "РБК"}
+  ],
+  "calc_traces": [
+    {"metric_name": "GMV B2C (WB+Ozon)", "value": "210 млн ₽", "formula": "sum(wb_revenue + ozon_revenue)", "inputs": {"wb_revenue": 150000, "ozon_revenue": 60000}, "sources": ["mpstats"], "confidence": "CALC"},
+    {"metric_name": "Средний заказ B2B", "value": "42 000 ₽", "formula": "b2b_revenue / total_b2b_orders", "inputs": {"b2b_revenue": 140000, "total_orders": 3333}, "sources": ["ФНС", "⚠ допущение доли B2B"], "confidence": "ESTIMATE"},
+    {"metric_name": "EBITDA margin", "value": "12%", "formula": "(revenue - costs - salaries) / revenue × 100", "inputs": {"revenue": 350000, "ebitda": 42000}, "sources": ["ФНС"], "confidence": "CALC"}
+  ],
+  "methodology": {
+    "Источники данных": "ФНС, Rusprofile, mpstats, InterCHARM, HH.ru, маркетплейсы",
+    "Период анализа": "Январь-Март 2026",
+    "B2B/B2C разделение": "Оценка на основе SKU-анализа и ценовых сегментов. Точная доля требует данных из ЛК маркетплейса",
+    "Перцептуальная карта": "Ось X = Цена (0=дёшево, 100=дорого), Ось Y = Качество (0=базовое, 100=premium)",
+    "Допущения": "Доля B2B ~40% выручки (⚠ оценка)"
+  },
+  "pipeline_version": "2.0"
+}

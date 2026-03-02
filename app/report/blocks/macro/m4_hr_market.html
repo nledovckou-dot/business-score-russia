@@ -1,0 +1,32 @@
+{# M4: HR Market — salary data + deficit #}
+{% from '_macros.html' import metric_card, info_tip, chart_wrap %}
+
+{% if hr_data %}
+<div class="card">
+    <h3>HR-рынок и кадровый дефицит</h3>
+
+    {% if hr_data.metrics %}
+    <div class="grid-4" style="margin-bottom:20px;">
+        {% for m in hr_data.metrics %}
+        {{ metric_card(m.value, m.label, m.get('color', 'gold')) }}
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if hr_chart_svg %}
+    {{ chart_wrap("Зарплаты в отрасли", "Медианные зарплаты по позициям", hr_chart_svg) }}
+    {% endif %}
+
+    {% if hr_data.notes %}
+    <div style="margin-top:16px;">
+        {% for note in hr_data.notes %}
+        <p style="color:var(--text2); font-size:0.88em; padding:4px 0;">{{ note }}</p>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if hr_data.sources %}
+    {{ info_tip("HR-данные", hr_data.sources) }}
+    {% endif %}
+</div>
+{% endif %}

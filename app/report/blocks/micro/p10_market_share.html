@@ -1,0 +1,13 @@
+{# P10: Market Share — donut chart #}
+{% from '_macros.html' import chart_wrap, info_tip %}
+
+{% if donut_svg %}
+<div class="card">
+    <h3>Доля рынка</h3>
+    <p style="color:var(--text2); font-size:0.9em; margin-bottom:16px;">
+        Оценочная доля {{ company.name }} на целевом рынке
+    </p>
+    {{ chart_wrap("Распределение рыночных долей", "По выручке / объёму (оценка)", donut_svg, donut_legend) }}
+    {{ info_tip("Доли рынка рассчитаны на основе данных ФНС и экспертной оценки. Точность ±5%.") }}
+</div>
+{% endif %}

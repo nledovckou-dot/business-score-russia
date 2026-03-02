@@ -1,0 +1,40 @@
+{# C4: Competitor Comparison Table #}
+{% from '_macros.html' import badge, info_tip %}
+
+{% if competitors %}
+<div class="card">
+    <h3>Сводная таблица конкурентов</h3>
+    <div style="overflow-x:auto;">
+    <table>
+        <thead>
+            <tr>
+                <th>Компания</th>
+                <th>Угроза</th>
+                {% for dim in comparison_columns %}
+                <th>{{ dim }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {# Company itself first #}
+            <tr style="background:var(--gold-bg);">
+                <td style="font-weight:700; color:var(--gold);">{{ company.name }}</td>
+                <td>{{ badge("Анализируемый", "gold") }}</td>
+                {% for dim in comparison_columns %}
+                <td class="r">{{ company_comparison.get(dim, '—') }}</td>
+                {% endfor %}
+            </tr>
+            {% for comp in competitors %}
+            <tr>
+                <td style="font-weight:600;">{{ comp.name }}</td>
+                <td><span class="threat-{{ comp.threat_level }}">{{ comp.threat_level|upper }}</span></td>
+                {% for dim in comparison_columns %}
+                <td class="r">{{ comp.metrics.get(dim, '—') }}</td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endif %}

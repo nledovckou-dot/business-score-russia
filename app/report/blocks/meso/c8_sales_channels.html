@@ -1,0 +1,60 @@
+{% from "_macros.html" import info_tip %}
+
+{# ─── C8: Матрица каналов продаж ─── #}
+
+{% set has_channels = [] %}
+{% for c in competitors %}
+  {% if c.sales_channels %}{% if has_channels.append(1) %}{% endif %}{% endif %}
+{% endfor %}
+
+{% if has_channels %}
+{% set all_channels = [] %}
+{% for c in competitors %}
+  {% for ch in c.sales_channels %}
+    {% if ch.channel_name not in all_channels %}
+      {% if all_channels.append(ch.channel_name) %}{% endif %}
+    {% endif %}
+  {% endfor %}
+{% endfor %}
+
+<div class="card">
+    <h3>Карта каналов продаж</h3>
+    <div style="overflow-x:auto;">
+    <table class="hm">
+        <thead>
+            <tr>
+                <th>Компания</th>
+                {% for ch_name in all_channels %}
+                <th>{{ ch_name }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in competitors %}
+            {% if c.sales_channels %}
+            <tr>
+                <td>{{ c.name }}</td>
+                {% for ch_name in all_channels %}
+                {% set found = namespace(val=none) %}
+                {% for ch in c.sales_channels %}
+                  {% if ch.channel_name == ch_name %}
+                    {% set found.val = ch.exists %}
+                  {% endif %}
+                {% endfor %}
+                {% if found.val == true %}
+                <td class="hm-g2" title="Есть">&#10003;</td>
+                {% elif found.val == false %}
+                <td class="hm-r1" title="Нет">&#10007;</td>
+                {% else %}
+                <td style="color:var(--text3);" title="Неизвестно">?</td>
+                {% endif %}
+                {% endfor %}
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {{ info_tip("Правило: «канал отсутствует» = проверено 3+ источника и не найдено. Заявка «стать партнёром» = канал есть.", ["Сайты компаний", "2ГИС", "Маркетплейсы"]) }}
+</div>
+{% endif %}

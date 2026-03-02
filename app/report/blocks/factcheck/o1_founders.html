@@ -1,0 +1,17 @@
+{# O1: Founders Map — EGRUL + roles + social #}
+{% from '_macros.html' import founder_card, info_tip %}
+
+{% if founders %}
+<div class="card">
+    <h3>Карта владельцев (ЕГРЮЛ)</h3>
+    <p style="color:var(--text2); font-size:0.9em; margin-bottom:16px;">
+        Кто владеет и управляет компанией и ключевыми конкурентами: ФИО, доли, роли, соцсети
+    </p>
+    <div class="grid-3">
+        {% for founder in founders %}
+        {{ founder_card(founder) }}
+        {% endfor %}
+    </div>
+    {{ info_tip("Данные из ЕГРЮЛ (Rusprofile), деловых СМИ и соцсетей. Актуальность: дата отчёта.") }}
+</div>
+{% endif %}

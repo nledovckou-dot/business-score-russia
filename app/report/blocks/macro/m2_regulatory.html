@@ -1,0 +1,10 @@
+{# M2: Regulatory Trends — timeline #}
+{% from '_macros.html' import timeline, info_tip %}
+
+{% if regulatory_trends %}
+<div class="card">
+    <h3>Регуляторные тренды</h3>
+    <p style="color:var(--text2); font-size:0.9em; margin-bottom:16px;">Ключевые изменения в законодательстве и регулировании отрасли</p>
+    {{ timeline(regulatory_trends) }}
+</div>
+{% endif %}

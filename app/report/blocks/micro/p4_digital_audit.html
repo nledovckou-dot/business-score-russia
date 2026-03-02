@@ -1,0 +1,48 @@
+{# P4: Digital Audit — social media + SEO #}
+{% from '_macros.html' import metric_card, info_tip, chart_wrap %}
+
+{% if digital %}
+<div class="card">
+    <h3>Digital-аудит</h3>
+
+    {% if digital.monthly_traffic is not none or digital.seo_score is not none %}
+    <div class="grid-3" style="margin-bottom:20px;">
+        {% if digital.monthly_traffic is not none %}
+        {{ metric_card('{:,}'.format(digital.monthly_traffic), 'Трафик/мес', 'blue') }}
+        {% endif %}
+        {% if digital.seo_score is not none %}
+        {{ metric_card(digital.seo_score ~ '/100', 'SEO-оценка', 'green' if digital.seo_score >= 60 else 'red') }}
+        {% endif %}
+        {{ metric_card(digital.social_accounts|length, 'Соцсетей', 'purple') }}
+    </div>
+    {% endif %}
+
+    {% if digital.social_accounts %}
+    <h4 style="color:var(--gold2); font-size:0.95em; margin-bottom:12px;">Соцсети</h4>
+    <table>
+        <thead>
+            <tr>
+                <th>Платформа</th>
+                <th>Аккаунт</th>
+                <th>Подписчики</th>
+                <th>Статус</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for acc in digital.social_accounts %}
+            <tr>
+                <td style="font-weight:600;">{{ acc.platform }}</td>
+                <td>{% if acc.url %}<a href="{{ acc.url }}" style="color:var(--blue);">{{ acc.handle }}</a>{% else %}{{ acc.handle }}{% endif %}</td>
+                <td class="r">{{ '{:,}'.format(acc.followers) if acc.followers is not none else '—' }}</td>
+                <td>{% if acc.verified %}<span class="b-green" style="padding:2px 8px;">Верифицирован</span>{% else %}<span class="b-gold" style="padding:2px 8px;">Активен</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    {% if digital_chart_svg %}
+    {{ chart_wrap("Подписчики по платформам", "Сравнение digital-присутствия", digital_chart_svg) }}
+    {% endif %}
+</div>
+{% endif %}

@@ -1,0 +1,43 @@
+{# M1: Market Overview — grouped bars + key metrics #}
+{% from '_macros.html' import metric_card, info_tip, chart_wrap %}
+
+{% if market %}
+<div class="card">
+    <h3>Обзор рынка: {{ market.market_name }}</h3>
+
+    {% if market.market_size or market.growth_rate %}
+    <div class="grid-3" style="margin-bottom:20px;">
+        {% if market.market_size %}
+        {{ metric_card(market.market_size, "Объём рынка", "gold") }}
+        {% endif %}
+        {% if market.growth_rate %}
+        {{ metric_card(market.growth_rate, "Темп роста (CAGR)", "green") }}
+        {% endif %}
+        {% if market.data_points %}
+        {{ metric_card(market.data_points|length ~ " лет", "Горизонт данных", "blue") }}
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if market_chart_svg %}
+    {{ chart_wrap("Динамика рынка", "Объём рынка по годам", market_chart_svg) }}
+    {% endif %}
+
+    {% if market.trends %}
+    <div style="margin-top:20px;">
+        <h4 style="color:var(--gold2); font-size:0.95em; margin-bottom:12px;">Ключевые тренды</h4>
+        <ul style="list-style:none; padding:0;">
+        {% for trend in market.trends %}
+            <li style="padding:6px 0; color:var(--text2); font-size:0.9em; padding-left:18px; position:relative;">
+                <span style="position:absolute; left:0; color:var(--gold);">&rarr;</span>{{ trend }}
+            </li>
+        {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if market.sources %}
+    {{ info_tip("Данные о рынке", market.sources) }}
+    {% endif %}
+</div>
+{% endif %}

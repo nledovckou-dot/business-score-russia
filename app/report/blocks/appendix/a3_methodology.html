@@ -1,0 +1,23 @@
+{# ─── A3: Методология ─── #}
+
+{% if methodology %}
+<div class="card">
+    <h3>Методология</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Аспект</th>
+                <th>Описание</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for key, value in methodology.items() %}
+            <tr>
+                <td style="font-weight:600; white-space:nowrap;">{{ key }}</td>
+                <td style="font-size:0.88em; color:var(--text2);">{{ value }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}

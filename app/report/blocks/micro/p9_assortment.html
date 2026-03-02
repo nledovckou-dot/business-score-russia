@@ -1,0 +1,28 @@
+{# P9: Assortment / Catalog — B2C_PRODUCT #}
+{% from '_macros.html' import info_tip %}
+
+{% if products %}
+<div class="card">
+    <h3>Ассортимент / Каталог</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Категория</th>
+                <th>SKU</th>
+                <th>Ценовой диапазон</th>
+                <th>Доля продаж</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in products %}
+            <tr>
+                <td style="font-weight:600;">{{ p.name }}</td>
+                <td class="r">{{ p.get('sku', '—') }}</td>
+                <td class="r">{{ p.get('price_range', '—') }}</td>
+                <td class="r">{{ p.get('sales_share', '—') }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}

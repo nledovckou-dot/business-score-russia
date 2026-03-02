@@ -1,0 +1,26 @@
+{# A2: Glossary — terms + formulas #}
+
+{% if glossary %}
+<div class="card">
+    <h3>Справка: термины и формулы</h3>
+    <p style="color:var(--text2); font-size:0.9em; margin-bottom:16px;">
+        Все специальные термины, использованные в отчёте, с объяснениями для разного уровня подготовки
+    </p>
+    <table>
+        <thead>
+            <tr>
+                <th style="width:200px;">Термин</th>
+                <th>Определение / Формула</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for term, definition in glossary.items() %}
+            <tr>
+                <td style="font-weight:700; color:var(--gold);">{{ term }}</td>
+                <td style="color:var(--text2); font-size:0.9em; line-height:1.6;">{{ definition }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
