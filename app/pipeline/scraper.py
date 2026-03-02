@@ -210,7 +210,7 @@ def scrape_website(url: str, timeout: int = 15) -> dict:
                 result["social_links"].append({"platform": platform, "handle": m.group(1), "url": href})
 
     # Try to fetch /about, /contacts pages for more context
-    for subpage in ["/about", "/o-nas", "/contacts", "/kontakty", "/company"]:
+    for subpage in ["/about", "/o-nas", "/contacts", "/kontakty", "/company", "/privacy", "/oferta", "/legal", "/requisites", "/rekvizity"]:
         sub_url = urljoin(url, subpage)
         try:
             sub_html, sub_method, sub_warnings = _fetch_html(sub_url, timeout=8)
