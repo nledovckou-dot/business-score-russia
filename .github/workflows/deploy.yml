@@ -40,12 +40,12 @@ jobs:
             git reset --hard origin/main
 
             # Setup .env
-            cat > "$APP_DIR/.env" <<ENVEOF
-REPORT_OUTPUT_DIR=app/storage/reports
-GEMINI_API_KEY=${GEMINI_API_KEY}
-FNS_API_KEY=${FNS_API_KEY}
-FALLBACK_LLM_API_KEY=${FALLBACK_LLM_API_KEY}
-ENVEOF
+            printf '%s\n' \
+              "REPORT_OUTPUT_DIR=app/storage/reports" \
+              "GEMINI_API_KEY=${GEMINI_API_KEY}" \
+              "FNS_API_KEY=${FNS_API_KEY}" \
+              "FALLBACK_LLM_API_KEY=${FALLBACK_LLM_API_KEY}" \
+              > "$APP_DIR/.env"
 
             # Python venv
             if [ ! -d "$APP_DIR/.venv" ]; then
