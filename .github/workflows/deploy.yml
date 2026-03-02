@@ -41,11 +41,11 @@ jobs:
 
             # Setup .env
             cat > "$APP_DIR/.env" <<ENVEOF
-            REPORT_OUTPUT_DIR=app/storage/reports
-            GEMINI_API_KEY=${GEMINI_API_KEY}
-            FNS_API_KEY=${FNS_API_KEY}
-            FALLBACK_LLM_API_KEY=${FALLBACK_LLM_API_KEY}
-            ENVEOF
+REPORT_OUTPUT_DIR=app/storage/reports
+GEMINI_API_KEY=${GEMINI_API_KEY}
+FNS_API_KEY=${FNS_API_KEY}
+FALLBACK_LLM_API_KEY=${FALLBACK_LLM_API_KEY}
+ENVEOF
 
             # Python venv
             if [ ! -d "$APP_DIR/.venv" ]; then
@@ -62,8 +62,9 @@ jobs:
             sudo -n systemctl enable bsr
 
             # Nginx config
+            sudo -n mkdir -p /etc/nginx/sites-enabled
             sudo -n cp "$APP_DIR/scripts/nginx-bsr.conf" /etc/nginx/sites-enabled/bsr.conf
-            sudo -n nginx -t && sudo -n systemctl reload nginx
+            sudo -n nginx -t && sudo -n systemctl reload nginx || echo "nginx reload failed, check config"
 
             # Restart service
             sudo -n systemctl restart bsr
