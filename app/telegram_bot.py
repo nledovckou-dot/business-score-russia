@@ -40,7 +40,7 @@ if _allowed_raw.strip():
 
 # Timeouts (seconds)
 ANALYSIS_TIMEOUT = 600       # 10 minutes max for full pipeline
-POLL_INTERVAL = 3            # SSE poll interval
+POLL_INTERVAL = 3            # session status poll interval
 TYPING_INTERVAL = 4          # re-send typing every N seconds
 
 # URL pattern (simplified)
@@ -262,12 +262,10 @@ def handle_url(chat_id: int, url: str) -> None:
 
     Flow:
     1. POST /api/start -> session_id
-    2. Listen SSE for waiting_company event
-    3. Auto-confirm company (or ask user to choose)
-    4. Listen SSE for waiting_competitors event
-    5. Auto-confirm competitors
-    6. Listen SSE for done/error
-    7. Send report link
+    2. Poll GET /api/session/{sid} for status changes
+    3. Auto-confirm company when status = waiting_company
+    4. Auto-confirm competitors when status = waiting_competitors
+    5. Send report link when status = done
     """
     # 1. Start session
     send_typing(chat_id)
@@ -288,16 +286,18 @@ def handle_url(chat_id: int, url: str) -> None:
     sid = start_resp["session_id"]
     logger.info("Session started: %s for URL %s (chat %s)", sid, url, chat_id)
 
-    # 2. Poll SSE events through the full pipeline
+    # 2. Poll session status through the full pipeline
     _run_pipeline_loop(chat_id, progress_msg_id, sid)
 
 
 def _run_pipeline_loop(chat_id: int, progress_msg_id: int | None, sid: str) -> None:
-    """Poll SSE events and drive the pipeline to completion."""
+    """Poll session status via GET /api/session/{sid} and drive the pipeline."""
     deadline = time.time() + ANALYSIS_TIMEOUT
     last_typing = 0.0
     last_step_text = ""
-    phase = "initial"  # initial -> company -> competitors -> analysis
+    last_event_count = 0
+    confirmed_company = False
+    confirmed_competitors = False
 
     while time.time() < deadline:
         # Send typing indicator periodically
@@ -306,131 +306,145 @@ def _run_pipeline_loop(chat_id: int, progress_msg_id: int | None, sid: str) -> N
             send_typing(chat_id)
             last_typing = now
 
-        # Read SSE events
-        events = _bsr_sse_read(sid, 0, timeout=5.0)
+        # Poll session status
+        resp = _bsr_session_status(sid)
+        if not resp.get("ok"):
+            error = resp.get("error", "Сессия не найдена")
+            _update_progress(
+                chat_id, progress_msg_id,
+                f"Ошибка: {_escape_html(error)}",
+            )
+            return
 
-        for ev in events:
-            ev_name = ev["event"]
-            ev_data = ev.get("data", {})
+        status = resp.get("status", "")
+        events = resp.get("events", [])
+        data = resp.get("data", {})
 
-            if ev_name == "step":
-                step_num = ev_data.get("num", "?")
-                step_text = ev_data.get("text", "")
-                step_status = ev_data.get("status", "")
-                if step_text and step_text != last_step_text:
-                    last_step_text = step_text
-                    status_icon = {
-                        "active": "...",
-                        "done": "OK",
-                        "warning": "(!)",
-                        "fail": "FAIL",
-                    }.get(step_status, "")
-                    _update_progress(
-                        chat_id,
-                        progress_msg_id,
-                        f"Анализ <code>{sid}</code>\n"
-                        f"Шаг {step_num}: {_escape_html(step_text)} {status_icon}",
-                    )
+        # Process new step events for progress updates
+        if len(events) > last_event_count:
+            for ev in events[last_event_count:]:
+                ev_name = ev.get("event", "")
+                ev_data = ev.get("data") or {}
 
-            elif ev_name == "waiting_company":
-                phase = "company"
-                company_info = ev_data.get("company_info", {})
-                fns_data = ev_data.get("fns_data", {})
-                fns_company = fns_data.get("fns_company", {})
+                if ev_name == "step":
+                    step_num = ev_data.get("num", "?")
+                    step_text = ev_data.get("text", "")
+                    step_status = ev_data.get("status", "")
+                    if step_text and step_text != last_step_text:
+                        last_step_text = step_text
+                        status_icon = {
+                            "active": "...",
+                            "done": "OK",
+                            "warning": "(!)",
+                            "fail": "FAIL",
+                        }.get(step_status, "")
+                        _update_progress(
+                            chat_id,
+                            progress_msg_id,
+                            f"Анализ <code>{sid}</code>\n"
+                            f"Шаг {step_num}: {_escape_html(step_text)} {status_icon}",
+                        )
+            last_event_count = len(events)
 
-                # Auto-confirm with detected data
-                confirm_data = {
-                    "name": company_info.get("name", ""),
-                    "inn": fns_company.get("inn", company_info.get("inn", "")),
-                    "legal_name": fns_company.get("full_name", company_info.get("legal_name", "")),
-                    "address": fns_company.get("address", company_info.get("address", "")),
-                    "business_type_guess": company_info.get("business_type_guess", "B2B_SERVICE"),
-                }
+        # React to status transitions
+        if status == "waiting_company" and not confirmed_company:
+            confirmed_company = True
+            company_info = data.get("company_info", {})
+            fns_data = data.get("fns_data", {})
+            fns_company = fns_data.get("fns_company", {})
 
-                company_name = confirm_data["name"] or "?"
-                inn = confirm_data["inn"] or "не найден"
+            # Auto-confirm with detected data
+            confirm_data = {
+                "name": company_info.get("name", ""),
+                "inn": fns_company.get("inn", company_info.get("inn", "")),
+                "legal_name": fns_company.get("full_name", company_info.get("legal_name", "")),
+                "address": fns_company.get("address", company_info.get("address", "")),
+                "business_type_guess": company_info.get("business_type_guess", "B2B_SERVICE"),
+            }
 
-                _update_progress(
-                    chat_id,
-                    progress_msg_id,
-                    f"Компания определена: <b>{_escape_html(company_name)}</b>\n"
-                    f"ИНН: <code>{_escape_html(inn)}</code>\n"
-                    f"Тип: {_escape_html(confirm_data['business_type_guess'])}\n\n"
-                    "Подтверждаю автоматически, ищу конкурентов...",
-                )
+            company_name = confirm_data["name"] or "?"
+            inn = confirm_data["inn"] or "не найден"
 
-                # Auto-confirm
-                _bsr_post(f"/api/confirm-company/{sid}", confirm_data)
-                logger.info("Auto-confirmed company: %s (INN: %s)", company_name, inn)
+            _update_progress(
+                chat_id,
+                progress_msg_id,
+                f"Компания определена: <b>{_escape_html(company_name)}</b>\n"
+                f"ИНН: <code>{_escape_html(inn)}</code>\n"
+                f"Тип: {_escape_html(confirm_data['business_type_guess'])}\n\n"
+                "Подтверждаю автоматически, ищу конкурентов...",
+            )
 
-            elif ev_name == "waiting_competitors":
-                phase = "competitors"
-                competitors = ev_data.get("competitors", [])
-                market_name = ev_data.get("market_name", "")
+            _bsr_post(f"/api/confirm-company/{sid}", confirm_data)
+            logger.info("Auto-confirmed company: %s (INN: %s)", company_name, inn)
 
-                # Build competitor list text
-                comp_lines = []
-                for i, c in enumerate(competitors[:10], 1):
-                    name = c.get("name", "?")
-                    threat = c.get("threat_level", "med")
-                    verified = c.get("verified", True)
-                    ver_mark = "" if verified else " (?)"
-                    comp_lines.append(f"  {i}. {_escape_html(name)} [{threat}]{ver_mark}")
+        elif status == "waiting_competitors" and not confirmed_competitors:
+            confirmed_competitors = True
+            competitors = data.get("competitors", [])
+            market_name = data.get("market_name", "")
 
-                comp_text = "\n".join(comp_lines) if comp_lines else "  (не найдены)"
+            # Build competitor list text
+            comp_lines = []
+            for i, c in enumerate(competitors[:10], 1):
+                name = c.get("name", "?")
+                threat = c.get("threat_level", "med")
+                verified = c.get("verified", True)
+                ver_mark = "" if verified else " (?)"
+                comp_lines.append(f"  {i}. {_escape_html(name)} [{threat}]{ver_mark}")
 
-                _update_progress(
-                    chat_id,
-                    progress_msg_id,
-                    f"Найдено {len(competitors)} конкурентов"
-                    + (f" ({_escape_html(market_name)})" if market_name else "")
-                    + f":\n{comp_text}\n\n"
-                    "Подтверждаю автоматически, запускаю глубокий анализ...",
-                )
+            comp_text = "\n".join(comp_lines) if comp_lines else "  (не найдены)"
 
-                # Auto-confirm all competitors
-                _bsr_post(f"/api/confirm-competitors/{sid}", {"competitors": competitors})
-                logger.info("Auto-confirmed %d competitors", len(competitors))
+            _update_progress(
+                chat_id,
+                progress_msg_id,
+                f"Найдено {len(competitors)} конкурентов"
+                + (f" ({_escape_html(market_name)})" if market_name else "")
+                + f":\n{comp_text}\n\n"
+                "Подтверждаю автоматически, запускаю глубокий анализ...",
+            )
 
-            elif ev_name == "done":
-                report_url_path = ev_data.get("url", "")
-                company_name = ev_data.get("company", "")
-                size_kb = ev_data.get("size_kb", 0)
+            _bsr_post(f"/api/confirm-competitors/{sid}", {"competitors": competitors})
+            logger.info("Auto-confirmed %d competitors", len(competitors))
 
-                # Build full public URL
-                report_full_url = f"{BSR_PUBLIC_URL}{report_url_path}"
+        elif status == "done":
+            report_data = data.get("report", {})
+            report_url_path = report_data.get("url", "")
+            company_name = report_data.get("company", "")
+            size_kb = report_data.get("size_kb", 0)
 
-                _update_progress(
-                    chat_id,
-                    progress_msg_id,
-                    f"Отчёт готов! ({size_kb} KB)",
-                )
+            # Build full public URL
+            report_full_url = f"{BSR_PUBLIC_URL}{report_url_path}"
 
-                # Send the report link as a separate message
-                send_message(
-                    chat_id,
-                    f"<b>Отчёт готов</b>"
-                    + (f": {_escape_html(company_name)}" if company_name else "")
-                    + f"\n\n{report_full_url}\n\n"
-                    f"Размер: {size_kb} KB\n"
-                    "Отправь ещё одну ссылку для нового анализа.",
-                    disable_web_page_preview=True,
-                )
-                logger.info("Report ready: %s for session %s", report_full_url, sid)
-                return
+            _update_progress(
+                chat_id,
+                progress_msg_id,
+                f"Отчёт готов! ({size_kb} KB)",
+            )
 
-            elif ev_name == "error":
-                error_msg = ev_data.get("message", "Неизвестная ошибка")
-                _update_progress(
-                    chat_id,
-                    progress_msg_id,
-                    f"Ошибка при анализе:\n{_escape_html(error_msg)}\n\n"
-                    "Попробуй отправить ссылку ещё раз.",
-                )
-                logger.error("Analysis error for session %s: %s", sid, error_msg)
-                return
+            # Send the report link as a separate message
+            send_message(
+                chat_id,
+                f"<b>Отчёт готов</b>"
+                + (f": {_escape_html(company_name)}" if company_name else "")
+                + f"\n\n{report_full_url}\n\n"
+                f"Размер: {size_kb} KB\n"
+                "Отправь ещё одну ссылку для нового анализа.",
+                disable_web_page_preview=True,
+            )
+            logger.info("Report ready: %s for session %s", report_full_url, sid)
+            return
 
-        # Small delay before next poll
+        elif status == "error":
+            error_msg = data.get("error", "Неизвестная ошибка")
+            _update_progress(
+                chat_id,
+                progress_msg_id,
+                f"Ошибка при анализе:\n{_escape_html(error_msg)}\n\n"
+                "Попробуй отправить ссылку ещё раз.",
+            )
+            logger.error("Analysis error for session %s: %s", sid, error_msg)
+            return
+
+        # Delay before next poll
         time.sleep(POLL_INTERVAL)
 
     # Timeout

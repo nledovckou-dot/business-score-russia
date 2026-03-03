@@ -557,30 +557,38 @@ def _run_competitor_steps(sid: str):
         _push_event(sid, "step", {"num": 4, "status": "done", "text": step4_text})
 
         # PAUSE: send competitors for user editing
-        sessions[sid]["status"] = "waiting_competitors"
+        session["status"] = "waiting_competitors"
         _push_event(sid, "waiting_competitors", {
             "market_name": comp_result.get("market_name", ""),
             "competitors": comp_result.get("competitors", []),
         })
+        store.save(sid)  # persist checkpoint
 
     except Exception as e:
         logger.exception("Error in competitor steps for session %s", sid)
-        sessions[sid]["status"] = "error"
+        session = store.get(sid)
+        if session:
+            session["status"] = "error"
         _push_event(sid, "error", {
             "message": sanitize_error(e, include_details=not IS_PRODUCTION),
         })
+        store.save(sid)
 
 
 def _run_analysis_steps(sid: str):
     """Steps 1b, 1c, 5, 2a, 2b, 6: Extended v2.0 pipeline."""
+    session = store.get(sid)
+    if session is None:
+        return
+
     # T7: Restore metrics collector for this thread
-    mc = sessions[sid].get("_metrics")
+    mc = session.get("_metrics")
     if mc:
         from app.pipeline.llm_client import set_metrics_collector
         set_metrics_collector(mc)
 
     try:
-        data = sessions[sid]["data"]
+        data = session["data"]
         confirmed_competitors = data.get("confirmed_competitors", [])
         company_info = data.get("company_info", {})
         bt = company_info.get("business_type_guess", "")
@@ -796,7 +804,7 @@ def _run_analysis_steps(sid: str):
             auth_manager.increment_report_count(auth_token, report_id=filename)
 
         # Done!
-        sessions[sid]["status"] = "done"
+        session["status"] = "done"
         done_data = {
             "url": f"/reports/{filename}",
             "size_kb": size_kb,
@@ -808,17 +816,21 @@ def _run_analysis_steps(sid: str):
             if user_info:
                 done_data["reports_remaining"] = user_info["reports_remaining"]
         _push_event(sid, "done", done_data)
+        store.save(sid)  # persist final state
 
     except Exception as e:
         logger.exception("Error in analysis steps for session %s", sid)
         # T7: Finalize metrics even on error
-        mc = sessions[sid].get("_metrics")
+        session = store.get(sid)
+        mc = session.get("_metrics") if session else None
         if mc and not mc._finalized:
             mc.finalize()
-        sessions[sid]["status"] = "error"
+        if session:
+            session["status"] = "error"
         _push_event(sid, "error", {
             "message": sanitize_error(e, include_details=not IS_PRODUCTION),
         })
+        store.save(sid)
 
 
 def _sanitize_llm_output(d: dict) -> dict:
@@ -1195,12 +1207,102 @@ h1 span{color:var(--accent)}
     .how-steps{flex-direction:column;gap:24px}
     .how-connector{display:none}
     .field-row{grid-template-columns:1fr}
+    .auth-bar{padding:8px 14px}
+    .modal{margin:16px;padding:24px 20px}
 }
+
+/* Auth bar */
+.auth-bar{position:fixed;top:0;right:0;left:0;display:flex;justify-content:flex-end;align-items:center;gap:10px;padding:10px 24px;z-index:100;background:rgba(16,16,20,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
+.auth-bar .auth-user{display:flex;align-items:center;gap:10px;font-size:0.85em;color:var(--text2)}
+.auth-bar .auth-email{color:var(--text);font-weight:500}
+.auth-bar .quota-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:0.78em;font-weight:600;background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent-border)}
+.auth-bar .quota-badge.depleted{background:rgba(224,85,85,0.08);color:var(--red);border-color:rgba(224,85,85,0.2)}
+.auth-bar .btn-auth{padding:6px 14px;font-size:0.82em;border-radius:8px;cursor:pointer;font-family:inherit;border:none;transition:all 0.15s}
+.btn-auth-login{background:transparent;color:var(--accent);border:1.5px solid var(--accent-border) !important}
+.btn-auth-login:hover{background:var(--accent-bg)}
+.btn-auth-register{background:var(--accent);color:#fff}
+.btn-auth-register:hover{background:#4A7CE0}
+.btn-auth-logout{background:transparent;color:var(--text3);font-size:0.78em !important}
+.btn-auth-logout:hover{color:var(--red)}
+
+/* Auth modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:200;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:32px 28px;width:100%;max-width:400px;position:relative}
+.modal h2{font-size:1.2em;font-weight:600;color:var(--text);margin-bottom:6px}
+.modal .modal-sub{font-size:0.85em;color:var(--text2);margin-bottom:24px}
+.modal .modal-close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--text3);font-size:1.2em;cursor:pointer;padding:4px 8px;border-radius:6px;transition:all 0.15s}
+.modal .modal-close:hover{color:var(--text);background:var(--bg)}
+.modal .field{margin-bottom:16px}
+.modal .field label{display:block;font-size:0.8em;color:var(--text3);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em}
+.modal .field input{width:100%;padding:10px 14px;background:var(--bg);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-size:0.92em;font-family:inherit}
+.modal .field input:focus{outline:none;border-color:var(--accent)}
+.modal .modal-error{display:none;padding:10px 14px;background:rgba(224,85,85,0.08);border:1px solid rgba(224,85,85,0.2);border-radius:8px;color:var(--red);font-size:0.83em;margin-bottom:16px}
+.modal .modal-error.visible{display:block}
+.modal .btn-full{width:100%;padding:12px;background:var(--accent);border:none;border-radius:10px;color:#fff;font-size:0.95em;font-weight:600;cursor:pointer;font-family:inherit;transition:all 0.15s}
+.modal .btn-full:hover{background:#4A7CE0}
+.modal .btn-full:disabled{opacity:0.4;cursor:not-allowed}
+.modal .modal-switch{text-align:center;margin-top:16px;font-size:0.83em;color:var(--text3)}
+.modal .modal-switch a{color:var(--accent);cursor:pointer;text-decoration:none}
+.modal .modal-switch a:hover{text-decoration:underline}
 </style>
 </head>
 <body>
 
-<div class="wrap">
+<!-- Auth bar (top right) -->
+<div class="auth-bar" id="auth-bar">
+    <div id="auth-guest">
+        <button class="btn-auth btn-auth-login" onclick="openModal('login')">Войти</button>
+        <button class="btn-auth btn-auth-register" onclick="openModal('register')">Регистрация</button>
+    </div>
+    <div id="auth-logged" style="display:none" class="auth-user">
+        <span class="auth-email" id="auth-email"></span>
+        <span class="quota-badge" id="auth-quota"></span>
+        <button class="btn-auth btn-auth-logout" onclick="doLogout()">Выйти</button>
+    </div>
+</div>
+
+<!-- Auth modal: Login -->
+<div class="modal-overlay" id="modal-login">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal('login')">&times;</button>
+        <h2>Войти</h2>
+        <p class="modal-sub">Войдите, чтобы сохранять отчёты и отслеживать лимиты</p>
+        <div class="modal-error" id="login-error"></div>
+        <div class="field">
+            <label>Email</label>
+            <input id="login-email" type="email" placeholder="name@example.com" onkeydown="if(event.key==='Enter')doLogin()">
+        </div>
+        <div class="field">
+            <label>Пароль</label>
+            <input id="login-password" type="password" placeholder="Минимум 6 символов" onkeydown="if(event.key==='Enter')doLogin()">
+        </div>
+        <button class="btn-full" id="login-btn" onclick="doLogin()">Войти</button>
+        <div class="modal-switch">Нет аккаунта? <a onclick="closeModal('login');openModal('register')">Зарегистрируйтесь</a></div>
+    </div>
+</div>
+
+<!-- Auth modal: Register -->
+<div class="modal-overlay" id="modal-register">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal('register')">&times;</button>
+        <h2>Регистрация</h2>
+        <p class="modal-sub">5 бесплатных отчётов после регистрации</p>
+        <div class="modal-error" id="register-error"></div>
+        <div class="field">
+            <label>Email</label>
+            <input id="register-email" type="email" placeholder="name@example.com" onkeydown="if(event.key==='Enter')doRegister()">
+        </div>
+        <div class="field">
+            <label>Пароль</label>
+            <input id="register-password" type="password" placeholder="Минимум 6 символов" onkeydown="if(event.key==='Enter')doRegister()">
+        </div>
+        <button class="btn-full" id="register-btn" onclick="doRegister()">Создать аккаунт</button>
+        <div class="modal-switch">Уже есть аккаунт? <a onclick="closeModal('register');openModal('login')">Войдите</a></div>
+    </div>
+</div>
+
+<div class="wrap" style="padding-top:50px">
     <!-- Phase 1: URL Input -->
     <div id="phase-url">
         <div class="logo">Анализ бизнеса</div>
@@ -1366,6 +1468,119 @@ h1 span{color:var(--accent)}
 </footer>
 
 <script>
+/* ── Auth state ── */
+var authUser = null;
+
+function openModal(type){
+    document.getElementById('modal-'+type).classList.add('open');
+    var firstInput = document.querySelector('#modal-'+type+' input');
+    if(firstInput) setTimeout(function(){ firstInput.focus(); }, 100);
+}
+function closeModal(type){
+    document.getElementById('modal-'+type).classList.remove('open');
+    var err = document.getElementById(type+'-error');
+    if(err){ err.classList.remove('visible'); err.textContent=''; }
+}
+function showModalError(type, msg){
+    var el = document.getElementById(type+'-error');
+    el.textContent = msg;
+    el.classList.add('visible');
+}
+
+function updateAuthUI(){
+    if(authUser){
+        document.getElementById('auth-guest').style.display='none';
+        document.getElementById('auth-logged').style.display='flex';
+        document.getElementById('auth-email').textContent=authUser.email;
+        var q = document.getElementById('auth-quota');
+        var rem = authUser.reports_remaining;
+        q.textContent = rem + ' из 5 отчётов';
+        q.className = 'quota-badge' + (rem <= 0 ? ' depleted' : '');
+    } else {
+        document.getElementById('auth-guest').style.display='flex';
+        document.getElementById('auth-logged').style.display='none';
+    }
+}
+
+function doRegister(){
+    var email = document.getElementById('register-email').value.trim();
+    var password = document.getElementById('register-password').value;
+    if(!email || !password){ showModalError('register','Заполните все поля'); return; }
+    var btn = document.getElementById('register-btn');
+    btn.disabled = true;
+    fetch('/api/auth/register',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({email:email, password:password})
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+        btn.disabled = false;
+        if(!res.ok){ showModalError('register', res.error||'Ошибка'); return; }
+        authUser = {email:res.email, reports_used:res.reports_used, reports_remaining:res.reports_remaining};
+        updateAuthUI();
+        closeModal('register');
+    })
+    .catch(function(err){ btn.disabled=false; showModalError('register','Ошибка сети: '+err.message); });
+}
+
+function doLogin(){
+    var email = document.getElementById('login-email').value.trim();
+    var password = document.getElementById('login-password').value;
+    if(!email || !password){ showModalError('login','Заполните все поля'); return; }
+    var btn = document.getElementById('login-btn');
+    btn.disabled = true;
+    fetch('/api/auth/login',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({email:email, password:password})
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+        btn.disabled = false;
+        if(!res.ok){ showModalError('login', res.error||'Ошибка'); return; }
+        authUser = {email:res.email, reports_used:res.reports_used, reports_remaining:res.reports_remaining};
+        updateAuthUI();
+        closeModal('login');
+    })
+    .catch(function(err){ btn.disabled=false; showModalError('login','Ошибка сети: '+err.message); });
+}
+
+function doLogout(){
+    fetch('/api/auth/logout',{method:'POST'})
+    .then(function(){ authUser=null; updateAuthUI(); })
+    .catch(function(){ authUser=null; updateAuthUI(); });
+}
+
+function checkAuth(){
+    fetch('/api/auth/me')
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+        if(res.ok && res.authenticated){
+            authUser = {email:res.email, reports_used:res.reports_used, reports_remaining:res.reports_remaining};
+        }
+        updateAuthUI();
+    })
+    .catch(function(){ updateAuthUI(); });
+}
+
+/* Close modals on overlay click */
+document.addEventListener('click', function(e){
+    if(e.target.classList.contains('modal-overlay')){
+        e.target.classList.remove('open');
+    }
+});
+/* Close modals on Escape */
+document.addEventListener('keydown', function(e){
+    if(e.key==='Escape'){
+        document.querySelectorAll('.modal-overlay.open').forEach(function(m){ m.classList.remove('open'); });
+    }
+});
+
+/* Check auth on page load */
+checkAuth();
+
+/* ── Pipeline state ── */
 var SID = null;
 var evtSource = null;
 var competitorData = [];
@@ -1391,7 +1606,19 @@ function startAnalysis(){
     })
     .then(function(r){ return r.json() })
     .then(function(res){
-        if(!res.ok){ showError(res.error); return; }
+        if(!res.ok){
+            if(res.quota_exceeded){
+                showError(res.error);
+                /* Suggest registration if not logged in */
+                if(!authUser){
+                    var el=document.getElementById('error');
+                    el.innerHTML += '<br><br><a href="#" onclick="openModal(\"register\");return false" style="color:var(--accent)">Зарегистрируйтесь для получения 5 бесплатных отчётов</a>';
+                }
+            } else {
+                showError(res.error);
+            }
+            return;
+        }
         SID = res.session_id;
         listenSSE();
     })
@@ -1423,6 +1650,12 @@ function listenSSE(){
         document.getElementById('rcompany').textContent = d.company || '';
         document.getElementById('rlink').href = d.url;
         document.getElementById('rmeta').textContent = d.size_kb + ' KB';
+        /* Update auth quota after report generation */
+        if(authUser && d.reports_remaining \!== undefined){
+            authUser.reports_remaining = d.reports_remaining;
+            authUser.reports_used = 5 - d.reports_remaining;
+            updateAuthUI();
+        }
     });
 
     evtSource.addEventListener('error', function(e){
