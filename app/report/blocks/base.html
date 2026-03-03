@@ -440,6 +440,196 @@ footer {
     .tab-btn { padding: 14px 20px; font-size: 0.88em; }
     .bar-label { width: 100px; font-size: 0.75em; }
 }
+
+/* ===== Print Button ===== */
+.print-btn {
+    position: fixed; bottom: 32px; right: 32px; z-index: 9999;
+    display: flex; align-items: center; gap: 10px;
+    background: var(--gold); color: var(--bg); border: none;
+    padding: 14px 24px; border-radius: 50px; cursor: pointer;
+    font-family: inherit; font-size: 0.92em; font-weight: 600;
+    letter-spacing: 0.03em;
+    box-shadow: 0 4px 20px rgba(201,164,76,0.35), 0 2px 8px rgba(0,0,0,0.3);
+    transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
+}
+.print-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 28px rgba(201,164,76,0.5), 0 4px 12px rgba(0,0,0,0.4);
+    background: var(--gold2);
+}
+.print-btn:active { transform: translateY(0); }
+.print-btn svg { width: 18px; height: 18px; fill: currentColor; flex-shrink: 0; }
+
+/* ===== Print Styles ===== */
+@media print {
+    /* --- Hide interactive / non-printable elements --- */
+    .print-btn,
+    .tab-bar,
+    #tab-overview {
+        display: none !important;
+    }
+
+    /* --- Force full report visible --- */
+    #tab-full {
+        display: block !important;
+    }
+    .tab-content {
+        display: block !important;
+    }
+
+    /* --- White background, black text --- */
+    :root {
+        --bg: #ffffff !important; --bg2: #ffffff !important; --bg3: #f5f5f5 !important;
+        --card: #ffffff !important; --card2: #f8f8f8 !important;
+        --border: #d0d0d0 !important; --border2: #b0b0b0 !important;
+        --text: #1a1a1a !important; --text2: #444444 !important; --text3: #777777 !important;
+        --gold: #8B6914 !important; --gold2: #6B5010 !important;
+        --gold-bg: rgba(139,105,20,0.06) !important; --gold-border: rgba(139,105,20,0.25) !important;
+        --red: #C03030 !important; --red-bg: rgba(192,48,48,0.06) !important;
+        --green: #2A8B4A !important; --green-bg: rgba(42,139,74,0.06) !important;
+        --blue: #2E6BB0 !important; --blue-bg: rgba(46,107,176,0.06) !important;
+        --purple: #6B40A0 !important; --purple-bg: rgba(107,64,160,0.06) !important;
+        --orange: #B06020 !important; --orange-bg: rgba(176,96,32,0.06) !important;
+        --teal: #1A8A6A !important;
+    }
+
+    body {
+        background: #fff !important;
+        color: #1a1a1a !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    /* --- Hero --- */
+    .hero {
+        background: #fff !important;
+        border-bottom: 2px solid #8B6914 !important;
+        padding: 30px 24px 20px !important;
+    }
+    .hero::before { display: none !important; }
+
+    /* --- Cards, blocks --- */
+    .card, .ov-block, .ov-stat, .comp-card, .chart-container,
+    .quote-card, .founder-card, .metric, .callout, .calc-trace {
+        box-shadow: none !important;
+        border: 1px solid #d0d0d0 !important;
+        break-inside: avoid;
+    }
+
+    /* --- Tables --- */
+    table, .hm, .ct-table {
+        break-inside: auto;
+    }
+    tr {
+        break-inside: avoid;
+    }
+
+    /* --- SVG charts print correctly --- */
+    .chart-container {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+    svg, .chart-svg {
+        max-width: 100% !important;
+        height: auto !important;
+        break-inside: avoid;
+    }
+    /* Disable SVG animations for print */
+    svg * {
+        animation: none !important;
+        transition: none !important;
+    }
+
+    /* --- SWOT grid --- */
+    .swot-grid {
+        break-inside: avoid;
+    }
+    .swot-box {
+        break-inside: avoid;
+    }
+
+    /* --- Sections: page break before each --- */
+    .section {
+        break-before: page;
+        margin-top: 0 !important;
+        padding-top: 20px;
+    }
+    /* First section should not have a page break before it */
+    .section:first-child {
+        break-before: auto;
+    }
+
+    /* --- Section header stays with content --- */
+    .section-head, .section-desc {
+        break-after: avoid;
+    }
+
+    /* --- Bar chart fills: ensure colored backgrounds print --- */
+    .bar-fill {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    /* --- Heatmap cells --- */
+    .hm td, .hm-g1, .hm-g2, .hm-g3, .hm-r1, .hm-r2, .hm-r3 {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    /* --- Badges --- */
+    .badge, .b-gold, .b-green, .b-red, .b-blue, .b-purple, .b-orange,
+    .ct-fact, .ct-calc, .ct-estimate, .hbadge {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    /* --- Layout: full width --- */
+    .container {
+        max-width: 100% !important;
+        padding: 0 16px !important;
+    }
+
+    /* --- Grids: simplify for A4 --- */
+    .grid-4 { grid-template-columns: 1fr 1fr !important; }
+    .ov-grid-5 { grid-template-columns: repeat(3, 1fr) !important; }
+
+    /* --- Source tag popups: hide hover elements --- */
+    .source-tag .st-popup {
+        display: none !important;
+    }
+
+    /* --- Footer --- */
+    footer {
+        break-before: page;
+        border-top: 1px solid #d0d0d0 !important;
+    }
+
+    /* --- Links: show URL in print --- */
+    a[href]::after {
+        content: none; /* Don't append URLs - they clutter the print */
+    }
+
+    /* --- Disable hover effects --- */
+    .card:hover, .comp-card:hover, .quote-card:hover, .founder-card:hover {
+        border-color: #d0d0d0 !important;
+        box-shadow: none !important;
+    }
+    tr:hover {
+        background: transparent !important;
+    }
+
+    /* --- Disable all animations --- */
+    *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+    }
+
+    /* --- Page margins --- */
+    @page {
+        margin: 15mm 12mm;
+        size: A4;
+    }
+}
 </style>
 </head>
 <body>
@@ -503,6 +693,14 @@ footer {
 </div>
 </div>
 
+<!-- ═══════ PRINT BUTTON ═══════ -->
+<button class="print-btn" onclick="printReport()" title="Скачать PDF через печать браузера">
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/>
+    </svg>
+    Скачать PDF
+</button>
+
 <!-- ═══════ FOOTER ═══════ -->
 <footer>
     <p>{{ company.name }} | Бизнес-анализ 360&deg;</p>
@@ -521,6 +719,20 @@ function switchTab(tabName) {
         else if (tabName === 'full' && btn.textContent.trim() === 'Полный анализ') btn.classList.add('active');
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function printReport() {
+    /* Ensure full report tab is visible before printing */
+    var fullTab = document.getElementById('tab-full');
+    var wasHidden = !fullTab.classList.contains('active');
+    if (wasHidden) {
+        fullTab.classList.add('active');
+    }
+    window.print();
+    /* Restore tab state after print dialog closes */
+    if (wasHidden) {
+        fullTab.classList.remove('active');
+    }
 }
 </script>
 
