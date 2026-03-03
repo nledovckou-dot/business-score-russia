@@ -2,23 +2,91 @@
 
 from __future__ import annotations
 
+import logging
 import os
+import time
 import uuid
-import traceback
 import json
 import threading
 from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import REPORTS_DIR, BusinessType
+from app.security import (
+    check_rate_limit_request,
+    check_rate_limit_report,
+    validate_url,
+    sanitize_text,
+    sanitize_dict,
+    sanitize_error,
+    get_client_ip,
+    start_session_cleanup,
+    stop_session_cleanup,
+)
 
 load_dotenv()
 
-app = FastAPI(title="Бизнес-анализ 360", version="0.3.0")
+logger = logging.getLogger("bsr.app")
+
+IS_PRODUCTION = os.getenv("BSR_ENV", "production").lower() == "production"
+
+app = FastAPI(
+    title="Бизнес-анализ 360",
+    version="0.3.0",
+    # Don't expose docs in production
+    docs_url=None if IS_PRODUCTION else "/docs",
+    redoc_url=None if IS_PRODUCTION else "/redoc",
+)
+
+# ── CORS ──
+# Allow only same-origin; in production the app serves its own frontend
+_allowed_origins = os.getenv("BSR_CORS_ORIGINS", "").split(",") if os.getenv("BSR_CORS_ORIGINS") else []
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_origins,  # empty = no cross-origin allowed (same-origin only)
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
+
+
+# ── Rate Limiting Middleware ──
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Global per-IP rate limit: 30 requests/minute."""
+    # Skip static files
+    if request.url.path.startswith("/reports/"):
+        return await call_next(request)
+
+    client_ip = get_client_ip(request)
+    error = check_rate_limit_request(client_ip)
+    if error:
+        return JSONResponse(
+            {"ok": False, "error": error},
+            status_code=429,
+            headers={"Retry-After": "60"},
+        )
+    return await call_next(request)
+
+
+# ── Error Handling Middleware ──
+@app.middleware("http")
+async def error_sanitization_middleware(request: Request, call_next):
+    """Catch unhandled exceptions, sanitize before returning to client."""
+    try:
+        return await call_next(request)
+    except Exception as exc:
+        logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+        safe_message = sanitize_error(exc, include_details=not IS_PRODUCTION)
+        return JSONResponse(
+            {"ok": False, "error": safe_message},
+            status_code=500,
+        )
 
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/reports", StaticFiles(directory=str(REPORTS_DIR)), name="reports")
@@ -28,9 +96,19 @@ app.mount("/reports", StaticFiles(directory=str(REPORTS_DIR)), name="reports")
 sessions: dict[str, dict[str, Any]] = {}
 
 
+@app.on_event("startup")
+async def _startup():
+    start_session_cleanup(sessions)
+
+
+@app.on_event("shutdown")
+async def _shutdown():
+    stop_session_cleanup()
+
+
 def _new_session() -> str:
     sid = uuid.uuid4().hex[:12]
-    sessions[sid] = {"status": "created", "events": [], "data": {}}
+    sessions[sid] = {"status": "created", "events": [], "data": {}, "created_at": time.time()}
     return sid
 
 
@@ -49,12 +127,23 @@ async def index():
 @app.post("/api/start")
 async def start_session(request: Request):
     """Start a new analysis session. Returns session_id."""
+    # Rate limit: max 5 reports per hour per IP
+    client_ip = get_client_ip(request)
+    report_error = check_rate_limit_report(client_ip)
+    if report_error:
+        return JSONResponse(
+            {"ok": False, "error": report_error},
+            status_code=429,
+            headers={"Retry-After": "3600"},
+        )
+
     body = await request.json()
-    url = (body.get("url") or "").strip()
-    if not url:
-        return JSONResponse({"ok": False, "error": "URL не указан"}, status_code=400)
-    if not url.startswith("http"):
-        url = "https://" + url
+    raw_url = (body.get("url") or "").strip()
+
+    # Validate & sanitize URL
+    is_valid, url, url_error = validate_url(raw_url)
+    if not is_valid:
+        return JSONResponse({"ok": False, "error": url_error}, status_code=400)
 
     sid = _new_session()
     sessions[sid]["data"]["url"] = url
@@ -70,6 +159,7 @@ async def start_session(request: Request):
 @app.get("/api/events/{sid}")
 async def stream_events(sid: str):
     """SSE endpoint: stream events to frontend."""
+    sid = sanitize_text(sid, max_length=20)
     if sid not in sessions:
         return JSONResponse({"error": "Session not found"}, status_code=404)
 
@@ -107,10 +197,24 @@ async def stream_events(sid: str):
 @app.post("/api/confirm-company/{sid}")
 async def confirm_company(sid: str, request: Request):
     """User confirms/edits company identification."""
+    sid = sanitize_text(sid, max_length=20)
     if sid not in sessions:
         return JSONResponse({"error": "Session not found"}, status_code=404)
 
     body = await request.json()
+    # Sanitize all user-editable text fields
+    body = sanitize_dict(body, ("name", "legal_name", "address"), max_length=300)
+    # Validate INN: only digits, 10 or 12 chars
+    inn = (body.get("inn") or "").strip()
+    if inn and (not inn.isdigit() or len(inn) not in (10, 12)):
+        return JSONResponse({"ok": False, "error": "ИНН должен содержать 10 или 12 цифр"}, status_code=400)
+    body["inn"] = inn
+    # Validate business_type_guess against allowed values
+    valid_types = {e.value for e in BusinessType}
+    bt = body.get("business_type_guess", "")
+    if bt and bt not in valid_types:
+        body["business_type_guess"] = "B2B_SERVICE"
+
     sessions[sid]["data"]["confirmed_company"] = body
     sessions[sid]["status"] = "finding_competitors"
 
@@ -124,11 +228,20 @@ async def confirm_company(sid: str, request: Request):
 @app.post("/api/confirm-competitors/{sid}")
 async def confirm_competitors(sid: str, request: Request):
     """User confirms/edits competitor list."""
+    sid = sanitize_text(sid, max_length=20)
     if sid not in sessions:
         return JSONResponse({"error": "Session not found"}, status_code=404)
 
     body = await request.json()
-    sessions[sid]["data"]["confirmed_competitors"] = body.get("competitors", [])
+    competitors = body.get("competitors", [])
+    # Sanitize competitor text fields (names, descriptions)
+    for comp in competitors:
+        if isinstance(comp, dict):
+            for field in ("name", "description", "why_competitor", "verification_notes"):
+                if field in comp and isinstance(comp[field], str):
+                    comp[field] = sanitize_text(comp[field], max_length=500)
+
+    sessions[sid]["data"]["confirmed_competitors"] = competitors
     sessions[sid]["status"] = "analyzing"
 
     # Continue pipeline
@@ -191,8 +304,11 @@ def _run_initial_steps(sid: str, url: str):
         })
 
     except Exception as e:
+        logger.exception("Error in initial steps for session %s", sid)
         sessions[sid]["status"] = "error"
-        _push_event(sid, "error", {"message": str(e), "details": traceback.format_exc()[-500:]})
+        _push_event(sid, "error", {
+            "message": sanitize_error(e, include_details=not IS_PRODUCTION),
+        })
 
 
 def _run_competitor_steps(sid: str):
@@ -253,8 +369,11 @@ def _run_competitor_steps(sid: str):
         })
 
     except Exception as e:
+        logger.exception("Error in competitor steps for session %s", sid)
         sessions[sid]["status"] = "error"
-        _push_event(sid, "error", {"message": str(e), "details": traceback.format_exc()[-500:]})
+        _push_event(sid, "error", {
+            "message": sanitize_error(e, include_details=not IS_PRODUCTION),
+        })
 
 
 def _run_analysis_steps(sid: str):
@@ -392,8 +511,11 @@ def _run_analysis_steps(sid: str):
         })
 
     except Exception as e:
+        logger.exception("Error in analysis steps for session %s", sid)
         sessions[sid]["status"] = "error"
-        _push_event(sid, "error", {"message": str(e), "details": traceback.format_exc()[-500:]})
+        _push_event(sid, "error", {
+            "message": sanitize_error(e, include_details=not IS_PRODUCTION),
+        })
 
 
 def _sanitize_llm_output(d: dict) -> dict:
@@ -519,24 +641,37 @@ def _sanitize_llm_output(d: dict) -> dict:
 @app.post("/api/analyze")
 async def analyze_simple(request: Request):
     """Simple non-interactive endpoint (backward compat)."""
+    # Rate limit: max 5 reports per hour per IP
+    client_ip = get_client_ip(request)
+    report_error = check_rate_limit_report(client_ip)
+    if report_error:
+        return JSONResponse(
+            {"ok": False, "error": report_error},
+            status_code=429,
+            headers={"Retry-After": "3600"},
+        )
+
     body = await request.json()
-    url = (body.get("url") or "").strip()
-    if not url:
-        return {"ok": False, "error": "URL не указан"}
-    if not url.startswith("http"):
-        url = "https://" + url
+    raw_url = (body.get("url") or "").strip()
+
+    # Validate & sanitize URL
+    is_valid, url, url_error = validate_url(raw_url)
+    if not is_valid:
+        return JSONResponse({"ok": False, "error": url_error}, status_code=400)
 
     try:
         from app.pipeline.steps.step1_scrape import run as scrape
         scraped = scrape(url)
     except Exception as e:
-        return {"ok": False, "error": f"Ошибка скрапинга: {e}", "step": 1}
+        logger.exception("Scrape error for %s", url)
+        return {"ok": False, "error": f"Ошибка скрапинга: {sanitize_error(e, include_details=not IS_PRODUCTION)}", "step": 1}
 
     try:
         from app.pipeline.llm_analyzer import analyze_with_llm
         report_data = analyze_with_llm(scraped)
     except Exception as e:
-        return {"ok": False, "error": f"Ошибка AI: {e}", "step": 2}
+        logger.exception("LLM analysis error")
+        return {"ok": False, "error": f"Ошибка AI: {sanitize_error(e, include_details=not IS_PRODUCTION)}", "step": 2}
 
     report_data = _sanitize_llm_output(report_data)
 
@@ -548,7 +683,8 @@ async def analyze_simple(request: Request):
         path = save_report(rd, filename=filename)
         size_kb = round(path.stat().st_size / 1024)
     except Exception as e:
-        return {"ok": False, "error": f"Ошибка сборки: {e}", "step": 3}
+        logger.exception("Report build error")
+        return {"ok": False, "error": f"Ошибка сборки: {sanitize_error(e, include_details=not IS_PRODUCTION)}", "step": 3}
 
     return {"ok": True, "url": f"/reports/{filename}", "size_kb": size_kb,
             "company": report_data.get("company", {}).get("name", "")}
