@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 import urllib.request
 import urllib.error
 import re
@@ -23,6 +24,29 @@ GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:ge
 MODEL_MAIN = "gpt-5.2-pro"       # основной мозг
 MODEL_FAST = "gemini-2.5-flash"   # быстрые задачи
 MODEL_REASON = "o3"               # reasoning
+
+
+# ── Metrics hook (T7) ──
+# Thread-local storage for the active MetricsCollector.
+# Pipeline code sets this via set_metrics_collector() before running steps.
+_metrics_local = threading.local()
+
+
+def set_metrics_collector(collector) -> None:
+    """Bind a MetricsCollector to the current thread. LLM calls will auto-record usage."""
+    _metrics_local.collector = collector
+
+
+def _get_metrics_collector():
+    """Get the MetricsCollector for the current thread, or None."""
+    return getattr(_metrics_local, "collector", None)
+
+
+def _record_usage(model: str, tokens_in: int, tokens_out: int) -> None:
+    """Record LLM usage if a MetricsCollector is active on this thread."""
+    mc = _get_metrics_collector()
+    if mc is not None:
+        mc.record_llm_call(model, tokens_in=tokens_in, tokens_out=tokens_out)
 
 
 def _openai_key() -> str:
@@ -77,6 +101,13 @@ def call_openai(
         try:
             with urllib.request.urlopen(req, timeout=180) as resp:
                 body = json.loads(resp.read().decode("utf-8"))
+            # Record token usage for metrics (T7)
+            usage = body.get("usage", {})
+            _record_usage(
+                model,
+                tokens_in=usage.get("prompt_tokens", 0),
+                tokens_out=usage.get("completion_tokens", 0),
+            )
             return body["choices"][0]["message"]["content"]
         except urllib.error.HTTPError as e:
             error_body = e.read().decode("utf-8") if e.fp else ""
@@ -126,6 +157,13 @@ def call_gemini(
         try:
             with urllib.request.urlopen(req, timeout=120) as resp:
                 body = json.loads(resp.read().decode("utf-8"))
+            # Record token usage for metrics (T7)
+            usage_meta = body.get("usageMetadata", {})
+            _record_usage(
+                model,
+                tokens_in=usage_meta.get("promptTokenCount", 0),
+                tokens_out=usage_meta.get("candidatesTokenCount", 0),
+            )
             return body["candidates"][0]["content"]["parts"][0]["text"]
         except urllib.error.HTTPError as e:
             error_body = e.read().decode("utf-8") if e.fp else ""
@@ -221,8 +259,10 @@ def call_board_llm(prompt: str, system: str | None = None) -> str:
 
             elapsed = round(time.monotonic() - t0, 2)
             usage = body.get("usage", {})
-            tokens_in = usage.get("prompt_tokens", "?")
-            tokens_out = usage.get("completion_tokens", "?")
+            tokens_in = usage.get("prompt_tokens", 0)
+            tokens_out = usage.get("completion_tokens", 0)
+            # Record token usage for metrics (T7)
+            _record_usage(model, tokens_in=tokens_in, tokens_out=tokens_out)
             logger.info(
                 "Board LLM OK: model=%s, tokens_in=%s, tokens_out=%s, time=%.2fs",
                 model, tokens_in, tokens_out, elapsed,
@@ -279,7 +319,14 @@ def call_board_llm_parallel(prompts: list[dict]) -> list[str]:
     """
     results: list[str | None] = [None] * len(prompts)
 
+    # T7: Capture parent thread's metrics collector for propagation
+    parent_mc = _get_metrics_collector()
+
     def _call_single(idx: int, item: dict) -> tuple[int, str]:
+        # T7: Propagate metrics collector to child thread
+        if parent_mc is not None:
+            set_metrics_collector(parent_mc)
+
         t0 = time.monotonic()
         try:
             response = call_board_llm(

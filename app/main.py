@@ -16,7 +16,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.auth import AuthManager
 from app.config import REPORTS_DIR, BusinessType
+from app.metrics import MetricsCollector, get_aggregate_stats
 from app.security import (
     check_rate_limit_request,
     check_rate_limit_report,
@@ -25,9 +27,8 @@ from app.security import (
     sanitize_dict,
     sanitize_error,
     get_client_ip,
-    start_session_cleanup,
-    stop_session_cleanup,
 )
+from app.session_store import get_store
 
 load_dotenv()
 
@@ -49,10 +50,13 @@ _allowed_origins = os.getenv("BSR_CORS_ORIGINS", "").split(",") if os.getenv("BS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,  # empty = no cross-origin allowed (same-origin only)
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
+
+# ── Auth ──
+auth_manager = AuthManager()
 
 
 # ── Rate Limiting Middleware ──
@@ -91,30 +95,70 @@ async def error_sanitization_middleware(request: Request, call_next):
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/reports", StaticFiles(directory=str(REPORTS_DIR)), name="reports")
 
-# ── Session storage (in-memory, fine for MVP) ──
+# ── Session storage (T1: pluggable backend via STORE_BACKEND env var) ──
 
-sessions: dict[str, dict[str, Any]] = {}
+store = get_store()
+
+# Background cleanup thread for expired sessions
+_cleanup_stop = threading.Event()
+_cleanup_thread: threading.Thread | None = None
+_CLEANUP_INTERVAL = 300  # 5 minutes
 
 
 @app.on_event("startup")
 async def _startup():
-    start_session_cleanup(sessions)
+    global _cleanup_thread
+
+    def _cleanup_loop():
+        while not _cleanup_stop.wait(_CLEANUP_INTERVAL):
+            store.cleanup_expired()
+
+    _cleanup_thread = threading.Thread(target=_cleanup_loop, daemon=True, name="session-cleanup")
+    _cleanup_thread.start()
+    logger.info("Session cleanup thread started (interval=%ds)", _CLEANUP_INTERVAL)
 
 
 @app.on_event("shutdown")
 async def _shutdown():
-    stop_session_cleanup()
+    _cleanup_stop.set()
+    if _cleanup_thread and _cleanup_thread.is_alive():
+        _cleanup_thread.join(timeout=5)
 
 
 def _new_session() -> str:
     sid = uuid.uuid4().hex[:12]
-    sessions[sid] = {"status": "created", "events": [], "data": {}, "created_at": time.time()}
+    store.set(sid, {"status": "created", "events": [], "data": {}, "created_at": time.time()})
     return sid
 
 
 def _push_event(sid: str, event: str, data: Any = None):
-    if sid in sessions:
-        sessions[sid]["events"].append({"event": event, "data": data})
+    session = store.get(sid)
+    if session is not None:
+        session["events"].append({"event": event, "data": data})
+
+
+# ── Auth helpers ──
+
+COOKIE_NAME = "bsr_token"
+COOKIE_MAX_AGE = 30 * 24 * 3600  # 30 days
+
+
+def _get_auth_token(request: Request) -> str | None:
+    """Extract auth token from cookie."""
+    return request.cookies.get(COOKIE_NAME)
+
+
+def _set_auth_cookie(response: JSONResponse, token: str) -> JSONResponse:
+    """Set auth cookie on response."""
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=token,
+        max_age=COOKIE_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        secure=IS_PRODUCTION,
+    )
+    return response
 
 
 # ── Routes ──
@@ -122,6 +166,99 @@ def _push_event(sid: str, event: str, data: Any = None):
 @app.get("/", response_class=HTMLResponse)
 async def index():
     return HTMLResponse(content=LANDING_HTML)
+
+
+# ── Auth endpoints ──
+
+@app.post("/api/auth/register")
+async def auth_register(request: Request):
+    """Register a new user. Sets auth cookie on success."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Некорректный запрос"}, status_code=400)
+
+    email = sanitize_text(str(body.get("email", "")).strip(), max_length=254)
+    password = str(body.get("password", ""))
+
+    # Don't sanitize password (it may contain special chars), just limit length
+    if len(password) > 128:
+        return JSONResponse({"ok": False, "error": "Пароль слишком длинный"}, status_code=400)
+
+    try:
+        result = auth_manager.register(email, password)
+    except ValueError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    except Exception as e:
+        logger.exception("Registration error")
+        return JSONResponse(
+            {"ok": False, "error": sanitize_error(e, include_details=not IS_PRODUCTION)},
+            status_code=500,
+        )
+
+    resp = JSONResponse({
+        "ok": True,
+        "email": result["email"],
+        "reports_used": result["reports_used"],
+        "reports_remaining": result["reports_remaining"],
+    })
+    return _set_auth_cookie(resp, result["token"])
+
+
+@app.post("/api/auth/login")
+async def auth_login(request: Request):
+    """Login. Sets auth cookie on success."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Некорректный запрос"}, status_code=400)
+
+    email = str(body.get("email", "")).strip()
+    password = str(body.get("password", ""))
+
+    result = auth_manager.login(email, password)
+    if not result:
+        return JSONResponse({"ok": False, "error": "Неверный email или пароль"}, status_code=401)
+
+    resp = JSONResponse({
+        "ok": True,
+        "email": result["email"],
+        "reports_used": result["reports_used"],
+        "reports_remaining": result["reports_remaining"],
+    })
+    return _set_auth_cookie(resp, result["token"])
+
+
+@app.get("/api/auth/me")
+async def auth_me(request: Request):
+    """Get current user info from cookie."""
+    token = _get_auth_token(request)
+    if not token:
+        return JSONResponse({"ok": False, "authenticated": False})
+
+    user = auth_manager.check_token(token)
+    if not user:
+        return JSONResponse({"ok": False, "authenticated": False})
+
+    return {
+        "ok": True,
+        "authenticated": True,
+        "email": user["email"],
+        "reports_used": user["reports_used"],
+        "reports_remaining": user["reports_remaining"],
+    }
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(request: Request):
+    """Logout: revoke token and clear cookie."""
+    token = _get_auth_token(request)
+    if token:
+        auth_manager.logout(token)
+
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(key=COOKIE_NAME)
+    return resp
 
 
 @app.post("/api/start")
@@ -137,6 +274,15 @@ async def start_session(request: Request):
             headers={"Retry-After": "3600"},
         )
 
+    # Auth: check freemium quota (if logged in)
+    auth_token = _get_auth_token(request)
+    can_gen, reason = auth_manager.can_generate_report(auth_token)
+    if not can_gen:
+        return JSONResponse(
+            {"ok": False, "error": reason, "quota_exceeded": True},
+            status_code=403,
+        )
+
     body = await request.json()
     raw_url = (body.get("url") or "").strip()
 
@@ -146,8 +292,10 @@ async def start_session(request: Request):
         return JSONResponse({"ok": False, "error": url_error}, status_code=400)
 
     sid = _new_session()
-    sessions[sid]["data"]["url"] = url
-    sessions[sid]["status"] = "scraping"
+    session = store.get(sid)
+    session["data"]["url"] = url
+    session["data"]["_auth_token"] = auth_token  # track for quota
+    session["status"] = "scraping"
 
     # Run steps 1-3 in background thread
     thread = threading.Thread(target=_run_initial_steps, args=(sid, url), daemon=True)
@@ -160,7 +308,7 @@ async def start_session(request: Request):
 async def stream_events(sid: str):
     """SSE endpoint: stream events to frontend."""
     sid = sanitize_text(sid, max_length=20)
-    if sid not in sessions:
+    if not store.exists(sid):
         return JSONResponse({"error": "Session not found"}, status_code=404)
 
     import asyncio
@@ -168,7 +316,10 @@ async def stream_events(sid: str):
     async def event_generator():
         last_idx = 0
         while True:
-            events = sessions.get(sid, {}).get("events", [])
+            session = store.get(sid)
+            if session is None:
+                break
+            events = session.get("events", [])
             while last_idx < len(events):
                 ev = events[last_idx]
                 yield f"event: {ev['event']}\ndata: {json.dumps(ev.get('data', {}), ensure_ascii=False)}\n\n"
@@ -176,10 +327,10 @@ async def stream_events(sid: str):
                 # If terminal event, stop
                 if ev["event"] in ("done", "error", "waiting_company", "waiting_competitors"):
                     pass  # keep connection open for further events
-            status = sessions.get(sid, {}).get("status", "")
+            status = session.get("status", "")
             if status in ("done", "error"):
                 # Final check for any remaining events
-                events = sessions.get(sid, {}).get("events", [])
+                events = session.get("events", [])
                 while last_idx < len(events):
                     ev = events[last_idx]
                     yield f"event: {ev['event']}\ndata: {json.dumps(ev.get('data', {}), ensure_ascii=False)}\n\n"
@@ -198,7 +349,7 @@ async def stream_events(sid: str):
 async def confirm_company(sid: str, request: Request):
     """User confirms/edits company identification."""
     sid = sanitize_text(sid, max_length=20)
-    if sid not in sessions:
+    if not store.exists(sid):
         return JSONResponse({"error": "Session not found"}, status_code=404)
 
     body = await request.json()
@@ -215,8 +366,9 @@ async def confirm_company(sid: str, request: Request):
     if bt and bt not in valid_types:
         body["business_type_guess"] = "B2B_SERVICE"
 
-    sessions[sid]["data"]["confirmed_company"] = body
-    sessions[sid]["status"] = "finding_competitors"
+    session = store.get(sid)
+    session["data"]["confirmed_company"] = body
+    session["status"] = "finding_competitors"
 
     # Continue pipeline
     thread = threading.Thread(target=_run_competitor_steps, args=(sid,), daemon=True)
@@ -229,7 +381,7 @@ async def confirm_company(sid: str, request: Request):
 async def confirm_competitors(sid: str, request: Request):
     """User confirms/edits competitor list."""
     sid = sanitize_text(sid, max_length=20)
-    if sid not in sessions:
+    if not store.exists(sid):
         return JSONResponse({"error": "Session not found"}, status_code=404)
 
     body = await request.json()
@@ -241,8 +393,9 @@ async def confirm_competitors(sid: str, request: Request):
                 if field in comp and isinstance(comp[field], str):
                     comp[field] = sanitize_text(comp[field], max_length=500)
 
-    sessions[sid]["data"]["confirmed_competitors"] = competitors
-    sessions[sid]["status"] = "analyzing"
+    session = store.get(sid)
+    session["data"]["confirmed_competitors"] = competitors
+    session["status"] = "analyzing"
 
     # Continue pipeline
     thread = threading.Thread(target=_run_analysis_steps, args=(sid,), daemon=True)
@@ -254,39 +407,55 @@ async def confirm_competitors(sid: str, request: Request):
 # ── Background pipeline steps ──
 
 def _run_initial_steps(sid: str, url: str):
-    """Steps 1-3: Scrape → Identify → FNS lookup."""
+    """Steps 1-3: Scrape -> Identify -> FNS lookup."""
+    session = store.get(sid)
+    if session is None:
+        return
+
+    # T7: Initialize metrics collector and bind to this thread
+    mc = MetricsCollector(session_id=sid)
+    session["_metrics"] = mc
+    from app.pipeline.llm_client import set_metrics_collector
+    set_metrics_collector(mc)
+
     try:
         # Step 1: Scrape
         _push_event(sid, "step", {"num": 1, "status": "active", "text": "Загрузка и скрапинг сайта..."})
+        mc.start_timer("step1_scrape")
         from app.pipeline.steps.step1_scrape import run as scrape
         scraped = scrape(url)
-        sessions[sid]["data"]["scraped"] = scraped
+        mc.stop_timer("step1_scrape")
+        session["data"]["scraped"] = scraped
         scrape_method = scraped.get("scrape_method", "requests")
         if scrape_method == "scrapling":
             method_hint = " (Scrapling fallback)"
         elif scrape_method == "minimal":
-            method_hint = " (minimal fallback — только title/description)"
+            method_hint = " (minimal fallback)"
         else:
             method_hint = ""
         _push_event(sid, "step", {"num": 1, "status": "done", "text": f"Сайт загружен{method_hint}: {scraped.get('title', '')}"})
 
         # Step 2: Identify company
         _push_event(sid, "step", {"num": 2, "status": "active", "text": "Определяю компанию..."})
+        mc.start_timer("step2_identify")
         from app.pipeline.steps.step2_identify import run as identify
         company_info = identify(scraped)
-        sessions[sid]["data"]["company_info"] = company_info
+        mc.stop_timer("step2_identify")
+        session["data"]["company_info"] = company_info
         _push_event(sid, "step", {"num": 2, "status": "done", "text": f"Компания: {company_info.get('name', '?')}"})
 
         # Step 3: FNS lookup
         _push_event(sid, "step", {"num": 3, "status": "active", "text": "Поиск в ФНС..."})
+        mc.start_timer("step3_fns")
         fns_ok = False
         try:
             from app.pipeline.steps.step3_fns import run as fns_lookup
             fns_data = fns_lookup(company_info)
-            sessions[sid]["data"]["fns_data"] = fns_data
+            session["data"]["fns_data"] = fns_data
             fns_ok = bool(fns_data.get("fns_company", {}).get("inn"))
         except Exception as e:
-            sessions[sid]["data"]["fns_data"] = {"fns_error": str(e)}
+            session["data"]["fns_data"] = {"fns_error": str(e)}
+        mc.stop_timer("step3_fns")
 
         if fns_ok:
             fc = fns_data["fns_company"]
@@ -297,29 +466,49 @@ def _run_initial_steps(sid: str, url: str):
                 "text": "ФНС: юрлицо не найдено автоматически"})
 
         # PAUSE: send data to frontend for user verification
-        sessions[sid]["status"] = "waiting_company"
+        session["status"] = "waiting_company"
         _push_event(sid, "waiting_company", {
             "company_info": company_info,
-            "fns_data": sessions[sid]["data"].get("fns_data", {}),
+            "fns_data": session["data"].get("fns_data", {}),
         })
+        store.save(sid)  # persist checkpoint
 
     except Exception as e:
         logger.exception("Error in initial steps for session %s", sid)
-        sessions[sid]["status"] = "error"
+        session = store.get(sid)
+        if session:
+            session["status"] = "error"
         _push_event(sid, "error", {
             "message": sanitize_error(e, include_details=not IS_PRODUCTION),
         })
+        store.save(sid)
 
 
 def _run_competitor_steps(sid: str):
     """Step 4: Find competitors."""
+    session = store.get(sid)
+    if session is None:
+        return
+
+    # T7: Restore metrics collector for this thread
+    mc = session.get("_metrics")
+    if mc:
+        from app.pipeline.llm_client import set_metrics_collector
+        set_metrics_collector(mc)
+
     try:
-        data = sessions[sid]["data"]
+        data = session["data"]
         confirmed = data.get("confirmed_company", {})
+
+        # Update company name in metrics if available
+        if mc and confirmed.get("name"):
+            mc.company = confirmed["name"]
 
         # If user provided INN, re-fetch FNS
         if confirmed.get("inn") and confirmed["inn"] != data.get("fns_data", {}).get("fns_company", {}).get("inn"):
             _push_event(sid, "step", {"num": 3, "status": "active", "text": f"Обновляю данные ФНС по ИНН {confirmed['inn']}..."})
+            if mc:
+                mc.start_timer("step3_fns_refetch")
             try:
                 from app.pipeline.steps.step3_fns import run as fns_lookup
                 fns_data = fns_lookup(data.get("company_info", {}), confirmed_inn=confirmed["inn"])
@@ -327,6 +516,8 @@ def _run_competitor_steps(sid: str):
                 _push_event(sid, "step", {"num": 3, "status": "done", "text": "Данные ФНС обновлены"})
             except Exception:
                 pass
+            if mc:
+                mc.stop_timer("step3_fns_refetch")
 
         # Merge confirmed data into company_info
         company_info = data.get("company_info", {})
@@ -337,12 +528,16 @@ def _run_competitor_steps(sid: str):
 
         # Step 4: Find competitors + verify via web search
         _push_event(sid, "step", {"num": 4, "status": "active", "text": "Ищу конкурентов (GPT-5.2 Pro)..."})
+        if mc:
+            mc.start_timer("step4_competitors")
         from app.pipeline.steps.step4_competitors import run as find_competitors
         comp_result = find_competitors(
             data.get("scraped", {}),
             company_info,
             data.get("fns_data", {}),
         )
+        if mc:
+            mc.stop_timer("step4_competitors")
         data["market_info"] = comp_result
 
         # Build verification summary for the step status
@@ -378,6 +573,12 @@ def _run_competitor_steps(sid: str):
 
 def _run_analysis_steps(sid: str):
     """Steps 1b, 1c, 5, 2a, 2b, 6: Extended v2.0 pipeline."""
+    # T7: Restore metrics collector for this thread
+    mc = sessions[sid].get("_metrics")
+    if mc:
+        from app.pipeline.llm_client import set_metrics_collector
+        set_metrics_collector(mc)
+
     try:
         data = sessions[sid]["data"]
         confirmed_competitors = data.get("confirmed_competitors", [])
@@ -388,6 +589,8 @@ def _run_analysis_steps(sid: str):
         marketplace_data = None
         if bt in ("B2C_PRODUCT", "PLATFORM", "B2B_B2C_HYBRID"):
             _push_event(sid, "step", {"num": "1b", "status": "active", "text": "Анализ маркетплейсов..."})
+            if mc:
+                mc.start_timer("step1b_marketplace")
             try:
                 from app.pipeline.steps.step1b_marketplace import run as marketplace_analysis
                 marketplace_data = marketplace_analysis(
@@ -398,10 +601,14 @@ def _run_analysis_steps(sid: str):
                 _push_event(sid, "step", {"num": "1b", "status": "done", "text": "Маркетплейсы проанализированы"})
             except Exception as e:
                 _push_event(sid, "step", {"num": "1b", "status": "warning", "text": f"Маркетплейсы: {e}"})
+            if mc:
+                mc.stop_timer("step1b_marketplace")
 
         # Step 1c: Deep models (lifecycle + channels)
         deep_models = None
         _push_event(sid, "step", {"num": "1c", "status": "active", "text": "Жизненный цикл и каналы продаж..."})
+        if mc:
+            mc.start_timer("step1c_deep_models")
         try:
             from app.pipeline.steps.step1c_deep_models import run as deep_models_analysis
             deep_models = deep_models_analysis(
@@ -416,6 +623,8 @@ def _run_analysis_steps(sid: str):
                 "text": f"Lifecycle: {lc_count} компаний, каналы: {ch_count}"})
         except Exception as e:
             _push_event(sid, "step", {"num": "1c", "status": "warning", "text": f"Deep models: {e}"})
+        if mc:
+            mc.stop_timer("step1c_deep_models")
 
         # Step 5: Deep analysis with GPT-5.2 Pro (7 секций параллельно)
         _push_event(sid, "step", {"num": 5, "status": "active", "text": "Глубокий анализ (7 секций параллельно)..."})
@@ -431,6 +640,8 @@ def _run_analysis_steps(sid: str):
                 "sub_section": section_name,
             })
 
+        if mc:
+            mc.start_timer("step5_deep_analysis")
         from app.pipeline.steps.step5_deep_analysis import run as deep_analysis
         report_data = deep_analysis(
             scraped=data.get("scraped", {}),
@@ -442,6 +653,8 @@ def _run_analysis_steps(sid: str):
             marketplace_data=marketplace_data,
             progress_callback=_step5_progress,
         )
+        if mc:
+            mc.stop_timer("step5_deep_analysis")
         _push_event(sid, "step", {"num": 5, "status": "done", "text": "Анализ завершён"})
 
         # Sanitize LLM output first
@@ -449,6 +662,8 @@ def _run_analysis_steps(sid: str):
 
         # Step 2a: Verification (pure Python)
         _push_event(sid, "step", {"num": "2a", "status": "active", "text": "Верификация расчётов..."})
+        if mc:
+            mc.start_timer("step2a_verify")
         try:
             from app.pipeline.steps.step2a_verify import run as verify
             report_data = verify(report_data)
@@ -458,9 +673,13 @@ def _run_analysis_steps(sid: str):
                 "text": f"Верификация: {corrections} корректировок"})
         except Exception as e:
             _push_event(sid, "step", {"num": "2a", "status": "warning", "text": f"Верификация: {e}"})
+        if mc:
+            mc.stop_timer("step2a_verify")
 
         # Step 2b: Relevance gate (pure Python)
         _push_event(sid, "step", {"num": "2b", "status": "active", "text": "Section Relevance Gate..."})
+        if mc:
+            mc.start_timer("step2b_relevance_gate")
         try:
             from app.pipeline.steps.step2b_relevance_gate import run as relevance_gate
             report_data = relevance_gate(report_data)
@@ -470,9 +689,13 @@ def _run_analysis_steps(sid: str):
                 "text": f"Gate: {disabled} секций отключено"})
         except Exception as e:
             _push_event(sid, "step", {"num": "2b", "status": "warning", "text": f"Gate: {e}"})
+        if mc:
+            mc.stop_timer("step2b_relevance_gate")
 
         # Step 6: Board of Directors review (T25/T26)
         _push_event(sid, "step", {"num": "6a", "status": "active", "text": "Совет директоров — 5 AI-экспертов..."})
+        if mc:
+            mc.start_timer("step6_board")
         try:
             from app.pipeline.steps.step6_board import form_panel, run_review, apply_revisions
             panel = form_panel(report_data, company_info)
@@ -488,9 +711,60 @@ def _run_analysis_steps(sid: str):
             logger.warning("Board review failed: %s", e)
             _push_event(sid, "step", {"num": "6a", "status": "warning",
                 "text": f"Совет директоров: {e}"})
+        if mc:
+            mc.stop_timer("step6_board")
+
+        # Step Quality: Auto quality check (T10)
+        _push_event(sid, "step", {"num": "qa", "status": "active", "text": "Проверка качества отчёта..."})
+        if mc:
+            mc.start_timer("step_quality")
+        try:
+            from app.pipeline.steps.step_quality import check_report_quality
+            quality_result = check_report_quality(report_data, company_info)
+            q_score = quality_result.get("score", 0)
+            q_passed = quality_result.get("passed", False)
+            q_critical = len(quality_result.get("critical_failures", []))
+            q_warnings = len(quality_result.get("warnings", []))
+
+            # Add quality warnings to report_data if critical failures exist
+            if q_critical > 0:
+                existing_questions = report_data.get("open_questions", [])
+                for cf in quality_result["critical_failures"]:
+                    existing_questions.append(f"[QA] {cf}")
+                report_data["open_questions"] = existing_questions
+
+            status_text = f"Качество: {q_score}/100"
+            if q_critical > 0:
+                status_text += f" ({q_critical} критических)"
+            if q_warnings > 0:
+                status_text += f", {q_warnings} предупреждений"
+
+            _push_event(sid, "step", {"num": "qa", "status": "done", "text": status_text})
+
+            # Send quality score via SSE event
+            _push_event(sid, "quality", {
+                "score": q_score,
+                "passed": q_passed,
+                "critical_failures": quality_result.get("critical_failures", []),
+                "warnings": quality_result.get("warnings", []),
+                "checks_count": len(quality_result.get("checks", [])),
+            })
+
+            logger.info(
+                "Quality check: session=%s, score=%.1f, passed=%s, critical=%d, warnings=%d",
+                sid, q_score, q_passed, q_critical, q_warnings,
+            )
+        except Exception as e:
+            logger.warning("Quality check failed: %s", e)
+            _push_event(sid, "step", {"num": "qa", "status": "warning",
+                "text": f"Проверка качества: {e}"})
+        if mc:
+            mc.stop_timer("step_quality")
 
         # Step 7: Build report
         _push_event(sid, "step", {"num": 7, "status": "active", "text": "Сборка отчёта..."})
+        if mc:
+            mc.start_timer("step7_build_report")
 
         from app.models import ReportData
         from app.report.builder import save_report
@@ -500,18 +774,47 @@ def _run_analysis_steps(sid: str):
         path = save_report(rd, filename=filename)
         size_kb = round(path.stat().st_size / 1024)
 
+        if mc:
+            mc.stop_timer("step7_build_report")
         _push_event(sid, "step", {"num": 7, "status": "done", "text": f"Отчёт собран ({size_kb} KB)"})
+
+        # T7: Finalize metrics and log
+        if mc:
+            mc.company = report_data.get("company", {}).get("name", mc.company)
+            metrics_record = mc.finalize()
+            logger.info(
+                "Report metrics: session=%s, total_time=%.1fs, llm_calls=%d, cost=$%.4f",
+                sid,
+                metrics_record.get("total_time_sec", 0),
+                metrics_record.get("llm_calls", 0),
+                metrics_record.get("total_cost_usd", 0),
+            )
+
+        # Auth: increment report count for logged-in users
+        auth_token = data.get("_auth_token")
+        if auth_token:
+            auth_manager.increment_report_count(auth_token, report_id=filename)
 
         # Done!
         sessions[sid]["status"] = "done"
-        _push_event(sid, "done", {
+        done_data = {
             "url": f"/reports/{filename}",
             "size_kb": size_kb,
             "company": report_data.get("company", {}).get("name", ""),
-        })
+        }
+        # Include remaining reports if user is authenticated
+        if auth_token:
+            user_info = auth_manager.check_token(auth_token)
+            if user_info:
+                done_data["reports_remaining"] = user_info["reports_remaining"]
+        _push_event(sid, "done", done_data)
 
     except Exception as e:
         logger.exception("Error in analysis steps for session %s", sid)
+        # T7: Finalize metrics even on error
+        mc = sessions[sid].get("_metrics")
+        if mc and not mc._finalized:
+            mc.finalize()
         sessions[sid]["status"] = "error"
         _push_event(sid, "error", {
             "message": sanitize_error(e, include_details=not IS_PRODUCTION),
@@ -636,6 +939,72 @@ def _sanitize_llm_output(d: dict) -> dict:
     return d
 
 
+# ── Metrics endpoint (T7) ──
+
+@app.get("/api/stats")
+async def pipeline_stats():
+    """Return aggregate pipeline metrics: total reports, avg time, cost, LLM usage."""
+    try:
+        stats = get_aggregate_stats()
+        return {"ok": True, **stats}
+    except Exception as e:
+        logger.exception("Error computing stats")
+        return JSONResponse(
+            {"ok": False, "error": sanitize_error(e, include_details=not IS_PRODUCTION)},
+            status_code=500,
+        )
+
+
+# ── Session status endpoint (T22: for Telegram bot polling) ──
+
+@app.get("/api/session/{sid}")
+async def session_status(sid: str):
+    """Return current session status + accumulated events.
+
+    Used by the Telegram bot to poll session state without SSE.
+    Returns:
+        status: created | scraping | waiting_company | finding_competitors |
+                waiting_competitors | analyzing | done | error
+        events: all accumulated events
+        data: relevant session data (company_info, fns_data, competitors, report_url)
+    """
+    sid = sanitize_text(sid, max_length=20)
+    session = store.get(sid)
+    if session is None:
+        return JSONResponse({"ok": False, "error": "Session not found"}, status_code=404)
+
+    status = session.get("status", "created")
+    all_events = session.get("events", [])
+
+    # Build a snapshot of relevant data depending on current status
+    result_data: dict[str, Any] = {}
+    if status == "waiting_company":
+        result_data["company_info"] = session.get("data", {}).get("company_info", {})
+        result_data["fns_data"] = session.get("data", {}).get("fns_data", {})
+    elif status == "waiting_competitors":
+        market_info = session.get("data", {}).get("market_info", {})
+        result_data["market_name"] = market_info.get("market_name", "")
+        result_data["competitors"] = market_info.get("competitors", [])
+    elif status == "done":
+        # Find the 'done' event to extract report URL
+        for ev in reversed(all_events):
+            if ev.get("event") == "done":
+                result_data["report"] = ev.get("data", {})
+                break
+    elif status == "error":
+        for ev in reversed(all_events):
+            if ev.get("event") == "error":
+                result_data["error"] = ev.get("data", {}).get("message", "Unknown error")
+                break
+
+    return {
+        "ok": True,
+        "status": status,
+        "events": all_events,
+        "data": result_data,
+    }
+
+
 # ── Legacy endpoint (simple, no interactive) ──
 
 @app.post("/api/analyze")
@@ -649,6 +1018,15 @@ async def analyze_simple(request: Request):
             {"ok": False, "error": report_error},
             status_code=429,
             headers={"Retry-After": "3600"},
+        )
+
+    # Auth: check freemium quota
+    auth_token = _get_auth_token(request)
+    can_gen, reason = auth_manager.can_generate_report(auth_token)
+    if not can_gen:
+        return JSONResponse(
+            {"ok": False, "error": reason, "quota_exceeded": True},
+            status_code=403,
         )
 
     body = await request.json()
@@ -685,6 +1063,10 @@ async def analyze_simple(request: Request):
     except Exception as e:
         logger.exception("Report build error")
         return {"ok": False, "error": f"Ошибка сборки: {sanitize_error(e, include_details=not IS_PRODUCTION)}", "step": 3}
+
+    # Auth: increment report count
+    if auth_token:
+        auth_manager.increment_report_count(auth_token, report_id=filename)
 
     return {"ok": True, "url": f"/reports/{filename}", "size_kb": size_kb,
             "company": report_data.get("company", {}).get("name", "")}

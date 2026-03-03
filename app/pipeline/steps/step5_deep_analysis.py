@@ -744,6 +744,7 @@ def _run_section(
     fn: Callable[..., dict],
     *args: Any,
     progress_callback: Optional[Callable[[str, str], None]] = None,
+    metrics_collector: Any = None,
     **kwargs: Any,
 ) -> tuple[str, dict, float]:
     """Обёртка для запуска одной секции с тайминг-логом и progress callback.
@@ -754,7 +755,14 @@ def _run_section(
 
     progress_callback(section_name, status) вызывается со статусами:
       "started", "done", "error"
+
+    metrics_collector: T7 — propagated MetricsCollector for this child thread.
     """
+    # T7: Propagate MetricsCollector to this child thread
+    if metrics_collector is not None:
+        from app.pipeline.llm_client import set_metrics_collector
+        set_metrics_collector(metrics_collector)
+
     def _notify(status: str):
         if progress_callback:
             try:
@@ -819,6 +827,10 @@ def run(
         ("HR-анализ", analyze_hr, (scraped, company_info, fns_data)),
     ]
 
+    # T7: Capture parent thread's metrics collector for propagation to child threads
+    from app.pipeline.llm_client import _get_metrics_collector
+    _parent_mc = _get_metrics_collector()
+
     # Запуск параллельно
     results_map: dict[str, dict] = {}
     timing_map: dict[str, float] = {}
@@ -828,6 +840,7 @@ def run(
             executor.submit(
                 _run_section, name, idx, total, fn, *args,
                 progress_callback=progress_callback,
+                metrics_collector=_parent_mc,
             ): name
             for idx, (name, fn, args) in enumerate(sections, 1)
         }
