@@ -83,6 +83,11 @@ class Competitor(BaseModel):
     # v2.0
     lifecycle: Optional[LifecycleInfo] = None
     sales_channels: List[SalesChannel] = Field(default_factory=list)
+    # T11: верификация через web search
+    verified: bool = True  # default True for backward compat
+    verification_confidence: str = "unverified"  # high/medium/low/unverified
+    verification_sources: List[str] = Field(default_factory=list)
+    verification_notes: Optional[str] = None
 
 
 # ─── SWOT ───
@@ -248,3 +253,6 @@ class ReportData(BaseModel):
     methodology: Dict[str, str] = Field(default_factory=dict)
     section_gates: Dict[str, bool] = Field(default_factory=dict)
     pipeline_version: str = "2.0"
+
+    # v3.0 — Board of Directors review (T24-T27)
+    board_review: Dict[str, Any] = Field(default_factory=dict)

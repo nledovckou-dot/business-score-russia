@@ -1,7 +1,8 @@
-"""Configuration: business types, OKVED mapping, color themes."""
+"""Configuration: business types, OKVED mapping, color themes, LLM settings."""
 
 from __future__ import annotations
 
+import os
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -9,6 +10,12 @@ from typing import Dict, List, Optional, Tuple
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = BASE_DIR / "app" / "report" / "blocks"
 REPORTS_DIR = BASE_DIR / "app" / "storage" / "reports"
+
+
+# ── Board of Directors LLM (T28) ──
+BOARD_LLM_MODEL = os.getenv("BOARD_LLM_MODEL", "gpt-5.3-codex")
+BOARD_LLM_TEMPERATURE = float(os.getenv("BOARD_LLM_TEMPERATURE", "0.3"))
+BOARD_LLM_MAX_TOKENS = int(os.getenv("BOARD_LLM_MAX_TOKENS", "8000"))
 
 
 class BusinessType(str, Enum):

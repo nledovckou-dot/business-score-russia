@@ -148,7 +148,13 @@ def _run_initial_steps(sid: str, url: str):
         from app.pipeline.steps.step1_scrape import run as scrape
         scraped = scrape(url)
         sessions[sid]["data"]["scraped"] = scraped
-        method_hint = " (Scrapling fallback)" if scraped.get("scrape_method") == "scrapling" else ""
+        scrape_method = scraped.get("scrape_method", "requests")
+        if scrape_method == "scrapling":
+            method_hint = " (Scrapling fallback)"
+        elif scrape_method == "minimal":
+            method_hint = " (minimal fallback — только title/description)"
+        else:
+            method_hint = ""
         _push_event(sid, "step", {"num": 1, "status": "done", "text": f"Сайт загружен{method_hint}: {scraped.get('title', '')}"})
 
         # Step 2: Identify company
@@ -213,7 +219,7 @@ def _run_competitor_steps(sid: str):
                 company_info[key] = confirmed[key]
         data["company_info"] = company_info
 
-        # Step 4: Find competitors
+        # Step 4: Find competitors + verify via web search
         _push_event(sid, "step", {"num": 4, "status": "active", "text": "Ищу конкурентов (GPT-5.2 Pro)..."})
         from app.pipeline.steps.step4_competitors import run as find_competitors
         comp_result = find_competitors(
@@ -222,8 +228,22 @@ def _run_competitor_steps(sid: str):
             data.get("fns_data", {}),
         )
         data["market_info"] = comp_result
-        _push_event(sid, "step", {"num": 4, "status": "done",
-            "text": f"Найдено {len(comp_result.get('competitors', []))} конкурентов"})
+
+        # Build verification summary for the step status
+        comps = comp_result.get("competitors", [])
+        verified_count = sum(1 for c in comps if c.get("verified"))
+        total_count = len(comps)
+        if total_count > 0 and verified_count < total_count:
+            step4_text = (
+                f"Найдено {total_count} конкурентов "
+                f"({verified_count} подтверждены, "
+                f"{total_count - verified_count} не подтверждены)"
+            )
+        else:
+            step4_text = f"Найдено {total_count} конкурентов"
+            if verified_count == total_count and total_count > 0:
+                step4_text += " (все подтверждены)"
+        _push_event(sid, "step", {"num": 4, "status": "done", "text": step4_text})
 
         # PAUSE: send competitors for user editing
         sessions[sid]["status"] = "waiting_competitors"
@@ -278,8 +298,20 @@ def _run_analysis_steps(sid: str):
         except Exception as e:
             _push_event(sid, "step", {"num": "1c", "status": "warning", "text": f"Deep models: {e}"})
 
-        # Step 5: Deep analysis with GPT-5.2 Pro
-        _push_event(sid, "step", {"num": 5, "status": "active", "text": "Глубокий анализ (GPT-5.2 Pro)..."})
+        # Step 5: Deep analysis with GPT-5.2 Pro (7 секций параллельно)
+        _push_event(sid, "step", {"num": 5, "status": "active", "text": "Глубокий анализ (7 секций параллельно)..."})
+
+        # Progress callback: транслирует статусы секций в SSE-события
+        def _step5_progress(section_name: str, status: str):
+            status_map = {"started": "active", "done": "done", "error": "warning"}
+            sse_status = status_map.get(status, "active")
+            _push_event(sid, "step", {
+                "num": "5",
+                "status": sse_status,
+                "text": f"{section_name}: {status}",
+                "sub_section": section_name,
+            })
+
         from app.pipeline.steps.step5_deep_analysis import run as deep_analysis
         report_data = deep_analysis(
             scraped=data.get("scraped", {}),
@@ -289,6 +321,7 @@ def _run_analysis_steps(sid: str):
             market_info=data.get("market_info", {}),
             deep_models=deep_models,
             marketplace_data=marketplace_data,
+            progress_callback=_step5_progress,
         )
         _push_event(sid, "step", {"num": 5, "status": "done", "text": "Анализ завершён"})
 
@@ -319,8 +352,26 @@ def _run_analysis_steps(sid: str):
         except Exception as e:
             _push_event(sid, "step", {"num": "2b", "status": "warning", "text": f"Gate: {e}"})
 
-        # Step 6: Build report
-        _push_event(sid, "step", {"num": 6, "status": "active", "text": "Сборка отчёта..."})
+        # Step 6: Board of Directors review (T25/T26)
+        _push_event(sid, "step", {"num": "6a", "status": "active", "text": "Совет директоров — 5 AI-экспертов..."})
+        try:
+            from app.pipeline.steps.step6_board import form_panel, run_review, apply_revisions
+            panel = form_panel(report_data, company_info)
+            review_result = run_review(report_data, panel)
+            report_data = apply_revisions(report_data, review_result)
+            consensus = review_result.get("consensus", {})
+            approved = consensus.get("approved", False)
+            critiques = consensus.get("total_critiques", 0)
+            status_text = "Одобрен" if approved else f"Замечания: {critiques}"
+            _push_event(sid, "step", {"num": "6a", "status": "done",
+                "text": f"Совет директоров: {status_text}"})
+        except Exception as e:
+            logger.warning("Board review failed: %s", e)
+            _push_event(sid, "step", {"num": "6a", "status": "warning",
+                "text": f"Совет директоров: {e}"})
+
+        # Step 7: Build report
+        _push_event(sid, "step", {"num": 7, "status": "active", "text": "Сборка отчёта..."})
 
         from app.models import ReportData
         from app.report.builder import save_report
@@ -330,7 +381,7 @@ def _run_analysis_steps(sid: str):
         path = save_report(rd, filename=filename)
         size_kb = round(path.stat().st_size / 1024)
 
-        _push_event(sid, "step", {"num": 6, "status": "done", "text": f"Отчёт собран ({size_kb} KB)"})
+        _push_event(sid, "step", {"num": 7, "status": "done", "text": f"Отчёт собран ({size_kb} KB)"})
 
         # Done!
         sessions[sid]["status"] = "done"
@@ -382,6 +433,12 @@ def _sanitize_llm_output(d: dict) -> dict:
         c["radar_scores"] = {k: (v if v is not None else 5) for k, v in rs.items()}
         tl = str(c.get("threat_level", "med")).lower()
         c["threat_level"] = tl if tl in ("high", "med", "low") else "med"
+        # v2.1: verification fields — ensure defaults
+        c.setdefault("verified", True)
+        vc = str(c.get("verification_confidence", "unverified")).lower()
+        c["verification_confidence"] = vc if vc in ("high", "medium", "low", "unverified") else "unverified"
+        if not isinstance(c.get("verification_sources"), list):
+            c["verification_sources"] = []
 
     # --- financials ---
     d["financials"] = [f for f in (d.get("financials") or []) if isinstance(f, dict) and f.get("year")]
@@ -585,6 +642,42 @@ h1 span{color:var(--accent)}
 .error{display:none;padding:14px 18px;background:rgba(224,85,85,0.08);border:1px solid rgba(224,85,85,0.2);border-radius:10px;color:var(--red);font-size:0.85em;margin-bottom:16px}
 .again{display:inline-block;margin-top:16px;color:var(--text3);font-size:0.82em;cursor:pointer;text-decoration:underline;border:none;background:none;font-family:inherit}
 .again:hover{color:var(--accent)}
+
+/* Features section */
+.section-title{font-size:1.35em;font-weight:600;text-align:center;margin-bottom:8px;color:var(--text)}
+.section-sub{text-align:center;color:var(--text2);font-size:0.9em;margin-bottom:32px}
+.features{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:56px}
+.feature-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:22px 20px;transition:border-color 0.2s,transform 0.2s}
+.feature-card:hover{border-color:var(--accent-border);transform:translateY(-2px)}
+.feature-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.15em;margin-bottom:14px;background:var(--accent-bg);color:var(--accent)}
+.feature-card h3{font-size:0.95em;font-weight:600;color:var(--text);margin-bottom:6px}
+.feature-card p{font-size:0.82em;color:var(--text2);line-height:1.55}
+
+/* How it works section */
+.how-steps{display:flex;gap:20px;margin-bottom:56px;position:relative}
+.how-step{flex:1;text-align:center;position:relative}
+.how-num{width:44px;height:44px;border-radius:50%;background:var(--accent-bg);border:1.5px solid var(--accent-border);color:var(--accent);font-weight:700;font-size:1.1em;display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
+.how-step h4{font-size:0.92em;font-weight:600;color:var(--text);margin-bottom:6px}
+.how-step p{font-size:0.8em;color:var(--text2);line-height:1.5}
+.how-connector{position:absolute;top:22px;left:calc(50% + 30px);width:calc(100% - 60px);height:0;border-top:1.5px dashed var(--border)}
+.how-step:last-child .how-connector{display:none}
+
+/* Footer */
+.footer{text-align:center;padding:40px 0 20px;color:var(--text3);font-size:0.8em;border-top:1px solid var(--border);margin-top:32px}
+.footer a{color:var(--accent);text-decoration:none;transition:color 0.2s}
+.footer a:hover{color:var(--accent2)}
+
+/* Responsive */
+@media(max-width:600px){
+    #phase-url{margin-top:8vh}
+    h1{font-size:1.5em}
+    .input-row{flex-direction:column}
+    .input-row .btn{width:100%}
+    .features{grid-template-columns:1fr}
+    .how-steps{flex-direction:column;gap:24px}
+    .how-connector{display:none}
+    .field-row{grid-template-columns:1fr}
+}
 </style>
 </head>
 <body>
@@ -599,6 +692,78 @@ h1 span{color:var(--accent)}
             <input id="url" type="url" placeholder="https://example.com" autofocus
                    onkeydown="if(event.key==='Enter')startAnalysis()">
             <button class="btn" id="gobtn" onclick="startAnalysis()">Анализировать</button>
+        </div>
+    </div>
+
+    <!-- Features section -->
+    <div id="section-features" class="landing-section" style="margin-top:64px">
+        <div class="section-title">Что вы получите</div>
+        <p class="section-sub">Полный бизнес-анализ на основе реальных данных</p>
+        <div class="features">
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M7 7h6M7 10h6M7 13h3"/></svg>
+                </div>
+                <h3>Профиль компании</h3>
+                <p>Данные из ФНС и ЕГРЮЛ: выручка, прибыль, юрлицо, учредители, ОКВЭД</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2"/></svg>
+                </div>
+                <h3>Конкурентный анализ</h3>
+                <p>До 10 прямых конкурентов с верификацией, перцептуальная карта рынка</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h5v5H4zM11 4h5v5h-5zM4 11h5v5H4zM11 11h5v5h-5z"/></svg>
+                </div>
+                <h3>SWOT-анализ</h3>
+                <p>Сильные и слабые стороны, возможности и угрозы с обоснованием</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16l4-6 3 4 2-3 3 5"/><path d="M3 3v14h14"/></svg>
+                </div>
+                <h3>Финансовая аналитика</h3>
+                <p>Реальные данные ФНС: выручка, прибыль, активы, рентабельность за 3 года</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3l2.5 5 5.5.8-4 3.9.9 5.3L10 15.5 5.1 18l.9-5.3-4-3.9 5.5-.8z"/></svg>
+                </div>
+                <h3>Стратегия и рекомендации</h3>
+                <p>Три сценария роста (базовый, оптимистичный, пессимистичный) с KPI</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 8l-6 6-3-3"/><circle cx="10" cy="10" r="7"/></svg>
+                </div>
+                <h3>Верификация данных</h3>
+                <p>Автоматический фактчек: каждый факт проверяется по 2+ источникам</p>
+            </div>
+        </div>
+
+        <div class="section-title">Как это работает</div>
+        <p class="section-sub">Три простых шага до готового отчёта</p>
+        <div class="how-steps">
+            <div class="how-step">
+                <div class="how-connector"></div>
+                <div class="how-num">1</div>
+                <h4>Вставьте ссылку</h4>
+                <p>Укажите URL сайта компании, которую хотите проанализировать</p>
+            </div>
+            <div class="how-step">
+                <div class="how-connector"></div>
+                <div class="how-num">2</div>
+                <h4>Подтвердите данные</h4>
+                <p>Проверьте найденную компанию и выберите релевантных конкурентов</p>
+            </div>
+            <div class="how-step">
+                <div class="how-num">3</div>
+                <h4>Получите отчёт</h4>
+                <p>GPT-5.2 Pro соберёт полный отчёт с графиками и рекомендациями</p>
+            </div>
         </div>
     </div>
 
@@ -678,6 +843,10 @@ h1 span{color:var(--accent)}
     </div>
 </div>
 
+<footer class="footer">
+    BSR — Анализ бизнеса 360 | <a href="https://github.com/nledovckou-dot/business-score-russia" target="_blank" rel="noopener">Open Source</a>
+</footer>
+
 <script>
 var SID = null;
 var evtSource = null;
@@ -690,6 +859,10 @@ function startAnalysis(){
 
     document.getElementById('gobtn').disabled = true;
     document.getElementById('phase-url').style.display = 'none';
+    var sf = document.getElementById('section-features');
+    if(sf) sf.style.display = 'none';
+    var ft = document.querySelector('.footer');
+    if(ft) ft.style.display = 'none';
     document.getElementById('phase-pipeline').style.display = 'block';
     document.getElementById('url-tag').textContent = url;
 
@@ -802,10 +975,21 @@ function renderCompetitors(){
         var c = competitorData[i];
         var on = c._enabled !== false;
         var threatCls = 'threat-' + (c.threat_level || 'med');
+        var verBadge = '';
+        if(c.verified === false){
+            verBadge = '<span style="font-size:0.7em;color:var(--orange);margin-left:6px;font-weight:400">\u26A0 \u043D\u0435 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0451\u043D</span>';
+        } else if(c.verification_confidence === 'high'){
+            verBadge = '<span style="font-size:0.7em;color:var(--green);margin-left:6px;font-weight:400">\uD83D\uDD12</span>';
+        } else if(c.verification_confidence === 'medium'){
+            verBadge = '<span style="font-size:0.7em;color:var(--green);margin-left:6px;font-weight:400">\u2713</span>';
+        } else if(c.verification_confidence === 'low'){
+            verBadge = '<span style="font-size:0.7em;color:var(--orange);margin-left:6px;font-weight:400">\u2713?</span>';
+        }
+        var verNote = c.verification_notes ? '<div style="font-size:0.72em;color:var(--text3);margin-top:2px">' + c.verification_notes + '</div>' : '';
         html += '<div class="comp-item' + (on ? '' : ' excluded') + '">' +
             '<button class="comp-toggle ' + (on ? 'on' : '') + '" onclick="toggleComp(' + i + ')">' + (on ? '\u2713' : '') + '</button>' +
-            '<div class="comp-info"><div class="comp-name">' + (c.name||'') + '</div>' +
-            '<div class="comp-desc">' + (c.description||c.why_competitor||'') + '</div></div>' +
+            '<div class="comp-info"><div class="comp-name">' + (c.name||'') + verBadge + '</div>' +
+            '<div class="comp-desc">' + (c.description||c.why_competitor||'') + '</div>' + verNote + '</div>' +
             '<span class="comp-threat ' + threatCls + '">' + (c.threat_level||'med') + '</span></div>';
     }
     document.getElementById('comp-list').innerHTML = html;

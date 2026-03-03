@@ -1,34 +1,115 @@
 {% from "_macros.html" import calc_trace %}
 
-{# ─── A4: Прозрачность вычислений (Calc Traces) ─── #}
+{# ─── A4: Прозрачность вычислений (Calc Traces) — T4 ─── #}
 
 {% if calc_traces %}
 <div class="card">
     <h3>Прозрачность вычислений</h3>
-    <p style="color:var(--text2); font-size:0.88em; margin-bottom:16px;">
-        Каждый расчётный показатель содержит формулу, входные данные и уровень достоверности.
+    <p style="color:var(--text2); font-size:0.88em; margin-bottom:8px; line-height:1.6;">
+        Каждый расчётный показатель содержит формулу, входные данные, источники и уровень достоверности.
     </p>
-    <table>
-        <thead>
-            <tr>
-                <th>Показатель</th>
-                <th>Значение</th>
-                <th>Формула</th>
-                <th>Источники</th>
-                <th>Уровень</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for ct in calc_traces %}
-            <tr>
-                <td style="font-weight:600;">{{ ct.metric_name }}</td>
-                <td class="r">{{ ct.value }}</td>
-                <td style="font-size:0.82em; color:var(--text2);">{{ ct.formula or '—' }}</td>
-                <td style="font-size:0.82em; color:var(--text3);">{{ ct.sources|join(', ') if ct.sources else '—' }}</td>
-                <td>{{ calc_trace(ct.confidence) }}</td>
-            </tr>
+    <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:20px; font-size:0.82em;">
+        <span><span class="ct-fact">&#128274; Факт</span> &mdash; прямые данные из источника (ФНС, ЕГРЮЛ)</span>
+        <span><span class="ct-calc">&#128290; Расчёт</span> &mdash; вычислено по формуле из фактов</span>
+        <span><span class="ct-estimate">&#9888; Оценка</span> &mdash; вычислено с допущениями</span>
+    </div>
+
+    {# Summary table with improved styling (T4) #}
+    <div style="overflow-x:auto;">
+        <table class="ct-table">
+            <thead>
+                <tr>
+                    <th style="width:20%;">Показатель</th>
+                    <th style="width:12%;">Значение</th>
+                    <th style="width:25%;">Формула / входные данные</th>
+                    <th style="width:28%;">Источники</th>
+                    <th style="width:15%;">Достоверность</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ct in calc_traces %}
+                <tr>
+                    <td class="ct-metric">{{ ct.metric_name }}</td>
+                    <td class="ct-value">{{ ct.value }}</td>
+                    <td>
+                        {% if ct.formula %}
+                        <div class="ct-formula">{{ ct.formula }}</div>
+                        {% else %}
+                        <span style="color:var(--text3);">&mdash;</span>
+                        {% endif %}
+                        {% if ct.inputs %}
+                        <div class="ct-inputs">
+                            {% for k, v in ct.inputs.items() %}
+                            <span style="color:var(--text2); font-weight:500;">{{ k }}</span>={{ v }}{% if not loop.last %}, {% endif %}
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td class="ct-sources">
+                        {% if ct.sources %}
+                        {% for src in ct.sources %}
+                        <div style="margin-bottom:2px;">&#8226; {{ src }}</div>
+                        {% endfor %}
+                        {% else %}
+                        <span style="color:var(--text3);">&mdash;</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ calc_trace(ct.confidence) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {# Detailed calc-trace cards for entries with inputs (T4) #}
+    {% set has_inputs = [] %}
+    {% for ct in calc_traces %}
+        {% if ct.inputs %}
+            {% if has_inputs.append(1) %}{% endif %}
+        {% endif %}
+    {% endfor %}
+
+    {% if has_inputs %}
+    <h4 style="margin-top:28px; color:var(--gold); font-size:0.95em;">Детализация расчётов</h4>
+    <p style="color:var(--text3); font-size:0.82em; margin-bottom:12px;">
+        Для каждого вычисляемого показателя приведены входные данные и формула.
+    </p>
+
+    {% for ct in calc_traces %}
+    {% if ct.inputs %}
+    <div class="calc-trace">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+            <strong>{{ ct.metric_name }} = {{ ct.value }}</strong>
+            {{ calc_trace(ct.confidence) }}
+        </div>
+        {% if ct.formula %}
+        <div style="color:var(--text2); margin-bottom:6px;">
+            <span style="color:var(--text3);">Формула:</span> {{ ct.formula }}
+        </div>
+        {% endif %}
+        <div style="color:var(--text2); margin-bottom:6px;">
+            <span style="color:var(--text3);">Входные данные:</span>
+            {% for key, val in ct.inputs.items() %}
+                <span style="display:inline-block; background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:2px 8px; margin:2px 4px; font-size:0.92em;">
+                    {{ key }}&nbsp;=&nbsp;{{ val }}
+                </span>
             {% endfor %}
-        </tbody>
-    </table>
+        </div>
+        {% if ct.sources %}
+        <div style="color:var(--text3); font-size:0.88em;">
+            <span>Источники:</span> {{ ct.sources|join(', ') }}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+    {% endfor %}
+    {% endif %}
+
+    <div style="margin-top:20px; padding:12px 16px; background:var(--bg3); border:1px solid var(--border); border-radius:8px; font-size:0.82em; color:var(--text3); line-height:1.6;">
+        <strong style="color:var(--text2);">Правило каскада достоверности:</strong>
+        если хотя бы один входной параметр имеет уровень &#171;&#9888; Оценка&#187;, итоговый показатель также маркируется как &#171;Оценка&#187;.
+        Факты (&#128274;) подтверждены минимум двумя независимыми источниками.
+        Расчёты (&#128290;) основаны на проверенных фактах и прозрачных формулах.
+    </div>
 </div>
 {% endif %}

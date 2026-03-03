@@ -27,6 +27,35 @@ from app.report.profiles import (
 )
 
 
+# Human-readable names for placeholder fallback (T9/T14)
+BLOCK_NAMES: dict[str, str] = {
+    "M1": "Обзор рынка", "M2": "Регуляторика", "M3": "Технологические тренды", "M4": "Рынок труда",
+    "C1": "Перцептуальная карта", "C2": "Профили конкурентов", "C3": "Радар компетенций",
+    "C4": "Сравнительная таблица", "C5": "Охват рынка", "C6": "География конкурентов",
+    "C7": "Жизненный цикл", "C8": "Каналы продаж",
+    "P1": "Профиль компании", "P2": "Финансы", "P3": "SWOT-анализ",
+    "P4": "Digital-аудит", "P5": "Продукты и услуги", "P6": "Меню и ценообразование",
+    "P7": "Отзывы", "P8": "Тендеры", "P9": "Ассортимент", "P10": "Доля рынка",
+    "S1": "Рекомендации", "S2": "KPI и бенчмарки", "S3": "Сценарии",
+    "S4": "Корреляции", "S5": "Таймлайн внедрения",
+    "A1": "Открытые вопросы", "A2": "Глоссарий", "A3": "Методология", "A4": "Прозрачность расчётов",
+    "F1": "Фактчек", "F2": "Верификация digital", "O1": "Фаундеры", "O2": "Мнения экспертов",
+    "B1": "Заключение совета директоров",
+}
+
+
+def _render_placeholder(block_id: str) -> str:
+    """Render a placeholder card for an empty block (T9/T14)."""
+    name = BLOCK_NAMES.get(block_id, block_id)
+    return (
+        '<div class="block-placeholder">'
+        '<div class="ph-icon">&#128203;</div>'
+        f'<div class="ph-title">{name}</div>'
+        '<div class="ph-text">Данные по этой секции будут доступны после ручной проверки.</div>'
+        '</div>'
+    )
+
+
 def build_report(data: ReportData, theme: dict[str, str] | None = None) -> str:
     """Build a complete HTML report from ReportData.
 
@@ -52,7 +81,7 @@ def build_report(data: ReportData, theme: dict[str, str] | None = None) -> str:
     # Build context shared across all blocks
     base_ctx = _build_base_context(data, charts, theme)
 
-    # Render each block
+    # Render each block (T9/T14: show placeholder instead of hiding empty blocks)
     for section in sections:
         rendered = []
         for block_id in section["blocks"]:
@@ -64,9 +93,11 @@ def build_report(data: ReportData, theme: dict[str, str] | None = None) -> str:
                 html = tmpl.render(**base_ctx)
                 if html.strip():
                     rendered.append(html)
+                else:
+                    rendered.append(_render_placeholder(block_id))
             except Exception as e:
                 rendered.append(
-                    f'<div class="callout callout-red"><h4>Block {block_id} error</h4>'
+                    f'<div class="callout callout-red"><h4>Ошибка блока {BLOCK_NAMES.get(block_id, block_id)}</h4>'
                     f'<p>{e}</p></div>'
                 )
         section["rendered_blocks"] = rendered
@@ -211,6 +242,8 @@ def _build_base_context(data: ReportData, charts: dict[str, str], theme: dict) -
         "methodology": data.methodology,
         "section_gates": data.section_gates,
         "pipeline_version": data.pipeline_version,
+        # Board of Directors (T27)
+        "board_review": data.board_review,
     }
 
 

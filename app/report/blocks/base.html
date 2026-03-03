@@ -389,6 +389,41 @@ tr:hover { background: rgba(201,164,76,0.03); }
 .calc-trace { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin: 8px 0; font-size: 0.85em; }
 .calc-trace strong { color: var(--gold); }
 
+/* ===== Source Tag tooltip (T4) ===== */
+.source-tag { position: relative; display: inline-block; cursor: help; margin-left: 4px; vertical-align: middle; }
+.source-tag .st-icon { display: inline-block; width: 20px; height: 20px; line-height: 20px; text-align: center; border-radius: 50%; font-size: 0.7em; }
+.source-tag.st-fact .st-icon { background: rgba(61,184,106,0.15); color: var(--green); }
+.source-tag.st-calc .st-icon { background: rgba(74,143,224,0.15); color: var(--blue); }
+.source-tag.st-estimate .st-icon { background: rgba(224,128,64,0.15); color: var(--orange); }
+.source-tag .st-popup { display: none; position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); min-width: 260px; max-width: 360px; background: var(--card2); border: 1px solid var(--border2); border-radius: 10px; padding: 12px 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 100; font-size: 0.82em; line-height: 1.5; color: var(--text); }
+.source-tag .st-popup::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-top-color: var(--border2); }
+.source-tag:hover .st-popup { display: flex; flex-direction: column; gap: 4px; }
+.st-popup-title { font-weight: 700; color: var(--gold); font-size: 0.95em; margin-bottom: 4px; }
+.st-popup-row { display: block; }
+.st-popup-label { font-weight: 600; color: var(--text2); }
+
+/* ===== A4 Calc Traces table (T4) ===== */
+.ct-table { width: 100%; border-collapse: collapse; }
+.ct-table thead th { padding: 10px 12px; text-align: left; font-size: 0.82em; font-weight: 600; color: var(--gold); border-bottom: 2px solid var(--border2); text-transform: uppercase; letter-spacing: 0.04em; }
+.ct-table tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
+.ct-table tbody tr:hover { background: rgba(201,164,76,0.04); }
+.ct-table td { padding: 10px 12px; font-size: 0.88em; vertical-align: top; }
+.ct-table .ct-metric { font-weight: 600; color: var(--text); }
+.ct-table .ct-value { color: var(--gold2); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ct-table .ct-formula { color: var(--text2); font-size: 0.85em; font-family: 'SF Mono', 'Menlo', monospace; }
+.ct-table .ct-inputs { font-size: 0.82em; color: var(--text3); margin-top: 4px; }
+.ct-table .ct-sources { font-size: 0.82em; color: var(--text3); }
+
+/* ===== Placeholder (T9/T14) ===== */
+.block-placeholder {
+    background: var(--bg3); border: 1px dashed var(--border2);
+    border-radius: 12px; padding: 32px 24px; margin: 16px 0;
+    text-align: center; color: var(--text3);
+}
+.block-placeholder .ph-icon { font-size: 2em; margin-bottom: 8px; opacity: 0.5; }
+.block-placeholder .ph-title { font-size: 1em; font-weight: 600; color: var(--text2); margin-bottom: 6px; }
+.block-placeholder .ph-text { font-size: 0.85em; line-height: 1.5; max-width: 500px; margin: 0 auto; }
+
 /* ===== Footer ===== */
 footer {
     text-align: center; padding: 40px 0; color: var(--text3);

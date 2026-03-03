@@ -8,17 +8,20 @@
     {% if digital.monthly_traffic is not none or digital.seo_score is not none %}
     <div class="grid-3" style="margin-bottom:20px;">
         {% if digital.monthly_traffic is not none %}
-        {{ metric_card('{:,}'.format(digital.monthly_traffic), 'Трафик/мес', 'blue') }}
+        {{ metric_card('{:,}'.format(digital.monthly_traffic), 'Трафик/мес ⚠', 'orange') }}
         {% endif %}
         {% if digital.seo_score is not none %}
-        {{ metric_card(digital.seo_score ~ '/100', 'SEO-оценка', 'green' if digital.seo_score >= 60 else 'red') }}
+        {{ metric_card(digital.seo_score ~ '/100', 'SEO-оценка ⚠', 'orange') }}
         {% endif %}
         {{ metric_card(digital.social_accounts|length, 'Соцсетей', 'purple') }}
+    </div>
+    <div class="info-tip" style="margin-bottom:16px;">
+        <span><strong>&#9888; Оценка AI:</strong> Трафик и SEO-оценка сгенерированы языковой моделью. Для точных данных используйте SimilarWeb, Serpstat или Яндекс.Метрику.</span>
     </div>
     {% endif %}
 
     {% if digital.social_accounts %}
-    <h4 style="color:var(--gold2); font-size:0.95em; margin-bottom:12px;">Соцсети</h4>
+    <h4 style="color:var(--gold2); font-size:0.95em; margin-bottom:12px;">Соцсети <span class="ct-estimate">&#9888; Оценка</span></h4>
     <table>
         <thead>
             <tr>

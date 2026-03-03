@@ -54,6 +54,8 @@ BLOCK_TEMPLATES: dict[str, str] = {
     # Part VII — Founders & Opinions (optional)
     "O1": "factcheck/o1_founders.html",
     "O2": "factcheck/o2_opinions.html",
+    # Part VIII — Board of Directors
+    "B1": "board/b1_board_conclusion.html",
 }
 
 
@@ -68,6 +70,7 @@ SECTIONS = [
     {"id": "founders", "num": "VII", "title": "Фаундеры и мнения",        "subtitle": "Карта владельцев, цитаты лидеров отрасли"},
     {"id": "lifecycle","num": "VIII","title": "Жизненный цикл",           "subtitle": "Стадия каждого конкурента и обоснование"},
     {"id": "channels", "num": "IX",  "title": "Карта каналов продаж",     "subtitle": "Полная матрица каналов по всем конкурентам"},
+    {"id": "board",    "num": "X",   "title": "Заключение совета директоров", "subtitle": "AI-эксперты: рецензия и рекомендации"},
 ]
 
 
@@ -82,6 +85,7 @@ SECTION_BLOCKS: dict[str, list[str]] = {
     "founders": ["O1", "O2"],
     "lifecycle":["C7"],
     "channels": ["C8"],
+    "board":    ["B1"],
 }
 
 
@@ -93,7 +97,7 @@ PROFILES: dict[BusinessType, list[str]] = {
         "P1", "P2", "P3", "P4", "P6", "P7", "P10",
         "S1", "S2", "S3", "S4", "S5",
         "A1", "A2", "A3", "A4", "F1", "F2",
-        "O1", "O2", "C7", "C8",
+        "O1", "O2", "C7", "C8", "B1",
     ],
     BusinessType.B2C_PRODUCT: [
         "M1", "M2", "M3", "M4",
@@ -101,7 +105,7 @@ PROFILES: dict[BusinessType, list[str]] = {
         "P1", "P2", "P3", "P4", "P9", "P10",
         "S1", "S2", "S3", "S4", "S5",
         "A1", "A2", "A3", "A4", "F1", "F2",
-        "O1", "O2", "C7", "C8",
+        "O1", "O2", "C7", "C8", "B1",
     ],
     BusinessType.B2B_SERVICE: [
         "M1", "M2", "M3", "M4",
@@ -109,7 +113,7 @@ PROFILES: dict[BusinessType, list[str]] = {
         "P1", "P2", "P3", "P4", "P5", "P8", "P10",
         "S1", "S2", "S3", "S4", "S5",
         "A1", "A2", "A3", "A4", "F1", "F2",
-        "O1", "O2", "C7", "C8",
+        "O1", "O2", "C7", "C8", "B1",
     ],
     BusinessType.B2B_PRODUCT: [
         "M1", "M2", "M3", "M4",
@@ -117,7 +121,7 @@ PROFILES: dict[BusinessType, list[str]] = {
         "P1", "P2", "P3", "P4", "P5", "P8", "P9", "P10",
         "S1", "S2", "S3", "S4", "S5",
         "A1", "A2", "A3", "A4", "F1", "F2",
-        "O1", "O2", "C7", "C8",
+        "O1", "O2", "C7", "C8", "B1",
     ],
     BusinessType.PLATFORM: [
         "M1", "M2", "M3", "M4",
@@ -125,7 +129,7 @@ PROFILES: dict[BusinessType, list[str]] = {
         "P1", "P2", "P3", "P4", "P5", "P10",
         "S1", "S2", "S3", "S4", "S5",
         "A1", "A2", "A3", "A4", "F1", "F2",
-        "O1", "O2", "C7", "C8",
+        "O1", "O2", "C7", "C8", "B1",
     ],
     BusinessType.B2B_B2C_HYBRID: [
         "M1", "M2", "M3", "M4",
@@ -133,7 +137,7 @@ PROFILES: dict[BusinessType, list[str]] = {
         "P1", "P2", "P3", "P4", "P5", "P8", "P9", "P10",
         "S1", "S2", "S3", "S4", "S5",
         "A1", "A2", "A3", "A4", "F1", "F2",
-        "O1", "O2", "C7", "C8",
+        "O1", "O2", "C7", "C8", "B1",
     ],
 }
 

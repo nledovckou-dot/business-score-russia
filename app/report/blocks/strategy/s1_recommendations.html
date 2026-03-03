@@ -3,7 +3,7 @@
 
 {% if recommendations %}
 <div class="card">
-    <h3>Стратегические рекомендации</h3>
+    <h3>Стратегические рекомендации <span class="ct-calc">&#128290; Расчёт</span></h3>
     <div class="grid-2" style="margin-top:16px;">
         {% for rec in recommendations %}
         <div style="background:var(--bg3); border:1px solid var(--border); border-radius:12px; padding:24px; border-left:4px solid {{ {'high':'var(--red)', 'medium':'var(--gold)', 'low':'var(--green)'}[rec.priority] }};">

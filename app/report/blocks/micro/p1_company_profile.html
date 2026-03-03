@@ -1,6 +1,7 @@
 {# P1: Company Profile — card + table #}
-{% from '_macros.html' import badge, info_tip %}
+{% from '_macros.html' import badge, info_tip, placeholder %}
 
+{% if company and (company.inn or company.legal_name or company.address or company.description) %}
 <div class="card card-gold">
     <h3>Профиль компании</h3>
     <table>
@@ -16,3 +17,17 @@
         </tbody>
     </table>
 </div>
+{% elif company %}
+<div class="card card-gold">
+    <h3>Профиль компании</h3>
+    <table>
+        <tbody>
+            <tr><td style="color:var(--text3); width:200px;">Название</td><td style="font-weight:700; color:var(--gold);">{{ company.name }}</td></tr>
+            <tr><td style="color:var(--text3);">Тип бизнеса</td><td>{{ badge(company.business_type.value, "gold") }}</td></tr>
+        </tbody>
+    </table>
+    <div class="info-tip" style="margin-top:12px;">
+        <span>ИНН, юридическое лицо и адрес не найдены в открытых источниках. Уточните данные для полного профиля.</span>
+    </div>
+</div>
+{% endif %}

@@ -1,20 +1,22 @@
-"""Step 4: Find competitors using GPT-5.2 Pro."""
+"""Step 4: Find competitors using GPT-5.2 Pro + verify via web search."""
 
 from __future__ import annotations
 
-import json
+import logging
 from app.pipeline.llm_client import call_llm_json
 
+logger = logging.getLogger(__name__)
 
 SYSTEM = """Ты — аналитик российского рынка. Твоя задача — определить прямых конкурентов компании.
 Отвечай ТОЛЬКО валидным JSON. Все данные на русском языке."""
 
 
 def run(scraped: dict, company_info: dict, fns_data: dict) -> dict:
-    """Find 10 competitors using GPT-5.2 Pro.
+    """Find 10 competitors using GPT-5.2 Pro, then verify each via web search.
 
     Uses real company data + website content to find relevant competitors.
-    Returns dict with: competitors list, market_name, axes for perceptual map.
+    Returns dict with: competitors list (with verification status),
+    market_name, axes for perceptual map.
     """
     okved = fns_data.get("fns_company", {}).get("okved", "")
     okved_name = fns_data.get("fns_company", {}).get("okved_name", "")
@@ -81,5 +83,41 @@ Title: {scraped.get('title', '')}
         prompt, provider="openai", system=SYSTEM,
         temperature=0.5, max_tokens=8000,
     )
+
+    # ── Verify competitors via web search ──
+    competitors = result.get("competitors", [])
+    if competitors:
+        logger.info(
+            "Верификация %d конкурентов через веб-поиск...", len(competitors)
+        )
+        try:
+            from app.pipeline.web_search import verify_competitors_batch
+            competitors = verify_competitors_batch(competitors)
+
+            # Log summary
+            verified_count = sum(1 for c in competitors if c.get("verified"))
+            unverified = [
+                c.get("name", "?") for c in competitors if not c.get("verified")
+            ]
+            logger.info(
+                "Верификация завершена: %d/%d подтверждены",
+                verified_count, len(competitors),
+            )
+            if unverified:
+                logger.warning(
+                    "Не подтверждены: %s", ", ".join(unverified)
+                )
+
+        except Exception as e:
+            logger.error("Ошибка верификации конкурентов: %s", e)
+            # Graceful degradation: mark all as unverified
+            for comp in competitors:
+                comp.setdefault("verified", False)
+                comp.setdefault("verification_confidence", "unverified")
+                comp.setdefault("verification_url", None)
+                comp.setdefault("verification_sources", [])
+                comp.setdefault("verification_notes", "Верификация недоступна")
+
+        result["competitors"] = competitors
 
     return result

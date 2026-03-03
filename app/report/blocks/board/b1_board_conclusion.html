@@ -1,0 +1,72 @@
+{# B1: Board of Directors Conclusion — AI expert panel review summary #}
+{% from '_macros.html' import info_tip %}
+
+{% if board_review and board_review.reviews %}
+<div class="card">
+    <h3>Заключение совета директоров <span class="ct-calc">&#128101; AI-эксперты</span></h3>
+    <p style="color:var(--text2); font-size:0.9em; margin-bottom:16px;">
+        Отчёт проверен панелью из {{ board_review.reviews|length }} AI-экспертов.
+        {% if board_review.consensus %}
+        {% if board_review.consensus.approved %}
+        <span style="color:var(--green);font-weight:600;">&#10003; Одобрен</span>
+        {% else %}
+        <span style="color:var(--orange);font-weight:600;">&#9888; Требует доработки</span>
+        {% endif %}
+        | Критических замечаний: {{ board_review.consensus.critical_issues|default(0) }}
+        | Всего замечаний: {{ board_review.consensus.total_critiques|default(0) }}
+        {% endif %}
+    </p>
+
+    {# Expert reviews #}
+    <div style="display:flex;flex-direction:column;gap:12px;">
+    {% for review in board_review.reviews %}
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+            <div style="width:36px;height:36px;border-radius:50%;background:{% if review.role == 'CEO' %}var(--gold){% elif review.role == 'CFO' %}var(--green){% elif review.role == 'CMO' %}var(--blue){% elif review.role == 'Скептик' %}var(--red){% else %}var(--purple){% endif %};display:flex;align-items:center;justify-content:center;font-size:0.8em;font-weight:700;color:var(--bg);">
+                {% if review.role == 'CEO' %}CEO{% elif review.role == 'CFO' %}CFO{% elif review.role == 'CMO' %}CMO{% elif review.role == 'Скептик' %}&#128269;{% else %}&#127891;{% endif %}
+            </div>
+            <div>
+                <div style="font-weight:600;font-size:0.95em;">{{ review.name|default(review.role) }}</div>
+                <div style="font-size:0.8em;color:var(--text3);">{{ review.role }}</div>
+            </div>
+            <div style="margin-left:auto;">
+                {% if review.approved %}
+                <span style="font-size:0.8em;padding:3px 10px;border-radius:12px;background:rgba(61,184,106,0.12);color:var(--green);font-weight:600;">&#10003; Одобрено</span>
+                {% else %}
+                <span style="font-size:0.8em;padding:3px 10px;border-radius:12px;background:rgba(224,128,64,0.12);color:var(--orange);font-weight:600;">&#9998; Замечания</span>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if review.summary %}
+        <p style="font-size:0.88em;color:var(--text2);margin-bottom:10px;line-height:1.5;">{{ review.summary }}</p>
+        {% endif %}
+
+        {% if review.critiques %}
+        <div style="display:flex;flex-direction:column;gap:6px;">
+            {% for critique in review.critiques %}
+            <div style="display:flex;gap:8px;align-items:flex-start;font-size:0.83em;padding:8px 10px;background:var(--bg3);border-radius:6px;">
+                <span style="flex-shrink:0;padding:2px 6px;border-radius:4px;font-size:0.78em;font-weight:600;
+                    {% if critique.severity == 'high' %}background:rgba(212,64,64,0.15);color:var(--red);
+                    {% elif critique.severity == 'medium' %}background:rgba(224,128,64,0.15);color:var(--orange);
+                    {% else %}background:rgba(74,143,224,0.15);color:var(--blue);{% endif %}">
+                    {{ critique.severity|upper }}
+                </span>
+                <div>
+                    <span style="color:var(--text3);font-size:0.9em;">[{{ critique.section }}]</span>
+                    {{ critique.issue }}
+                    {% if critique.suggestion %}
+                    <div style="color:var(--text3);margin-top:2px;">&#128161; {{ critique.suggestion }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+    </div>
+
+    {{ info_tip("Отчёт проверен панелью AI-экспертов (GPT-5.3 Codex). Замечания ранжированы по критичности. Рекомендации учтены при финальной сборке.") }}
+</div>
+{% endif %}

@@ -1,20 +1,22 @@
-"""Website scraper: fetch URL → extract structured text content.
+"""Website scraper: fetch URL -> extract structured text content.
 
-Two-level fetching: requests.get() first, Scrapling StealthyFetcher fallback
-on Cloudflare/403/503/captcha blocks.
+Three-level cascade fetching:
+  1. requests.get()               (fast, 15s timeout)
+  2. Scrapling StealthyFetcher    (headless browser, 30s timeout, Cloudflare bypass)
+  3. Minimal fallback             (title + meta description from whatever HTML we got)
 """
 
 from __future__ import annotations
 
 import logging
 import re
-from typing import Optional
+import time
 from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
 
-# Scrapling — optional dependency
+# Scrapling -- optional dependency
 try:
     from scrapling.fetchers import StealthyFetcher
     SCRAPLING_AVAILABLE = True
@@ -40,6 +42,11 @@ _HEADERS = {
     "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
 }
 
+# Timeouts
+TIMEOUT_REQUESTS = 15   # seconds
+TIMEOUT_SCRAPLING = 30  # seconds
+TIMEOUT_SUBPAGE = 8     # seconds for /about, /contacts, etc.
+
 
 def _is_blocked(status_code: int, body: str) -> bool:
     """Detect Cloudflare / WAF / captcha blocks."""
@@ -53,8 +60,18 @@ def _is_blocked(status_code: int, body: str) -> bool:
     return any(sig in lower for sig in _BLOCK_SIGNATURES)
 
 
-def _fetch_html_scrapling(url: str) -> str:
-    """Fetch HTML via Scrapling StealthyFetcher (headless browser)."""
+def _fetch_requests(url: str, timeout: int = TIMEOUT_REQUESTS) -> tuple[str, int]:
+    """Fetch HTML via requests. Returns (html, status_code)."""
+    resp = requests.get(url, headers=_HEADERS, timeout=timeout, allow_redirects=True)
+    resp.encoding = resp.apparent_encoding or "utf-8"
+    return resp.text, resp.status_code
+
+
+def _fetch_scrapling(url: str, timeout: int = TIMEOUT_SCRAPLING) -> str:
+    """Fetch HTML via Scrapling StealthyFetcher (headless browser).
+
+    Uses timeout parameter for the page load wait.
+    """
     page = StealthyFetcher.fetch(
         url,
         headless=True,
@@ -63,87 +80,161 @@ def _fetch_html_scrapling(url: str) -> str:
         hide_canvas=True,
         network_idle=True,
         disable_resources=True,
+        waiting_time=timeout,
     )
     return page.html_content
 
 
-def _fetch_html(url: str, timeout: int = 15) -> tuple[str, str, list[str]]:
-    """Two-level fetch: requests first, Scrapling fallback on block.
+def _extract_minimal(html: str | None) -> dict:
+    """Extract title + meta description from partial/blocked HTML.
 
-    Returns (html, method, warnings) where method is "requests" or "scrapling".
+    Used as last-resort fallback when full parsing failed.
+    Returns dict with title, description (may be empty strings).
+    """
+    result = {"title": "", "description": ""}
+    if not html:
+        return result
+
+    try:
+        soup = BeautifulSoup(html, "lxml")
+    except Exception:
+        # Even lxml failed -- try html.parser
+        try:
+            soup = BeautifulSoup(html, "html.parser")
+        except Exception:
+            return result
+
+    if soup.title:
+        result["title"] = soup.title.get_text(strip=True)
+
+    meta_desc = soup.find("meta", attrs={"name": "description"})
+    if meta_desc and meta_desc.get("content"):
+        result["description"] = meta_desc["content"].strip()
+
+    if not result["description"]:
+        og_desc = soup.find("meta", attrs={"property": "og:description"})
+        if og_desc and og_desc.get("content"):
+            result["description"] = og_desc["content"].strip()
+
+    return result
+
+
+def _fetch_html(url: str, timeout: int = TIMEOUT_REQUESTS) -> tuple[str, str, list[str]]:
+    """Three-level cascade fetch: requests -> Scrapling -> minimal.
+
+    Returns (html, method, warnings) where method is
+    "requests", "scrapling", or "minimal".
     """
     warnings: list[str] = []
+    last_html: str | None = None  # keep whatever HTML we got for minimal fallback
 
-    # Attempt 1: requests
+    # --- Attempt 1: requests ---
+    t0 = time.monotonic()
     try:
-        resp = requests.get(url, headers=_HEADERS, timeout=timeout, allow_redirects=True)
-        resp.encoding = resp.apparent_encoding or "utf-8"
-        body = resp.text
+        body, status_code = _fetch_requests(url, timeout=timeout)
+        elapsed = time.monotonic() - t0
+        last_html = body
 
-        if not _is_blocked(resp.status_code, body):
-            resp.raise_for_status()
-            return body, "requests", warnings
+        if not _is_blocked(status_code, body):
+            if status_code < 400:
+                logger.info(
+                    "[scrape] OK url=%s method=requests status=%d time=%.2fs",
+                    url, status_code, elapsed,
+                )
+                return body, "requests", warnings
 
-        # Blocked — try fallback
-        block_reason = f"HTTP {resp.status_code}" if resp.status_code in (403, 503) else "Cloudflare/WAF"
-        warnings.append(f"requests заблокирован ({block_reason}), переключаюсь на Scrapling")
-        logger.info("Blocked by %s on %s, trying Scrapling fallback", block_reason, url)
+        # Blocked
+        block_reason = (
+            f"HTTP {status_code}" if status_code in (403, 503)
+            else "Cloudflare/WAF"
+        )
+        warnings.append(
+            f"requests заблокирован ({block_reason}, {elapsed:.2f}s), "
+            f"переключаюсь на Scrapling"
+        )
+        logger.info(
+            "[scrape] BLOCKED url=%s method=requests reason=%s status=%d time=%.2fs",
+            url, block_reason, status_code, elapsed,
+        )
 
-    except requests.exceptions.RequestException as e:
-        warnings.append(f"requests ошибка ({e}), переключаюсь на Scrapling")
-        logger.info("Request failed for %s: %s, trying Scrapling fallback", url, e)
+    except requests.exceptions.RequestException as exc:
+        elapsed = time.monotonic() - t0
+        warnings.append(f"requests ошибка ({exc}, {elapsed:.2f}s), переключаюсь на Scrapling")
+        logger.info(
+            "[scrape] FAIL url=%s method=requests error=%s time=%.2fs",
+            url, exc, elapsed,
+        )
 
-    # Attempt 2: Scrapling
+    # --- Attempt 2: Scrapling ---
     if not SCRAPLING_AVAILABLE:
-        logger.warning("Scrapling not installed — cannot bypass block for %s", url)
-        warnings.append("Scrapling не установлен — fallback недоступен (pip install scrapling)")
-        raise RuntimeError(
-            f"Сайт заблокировал запрос, а Scrapling не установлен. "
-            f"Установите: pip install scrapling && scrapling install"
+        logger.warning(
+            "[scrape] Scrapling not installed -- fallback unavailable for %s", url
         )
-
-    try:
-        html = _fetch_html_scrapling(url)
-        warnings.append("Загружено через Scrapling StealthyFetcher")
-        return html, "scrapling", warnings
-    except Exception as e:
-        warnings.append(f"Scrapling тоже не смог загрузить: {e}")
-        raise RuntimeError(
-            f"Оба метода не смогли загрузить {url}. "
-            f"requests: см. предупреждения; Scrapling: {e}"
+        warnings.append(
+            "Scrapling не установлен -- fallback недоступен "
+            "(pip install scrapling && scrapling install)"
         )
+    else:
+        t1 = time.monotonic()
+        try:
+            html = _fetch_scrapling(url, timeout=TIMEOUT_SCRAPLING)
+            elapsed = time.monotonic() - t1
+            logger.info(
+                "[scrape] OK url=%s method=scrapling time=%.2fs", url, elapsed,
+            )
+            warnings.append(f"Загружено через Scrapling StealthyFetcher ({elapsed:.2f}s)")
+            return html, "scrapling", warnings
+
+        except Exception as exc:
+            elapsed = time.monotonic() - t1
+            warnings.append(f"Scrapling тоже не смог загрузить ({exc}, {elapsed:.2f}s)")
+            logger.warning(
+                "[scrape] FAIL url=%s method=scrapling error=%s time=%.2fs",
+                url, exc, elapsed,
+            )
+
+    # --- Attempt 3: minimal fallback ---
+    # Extract whatever we can from the last HTML we received (even if blocked)
+    minimal = _extract_minimal(last_html)
+    if minimal["title"] or minimal["description"]:
+        logger.info(
+            "[scrape] MINIMAL url=%s title=%r desc_len=%d",
+            url, minimal["title"][:60], len(minimal["description"]),
+        )
+        warnings.append(
+            "Полный скрапинг не удался. Извлечены только title и meta description "
+            "(метод minimal)."
+        )
+        # Build a synthetic HTML with just the extracted data so that the caller
+        # can parse it uniformly.
+        synthetic = (
+            f"<html><head><title>{minimal['title']}</title>"
+            f'<meta name="description" content="{minimal["description"]}">'
+            f"</head><body><p>{minimal['description']}</p></body></html>"
+        )
+        return synthetic, "minimal", warnings
+
+    # Total failure -- nothing useful at all
+    logger.error(
+        "[scrape] TOTAL FAIL url=%s -- all 3 methods exhausted", url,
+    )
+    raise RuntimeError(
+        f"Все 3 метода скрапинга не смогли загрузить {url}: "
+        f"requests, Scrapling, minimal. "
+        f"Подробности: {'; '.join(warnings)}"
+    )
 
 
-def scrape_website(url: str, timeout: int = 15) -> dict:
-    """Scrape a website and return structured content.
-
-    Returns dict with keys: url, domain, title, description, headings, text,
-    contacts, social_links, pages_text, scrape_method, scrape_warnings.
-    """
-    if not url.startswith("http"):
-        url = "https://" + url
-
-    result = {
-        "url": url,
-        "domain": urlparse(url).netloc,
+def _parse_html(html: str, url: str) -> dict:
+    """Parse HTML into structured data (title, text, contacts, social links)."""
+    result: dict = {
         "title": "",
         "description": "",
         "headings": [],
         "text": "",
         "contacts": {},
         "social_links": [],
-        "pages_text": {},
-        "scrape_method": "requests",
-        "scrape_warnings": [],
     }
-
-    try:
-        html, method, warnings = _fetch_html(url, timeout=timeout)
-        result["scrape_method"] = method
-        result["scrape_warnings"] = warnings
-    except Exception as e:
-        result["error"] = str(e)
-        return result
 
     soup = BeautifulSoup(html, "lxml")
 
@@ -176,20 +267,28 @@ def scrape_website(url: str, timeout: int = 15) -> dict:
     body = soup.find("body")
     if body:
         text = body.get_text(separator="\n", strip=True)
-        # Collapse whitespace
         text = re.sub(r"\n{3,}", "\n\n", text)
         result["text"] = text[:8000]
 
     # Contacts: emails, phones
     text_full = body.get_text() if body else ""
-    emails = set(re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", text_full))
-    phones = set(re.findall(r"(?:\+7|8)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}", text_full))
+    emails = set(
+        re.findall(
+            r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", text_full
+        )
+    )
+    phones = set(
+        re.findall(
+            r"(?:\+7|8)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}",
+            text_full,
+        )
+    )
     if emails:
         result["contacts"]["emails"] = list(emails)[:5]
     if phones:
         result["contacts"]["phones"] = list(phones)[:5]
 
-    # Address (look for common patterns)
+    # Address
     addr_el = soup.find(string=re.compile(r"(?:г\.|ул\.|пр\.|наб\.|пл\.)"))
     if addr_el:
         result["contacts"]["address_hint"] = addr_el.strip()[:200]
@@ -207,26 +306,95 @@ def scrape_website(url: str, timeout: int = 15) -> dict:
         for platform, pattern in social_patterns.items():
             m = re.search(pattern, href, re.I)
             if m:
-                result["social_links"].append({"platform": platform, "handle": m.group(1), "url": href})
+                result["social_links"].append(
+                    {"platform": platform, "handle": m.group(1), "url": href}
+                )
 
-    # Try to fetch /about, /contacts pages for more context
-    for subpage in ["/about", "/o-nas", "/contacts", "/kontakty", "/company", "/privacy", "/oferta", "/legal", "/requisites", "/rekvizity"]:
-        sub_url = urljoin(url, subpage)
-        try:
-            sub_html, sub_method, sub_warnings = _fetch_html(sub_url, timeout=8)
-            result["scrape_warnings"].extend(sub_warnings)
-            if sub_method != "requests":
-                result["scrape_method"] = sub_method  # escalate to strongest method used
-            s2 = BeautifulSoup(sub_html, "lxml")
-            for tag in s2.find_all(["script", "style", "noscript"]):
-                tag.decompose()
-            body2 = s2.find("body")
-            if body2:
-                t2 = body2.get_text(separator="\n", strip=True)
-                t2 = re.sub(r"\n{3,}", "\n\n", t2)
-                if len(t2) > 100:
-                    result["pages_text"][subpage] = t2[:4000]
-        except Exception:
-            pass
+    return result
+
+
+def scrape_website(url: str, timeout: int = TIMEOUT_REQUESTS) -> dict:
+    """Scrape a website and return structured content.
+
+    Three-level cascade:
+      1. requests (fast, 15s)
+      2. Scrapling StealthyFetcher (headless, 30s, Cloudflare bypass)
+      3. Minimal fallback (title + meta description only)
+
+    Returns dict with keys: url, domain, title, description, headings, text,
+    contacts, social_links, pages_text, scrape_method, scrape_warnings.
+    """
+    if not url.startswith("http"):
+        url = "https://" + url
+
+    result: dict = {
+        "url": url,
+        "domain": urlparse(url).netloc,
+        "title": "",
+        "description": "",
+        "headings": [],
+        "text": "",
+        "contacts": {},
+        "social_links": [],
+        "pages_text": {},
+        "scrape_method": "requests",
+        "scrape_warnings": [],
+    }
+
+    total_start = time.monotonic()
+
+    # --- Main page fetch (3-level cascade) ---
+    try:
+        html, method, warnings = _fetch_html(url, timeout=timeout)
+        result["scrape_method"] = method
+        result["scrape_warnings"] = warnings
+    except Exception as exc:
+        result["error"] = str(exc)
+        return result
+
+    # --- Parse the fetched HTML ---
+    parsed = _parse_html(html, url)
+    result.update({
+        "title": parsed["title"],
+        "description": parsed["description"],
+        "headings": parsed["headings"],
+        "text": parsed["text"],
+        "contacts": parsed["contacts"],
+        "social_links": parsed["social_links"],
+    })
+
+    # --- Subpages (only if main method is not "minimal") ---
+    if result["scrape_method"] != "minimal":
+        subpages = [
+            "/about", "/o-nas", "/contacts", "/kontakty", "/company",
+            "/privacy", "/oferta", "/legal", "/requisites", "/rekvizity",
+        ]
+        for subpage in subpages:
+            sub_url = urljoin(url, subpage)
+            try:
+                sub_html, sub_method, sub_warnings = _fetch_html(
+                    sub_url, timeout=TIMEOUT_SUBPAGE
+                )
+                result["scrape_warnings"].extend(sub_warnings)
+                if sub_method != "requests":
+                    # Escalate to strongest method used
+                    result["scrape_method"] = sub_method
+                s2 = BeautifulSoup(sub_html, "lxml")
+                for tag in s2.find_all(["script", "style", "noscript"]):
+                    tag.decompose()
+                body2 = s2.find("body")
+                if body2:
+                    t2 = body2.get_text(separator="\n", strip=True)
+                    t2 = re.sub(r"\n{3,}", "\n\n", t2)
+                    if len(t2) > 100:
+                        result["pages_text"][subpage] = t2[:4000]
+            except Exception:
+                pass  # subpage failures are non-critical
+
+    total_elapsed = time.monotonic() - total_start
+    logger.info(
+        "[scrape] DONE url=%s method=%s total_time=%.2fs text_len=%d",
+        url, result["scrape_method"], total_elapsed, len(result.get("text", "")),
+    )
 
     return result

@@ -1,199 +1,206 @@
-"""Step 5: Deep analysis with GPT-5.2 Pro — the main brain.
+"""Step 5: Deep analysis — разбит на секции (T3).
 
-Takes all collected real data and produces the full ReportData JSON.
-v2.0: adds calc_traces, lifecycle, sales_channels, methodology.
+Вместо одного гигантского запроса к LLM, анализ разделён на 7 независимых
+функций, каждая со своим промптом и JSON-схемой ответа. Это даёт:
+- Надёжность: короткие ответы не ломают JSON
+- Прозрачность: видно, в какой секции LLM ошибся
+- Параллельное выполнение через ThreadPoolExecutor (T18)
+
+v3.1: параллельный секционный пайплайн
 """
 
 from __future__ import annotations
 
 import json
-from typing import Optional
+import logging
+import time
+import concurrent.futures
+from typing import Any, Callable, Optional
 
 from app.pipeline.llm_client import call_llm_json
 
+logger = logging.getLogger(__name__)
 
-SYSTEM = """Ты — ведущий бизнес-аналитик (pipeline v2.0). Тебе предоставлены РЕАЛЬНЫЕ данные из ФНС,
-с сайта компании и результаты исследования рынка. Твоя задача — провести глубокий
-анализ и сформировать структурированный отчёт.
+
+# ── Общий системный контекст для всех секций ──
+
+_BASE_SYSTEM = """Ты — ведущий бизнес-аналитик (pipeline v3.0). Тебе предоставлены РЕАЛЬНЫЕ данные.
 
 ВАЖНО:
-- Используй РЕАЛЬНЫЕ финансовые данные из ФНС, не выдумывай
-- Если данных нет — пометь в open_questions, не фантазируй
-- Конкуренты уже определены и подтверждены пользователем
+- Используй РЕАЛЬНЫЕ данные, не выдумывай
+- Если данных нет — верни null / пустой список, не фантазируй
 - Все суммы в тысячах рублей если не указано иное
 - ВСЁ на русском языке
-- Ответ — ТОЛЬКО валидный JSON
-
-## Правила v2.0
-
-### Calc-trace (прозрачность вычислений)
-Для КАЖДОГО расчётного показателя добавь запись в calc_traces:
-- metric_name: название
-- value: итоговое значение
-- formula: формула расчёта
-- inputs: входные данные (dict)
-- sources: список источников
-- confidence: "FACT" (прямые данные), "CALC" (вычислено из фактов), "ESTIMATE" (с допущениями)
-Правило: если хотя бы один вход = ESTIMATE, весь результат = ESTIMATE.
-
-### Жизненный цикл конкурентов
-Для каждого конкурента определи стадию:
-- startup: убытки, рост >50%, фандрейзинг
-- growth: рост >20%, CAPEX
-- investment: стройка заводов, M&A, крупные CAPEX → ЗАПРЕТ на вывод о «неэффективности»
-- mature: стабильная маржа, low CAPEX
-
-### Каналы продаж
-Для каждого конкурента проверь 7-12 каналов:
-Сайт D2C, WB, Ozon, Собственные точки, B2B/опт, HoReCa, Lamoda и др.
-"канал отсутствует" = проверено 3+ источника. "стать партнёром" на сайте = канал ЕСТЬ.
-
-### HR-протокол
-- 0 вакансий на HH ≠ 0 найма (агентства, аффилированные юрлица, TG-каналы)
-- Зарплаты: gross + KPI 15-20% для позиций с переменной частью
-
-### B2B_B2C_HYBRID
-Если тип = HYBRID: метрики B2C и B2B считать РАЗДЕЛЬНО.
-Средний чек, LTV, CAC — отдельно для каждого канала."""
+- Ответ — ТОЛЬКО валидный JSON (без markdown, без ```)"""
 
 
-def run(
+# ── Вспомогательные функции ──
+
+
+def _prepare_context(
     scraped: dict,
     company_info: dict,
     fns_data: dict,
-    competitors: list[dict],
-    market_info: dict,
-    deep_models: Optional[dict] = None,
-    marketplace_data: Optional[dict] = None,
-) -> dict:
-    """Run deep analysis with GPT-5.2 Pro.
+    competitors: list[dict] | None = None,
+    market_info: dict | None = None,
+) -> dict[str, str]:
+    """Подготовить текстовые блоки контекста из сырых данных.
 
-    Combines all real data into a comprehensive report structure.
-    v2.0: accepts deep_models (lifecycle, channels) and marketplace_data.
+    Возвращает dict с ключами: company_text, fin_text, founders_text,
+    director_text, comp_text, social_info, aff_text.
     """
-    # Prepare financial summary
+    egrul = fns_data.get("egrul", {})
+
+    # Финансы
     fin_text = "Нет данных из ФНС"
     if fns_data.get("financials"):
         fin_lines = []
         for f in fns_data["financials"]:
             fin_lines.append(
-                f"  {f['year']}: выручка={f.get('revenue','?')} тыс., "
-                f"прибыль={f.get('net_profit','?')} тыс., "
-                f"активы={f.get('assets','?')} тыс."
+                f"  {f['year']}: выручка={f.get('revenue', '?')} тыс., "
+                f"прибыль={f.get('net_profit', '?')} тыс., "
+                f"активы={f.get('assets', '?')} тыс."
             )
         fin_text = "\n".join(fin_lines)
 
-    # Prepare founders summary
+    # Учредители
     founders_text = "Нет данных"
-    egrul = fns_data.get("egrul", {})
     if egrul.get("founders"):
         f_lines = []
         for f in egrul["founders"]:
-            f_lines.append(f"  {f.get('name','')} — доля: {f.get('share_percent','')}%")
+            f_lines.append(f"  {f.get('name', '')} — доля: {f.get('share_percent', '')}%")
         founders_text = "\n".join(f_lines)
 
     director = egrul.get("director", {})
     director_text = director.get("name", "Нет данных")
 
-    # Prepare competitors summary
+    # Конкуренты
     comp_text = ""
-    for i, c in enumerate(competitors, 1):
-        comp_text += f"\n{i}. {c.get('name','')} — {c.get('description','')}"
-        if c.get("website"):
-            comp_text += f" ({c['website']})"
-        comp_text += f" [угроза: {c.get('threat_level','med')}]"
+    if competitors:
+        for i, c in enumerate(competitors, 1):
+            comp_text += f"\n{i}. {c.get('name', '')} — {c.get('description', '')}"
+            if c.get("website"):
+                comp_text += f" ({c['website']})"
+            comp_text += f" [угроза: {c.get('threat_level', 'med')}]"
 
-    # Prepare affiliates
-    aff_text = "Нет данных"
-    if fns_data.get("affiliates"):
-        a_lines = []
-        for a in fns_data["affiliates"][:10]:
-            a_lines.append(f"  {a.get('name','')} (ИНН: {a.get('inn','')}) — {a.get('connection','')}")
-        aff_text = "\n".join(a_lines)
-
+    # Соцсети
     social_info = ""
     for s in scraped.get("social_links", []):
         social_info += f"  {s['platform']}: {s.get('handle', '')} ({s.get('url', '')})\n"
 
-    axis_x = market_info.get("axis_x", "Цена")
-    axis_y = market_info.get("axis_y", "Качество")
+    # Аффилированные лица
+    aff_text = "Нет данных"
+    if fns_data.get("affiliates"):
+        a_lines = []
+        for a in fns_data["affiliates"][:10]:
+            a_lines.append(
+                f"  {a.get('name', '')} (ИНН: {a.get('inn', '')}) — {a.get('connection', '')}"
+            )
+        aff_text = "\n".join(a_lines)
 
-    # v2.0: deep models context
-    deep_models_text = ""
-    if deep_models:
-        if deep_models.get("lifecycles"):
-            deep_models_text += "\n## Предварительные данные жизненного цикла\n"
-            for name, lc in deep_models["lifecycles"].items():
-                deep_models_text += f"  {name}: стадия={lc.get('stage','?')}, основание={', '.join(lc.get('evidence',[]))}\n"
-        if deep_models.get("channels"):
-            deep_models_text += "\n## Предварительные данные каналов продаж\n"
-            for name, channels in deep_models["channels"].items():
-                ch_list = [f"{ch['channel_name']}={'да' if ch.get('exists') else 'нет' if ch.get('exists') is False else '?'}" for ch in channels]
-                deep_models_text += f"  {name}: {', '.join(ch_list)}\n"
+    # Текст о компании (компактный блок для промптов)
+    company_text = (
+        f"Название: {company_info.get('name', '')}\n"
+        f"Юрлицо: {egrul.get('full_name', company_info.get('legal_name', ''))}\n"
+        f"ИНН: {egrul.get('inn', '')}\n"
+        f"ОГРН: {egrul.get('ogrn', '')}\n"
+        f"ОКВЭД: {egrul.get('okved', '')} — {egrul.get('okved_name', '')}\n"
+        f"Дата регистрации: {egrul.get('reg_date', '')}\n"
+        f"Уставный капитал: {egrul.get('capital', '')}\n"
+        f"Директор: {director_text}\n"
+        f"Тип бизнеса: {company_info.get('business_type_guess', '')}\n"
+        f"Описание: {company_info.get('description', '')}\n"
+        f"Сайт: {scraped.get('url', '')}"
+    )
 
-    # v2.0: marketplace data context
-    marketplace_text = ""
-    if marketplace_data:
-        marketplace_text = f"\n## Данные маркетплейсов\n{json.dumps(marketplace_data, ensure_ascii=False, indent=2)[:3000]}\n"
+    return {
+        "company_text": company_text,
+        "fin_text": fin_text,
+        "founders_text": founders_text,
+        "director_text": director_text,
+        "comp_text": comp_text,
+        "social_info": social_info,
+        "aff_text": aff_text,
+    }
 
-    prompt = f"""Проведи полный бизнес-анализ на основе РЕАЛЬНЫХ данных.
+
+def _safe_llm_call(
+    prompt: str,
+    section_name: str,
+    system: str = _BASE_SYSTEM,
+    provider: str = "openai",
+    temperature: float = 0.4,
+    max_tokens: int = 6000,
+) -> dict:
+    """Вызвать LLM с retry при ошибке JSON.
+
+    При первой ошибке — retry с указанием ошибки в промпте.
+    При второй ошибке — вернуть пустой dict и залогировать.
+    """
+    try:
+        result = call_llm_json(
+            prompt, provider=provider, system=system,
+            temperature=temperature, max_tokens=max_tokens,
+        )
+        logger.info(f"[step5:{section_name}] LLM вернул JSON, {len(json.dumps(result, ensure_ascii=False))} символов")
+        return result
+    except RuntimeError as e:
+        logger.warning(f"[step5:{section_name}] Первая попытка: {e}")
+
+    # Retry: добавляем в промпт указание на ошибку
+    retry_prompt = (
+        prompt + "\n\n## ВНИМАНИЕ: предыдущий ответ содержал невалидный JSON. "
+        "Верни ТОЛЬКО валидный JSON без markdown-форматирования, без ``` блоков."
+    )
+    try:
+        result = call_llm_json(
+            retry_prompt, provider=provider, system=system,
+            temperature=0.2, max_tokens=max_tokens,
+        )
+        logger.info(f"[step5:{section_name}] Retry успешен")
+        return result
+    except RuntimeError as e:
+        logger.error(f"[step5:{section_name}] Retry провален: {e}")
+        return {}
+
+
+# ════════════════════════════════════════════════════════
+# Секция 1: Рынок (market, regulatory_trends, tech_trends)
+# ════════════════════════════════════════════════════════
+
+def analyze_market(
+    scraped: dict,
+    company_info: dict,
+    fns_data: dict,
+    market_info: dict,
+) -> dict:
+    """Анализ рынка: размер, тренды, регулирование, технологии.
+
+    Возвращает dict с ключами: market, regulatory_trends, tech_trends.
+    """
+    ctx = _prepare_context(scraped, company_info, fns_data)
+    market_name = market_info.get("market_name", "")
+    market_desc = market_info.get("market_description", "")
+
+    prompt = f"""Проведи анализ рынка на основе данных.
 
 ## Компания
-
-Название: {company_info.get('name', '')}
-Юрлицо: {egrul.get('full_name', company_info.get('legal_name', ''))}
-ИНН: {egrul.get('inn', '')}
-ОГРН: {egrul.get('ogrn', '')}
-ОКВЭД: {egrul.get('okved', '')} — {egrul.get('okved_name', '')}
-Дата регистрации: {egrul.get('reg_date', '')}
-Уставный капитал: {egrul.get('capital', '')}
-Директор: {director_text}
-Тип бизнеса: {company_info.get('business_type_guess', '')}
-Описание: {company_info.get('description', '')}
-
-Сайт: {scraped.get('url', '')}
-Соцсети:
-{social_info}
-
-## Учредители (ЕГРЮЛ)
-{founders_text}
-
-## Аффилированные лица
-{aff_text}
-
-## Финансы из ФНС (тыс. руб.)
-{fin_text}
+{ctx['company_text']}
 
 ## Рынок
-Рынок: {market_info.get('market_name', '')}
-Описание: {market_info.get('market_description', '')}
+Название: {market_name}
+Описание: {market_desc}
 
-## Подтверждённые конкуренты
-{comp_text}
-{deep_models_text}
-{marketplace_text}
-
-## Текст сайта
-{scraped.get('text', '')[:5000]}
+## Текст сайта (фрагмент)
+{scraped.get('text', '')[:3000]}
 
 ## Задание
 
-Верни JSON-объект со ВСЕМИ полями ниже.
+Верни JSON:
 
 {{
-  "company": {{
-    "name": "{company_info.get('name', '')}",
-    "legal_name": "{egrul.get('full_name', '')}",
-    "inn": "{egrul.get('inn', '')}",
-    "okved": "{egrul.get('okved', '')}",
-    "business_type": "{company_info.get('business_type_guess', 'B2B_SERVICE')}",
-    "address": "адрес",
-    "website": "{scraped.get('url', '')}",
-    "description": "Что делает компания, 2-3 предложения",
-    "badges": ["badge1", "badge2", "badge3"]
-  }},
   "market": {{
-    "market_name": "{market_info.get('market_name', '')}",
+    "market_name": "{market_name}",
     "market_size": "XX млрд руб.",
     "growth_rate": "+X% CAGR",
     "data_points": [
@@ -205,16 +212,106 @@ def run(
     "trends": ["тренд 1", "тренд 2", "тренд 3", "тренд 4"],
     "sources": ["источник 1", "источник 2"]
   }},
+  "regulatory_trends": [
+    {{"date": "2024", "title": "Название", "description": "Описание", "color": "gold"}},
+    {{"date": "2025", "title": "Название", "description": "Описание", "color": "blue"}}
+  ],
+  "tech_trends": ["технологический тренд 1", "тренд 2", "тренд 3"]
+}}
+
+## Правила
+1. Размер рынка и темп роста — реалистичные для {market_name} в России
+2. Data points — 4 года, данные рынка в млрд руб.
+3. Тренды — 4 штуки, конкретные, актуальные
+4. Regulatory_trends — 2-4 законодательных/регуляторных изменения
+5. Tech_trends — 3-4 технологических тренда отрасли
+6. Если данных нет — используй отраслевые знания, но источники пометь как оценочные"""
+
+    result = _safe_llm_call(prompt, "market", max_tokens=4000)
+    return result
+
+
+# ════════════════════════════════════════════════════════
+# Секция 2: Конкуренты (обогащение)
+# ════════════════════════════════════════════════════════
+
+def analyze_competitors_deep(
+    scraped: dict,
+    company_info: dict,
+    competitors: list[dict],
+    market_info: dict,
+    deep_models: Optional[dict] = None,
+    marketplace_data: Optional[dict] = None,
+) -> dict:
+    """Глубокий анализ конкурентов: radar, lifecycle, каналы продаж.
+
+    Возвращает dict с ключами: competitors, radar_dimensions.
+    """
+    axis_x = market_info.get("axis_x", "Цена")
+    axis_y = market_info.get("axis_y", "Качество")
+
+    # Подготовка текста конкурентов
+    comp_text = ""
+    for i, c in enumerate(competitors, 1):
+        comp_text += f"\n{i}. {c.get('name', '')} — {c.get('description', '')}"
+        if c.get("website"):
+            comp_text += f" ({c['website']})"
+        comp_text += f" [угроза: {c.get('threat_level', 'med')}]"
+
+    # Контекст deep_models (lifecycle, channels из step1c)
+    deep_models_text = ""
+    if deep_models:
+        if deep_models.get("lifecycles"):
+            deep_models_text += "\n## Предварительные данные жизненного цикла\n"
+            for name, lc in deep_models["lifecycles"].items():
+                deep_models_text += (
+                    f"  {name}: стадия={lc.get('stage', '?')}, "
+                    f"основание={', '.join(lc.get('evidence', []))}\n"
+                )
+        if deep_models.get("channels"):
+            deep_models_text += "\n## Предварительные данные каналов продаж\n"
+            for name, channels in deep_models["channels"].items():
+                ch_list = [
+                    f"{ch['channel_name']}="
+                    f"{'да' if ch.get('exists') else 'нет' if ch.get('exists') is False else '?'}"
+                    for ch in channels
+                ]
+                deep_models_text += f"  {name}: {', '.join(ch_list)}\n"
+
+    # Контекст маркетплейсов (WB, Ozon и т.д.)
+    marketplace_text = ""
+    if marketplace_data:
+        marketplace_text = (
+            f"\n## Данные маркетплейсов\n"
+            f"{json.dumps(marketplace_data, ensure_ascii=False, indent=2)[:3000]}\n"
+        )
+
+    prompt = f"""Обогати данные конкурентов для бизнес-анализа.
+
+## Компания-объект анализа
+Название: {company_info.get('name', '')}
+Тип бизнеса: {company_info.get('business_type_guess', '')}
+
+## Подтверждённые конкуренты
+{comp_text}
+{deep_models_text}
+{marketplace_text}
+
+## Задание
+
+Верни JSON:
+
+{{
   "competitors": [
     {{
-      "name": "Название",
-      "description": "Описание",
+      "name": "Название конкурента",
+      "description": "Краткое описание (2-3 предложения)",
       "website": "https://...",
       "address": "адрес или null",
       "x": 0-100,
       "y": 0-100,
-      "radar_scores": {{"Param1": 1-10, "Param2": 1-10}},
-      "metrics": {{"Метрика1": "значение"}},
+      "radar_scores": {{"Param1": 1-10, "Param2": 1-10, "Param3": 1-10, "Param4": 1-10, "Param5": 1-10, "Param6": 1-10}},
+      "metrics": {{"Выручка": "значение или null", "Сотрудники": "значение или null", "Год основания": "ГГГГ или null"}},
       "threat_level": "high/med/low",
       "lifecycle": {{
         "stage": "startup/growth/investment/mature",
@@ -232,10 +329,77 @@ def run(
       ]
     }}
   ],
-  "radar_dimensions": ["Param1", "Param2", "Param3", "Param4", "Param5", "Param6"],
-  "financials": {json.dumps(fns_data.get('financials', []), ensure_ascii=False) if fns_data.get('financials') else '[{{"year": 2024, "revenue": null, "net_profit": null, "assets": null, "equity": null, "employees": null}}]'},
+  "radar_dimensions": ["Param1", "Param2", "Param3", "Param4", "Param5", "Param6"]
+}}
+
+## Правила
+1. ИСПОЛЬЗУЙ ВСЕХ конкурентов из списка выше — не пропускай и не добавляй новых
+2. x, y — координаты на перцептуальной карте (ось X = {axis_x}, ось Y = {axis_y})
+3. radar_scores — 6 параметров, одинаковые для ВСЕХ конкурентов
+4. radar_dimensions — те же 6 параметров (названия)
+5. lifecycle — стадия + обоснование. Если CAPEX/стройка — stage=investment
+6. sales_channels — 7 каналов минимум. exists=null если неизвестно
+7. Если есть предварительные данные lifecycle/channels — используй их, но можешь уточнить"""
+
+    result = _safe_llm_call(prompt, "competitors", max_tokens=8000)
+    return result
+
+
+# ════════════════════════════════════════════════════════
+# Секция 3: Компания (swot, digital, company, market_share)
+# ════════════════════════════════════════════════════════
+
+def analyze_company(
+    scraped: dict,
+    company_info: dict,
+    fns_data: dict,
+    competitors: list[dict],
+) -> dict:
+    """Анализ компании: SWOT, digital-аудит, описание, доля рынка.
+
+    Возвращает dict с ключами: company, swot, digital, market_share.
+    """
+    ctx = _prepare_context(scraped, company_info, fns_data, competitors)
+    egrul = fns_data.get("egrul", {})
+
+    # Имена конкурентов для market_share
+    comp_names = [c.get("name", f"Конкурент {i+1}") for i, c in enumerate(competitors)]
+
+    prompt = f"""Проведи анализ компании: SWOT, digital-аудит, описание.
+
+## Компания
+{ctx['company_text']}
+
+## Соцсети
+{ctx['social_info']}
+
+## Финансы из ФНС (тыс. руб.)
+{ctx['fin_text']}
+
+## Конкуренты (для контекста market_share)
+{ctx['comp_text']}
+
+## Текст сайта (фрагмент)
+{scraped.get('text', '')[:4000]}
+
+## Задание
+
+Верни JSON:
+
+{{
+  "company": {{
+    "name": "{company_info.get('name', '')}",
+    "legal_name": "{egrul.get('full_name', '')}",
+    "inn": "{egrul.get('inn', '')}",
+    "okved": "{egrul.get('okved', '')}",
+    "business_type": "{company_info.get('business_type_guess', 'B2B_SERVICE')}",
+    "address": "адрес из данных",
+    "website": "{scraped.get('url', '')}",
+    "description": "Что делает компания, 2-3 предложения на основе данных сайта",
+    "badges": ["badge1", "badge2", "badge3"]
+  }},
   "swot": {{
-    "strengths": ["сила 1", "сила 2", "сила 3", "сила 4"],
+    "strengths": ["сила 1 (с цифрами)", "сила 2", "сила 3", "сила 4"],
     "weaknesses": ["слабость 1", "слабость 2", "слабость 3", "слабость 4"],
     "opportunities": ["возм. 1", "возм. 2", "возм. 3", "возм. 4"],
     "threats": ["угроза 1", "угроза 2", "угроза 3", "угроза 4"]
@@ -248,35 +412,150 @@ def run(
     "monthly_traffic": число
   }},
   "market_share": {{
-    "Компания": процент,
-    "Конкурент1": процент,
+    "{company_info.get('name', 'Компания')}": процент,
+    {', '.join(f'"{n}": процент' for n in comp_names[:5])},
     "Другие": процент
-  }},
+  }}
+}}
+
+## Правила
+1. company.description — на основе РЕАЛЬНОГО текста сайта
+2. badges — 3 коротких тега (уникальные характеристики компании)
+3. SWOT — по 4 пункта, конкретные, с цифрами из ФНС где возможно
+4. digital — social_accounts из данных соцсетей выше
+5. market_share — оценочный, в процентах, сумма = 100
+6. Если данных нет — НЕ выдумывай, ставь null"""
+
+    result = _safe_llm_call(prompt, "company", max_tokens=5000)
+    return result
+
+
+# ════════════════════════════════════════════════════════
+# Секция 4: Стратегия (recommendations, kpi, scenarios, timeline)
+# ════════════════════════════════════════════════════════
+
+def analyze_strategy(
+    scraped: dict,
+    company_info: dict,
+    fns_data: dict,
+    competitors: list[dict],
+) -> dict:
+    """Стратегический анализ: рекомендации, KPI, сценарии.
+
+    Возвращает dict с ключами: recommendations, kpi_benchmarks, scenarios,
+    implementation_timeline.
+    """
+    ctx = _prepare_context(scraped, company_info, fns_data, competitors)
+    bt = company_info.get("business_type_guess", "B2B_SERVICE")
+
+    # Финансы для сценариев
+    fin_json = "null"
+    if fns_data.get("financials"):
+        fin_json = json.dumps(fns_data["financials"], ensure_ascii=False)
+
+    prompt = f"""Разработай стратегию для компании.
+
+## Компания
+{ctx['company_text']}
+
+## Финансы из ФНС (тыс. руб.)
+{ctx['fin_text']}
+
+## Конкуренты
+{ctx['comp_text']}
+
+## Тип бизнеса
+{bt}
+
+## Задание
+
+Верни JSON:
+
+{{
   "recommendations": [
     {{
       "title": "Рекомендация",
-      "description": "Подробное описание",
+      "description": "Подробное описание (2-4 предложения)",
       "priority": "high/medium/low",
       "timeline": "Q1-Q2 2026",
       "expected_impact": "+X% метрика"
     }}
   ],
   "kpi_benchmarks": [
-    {{"name": "KPI", "current": число_или_null, "benchmark": число, "unit": "ед."}}
+    {{"name": "KPI название", "current": число_или_null, "benchmark": число, "unit": "ед."}}
   ],
   "scenarios": [
-    {{"name": "optimistic", "label": "Оптимистичный", "metrics": {{"Выручка, тыс.": число}}}},
-    {{"name": "base", "label": "Базовый", "metrics": {{"Выручка, тыс.": число}}}},
-    {{"name": "pessimistic", "label": "Пессимистичный", "metrics": {{"Выручка, тыс.": число}}}}
+    {{"name": "optimistic", "label": "Оптимистичный", "metrics": {{"Выручка, тыс. руб.": число, "Прибыль, тыс. руб.": число, "Сотрудники": число}}}},
+    {{"name": "base", "label": "Базовый", "metrics": {{"Выручка, тыс. руб.": число, "Прибыль, тыс. руб.": число, "Сотрудники": число}}}},
+    {{"name": "pessimistic", "label": "Пессимистичный", "metrics": {{"Выручка, тыс. руб.": число, "Прибыль, тыс. руб.": число, "Сотрудники": число}}}}
   ],
-  "open_questions": ["вопрос 1", "вопрос 2"],
-  "glossary": {{"Термин": "Определение"}},
-  "founders": [
-    {{"name": "ФИО", "role": "Должность", "share": "X%", "company": "ООО «...»", "social": {{}}}}
-  ],
-  "opinions": [
-    {{"author": "Имя", "role": "Должность", "quote": "Цитата", "date": "Месяц Год", "source": "Источник"}}
-  ],
+  "implementation_timeline": [
+    {{"date": "Q1 2026", "title": "Шаг 1", "description": "Описание", "color": "gold"}},
+    {{"date": "Q2 2026", "title": "Шаг 2", "description": "Описание", "color": "blue"}}
+  ]
+}}
+
+## Правила
+1. Рекомендации — 5-6 штук, приоритизированные (минимум 2 high)
+2. KPI — 6-8, релевантных типу бизнеса ({bt})
+3. Сценарии — 3, с 3-5 метриками, основанных на реальной выручке из ФНС
+4. Реальные финансы: {fin_json}
+5. implementation_timeline — 4-6 шагов по кварталам
+6. Если тип HYBRID — метрики B2C и B2B РАЗДЕЛЬНО в kpi_benchmarks"""
+
+    result = _safe_llm_call(prompt, "strategy", max_tokens=5000)
+    return result
+
+
+# ════════════════════════════════════════════════════════
+# Секция 5: Приложения (glossary, methodology, calc_traces, open_questions)
+# ════════════════════════════════════════════════════════
+
+def analyze_appendix(
+    company_info: dict,
+    fns_data: dict,
+    market_info: dict,
+) -> dict:
+    """Приложения: глоссарий, методология, calc-traces, открытые вопросы.
+
+    Возвращает dict с ключами: glossary, methodology, calc_traces, open_questions.
+    """
+    bt = company_info.get("business_type_guess", "B2B_SERVICE")
+    market_name = market_info.get("market_name", "")
+
+    # Подготовка данных ФНС для calc_traces
+    fin_json = "null"
+    if fns_data.get("financials"):
+        fin_json = json.dumps(fns_data["financials"], ensure_ascii=False)
+
+    prompt = f"""Сформируй приложения к бизнес-анализу.
+
+## Контекст
+Компания: {company_info.get('name', '')}
+Тип бизнеса: {bt}
+Рынок: {market_name}
+Финансы ФНС: {fin_json}
+
+## Задание
+
+Верни JSON:
+
+{{
+  "glossary": {{
+    "Термин1": "Определение и формула (если есть)",
+    "Термин2": "Определение",
+    "EBITDA": "...",
+    "ROE": "...",
+    "LTV": "...",
+    "CAC": "...",
+    "CAGR": "...",
+    "RevPASH": "..."
+  }},
+  "methodology": {{
+    "Источники данных": "ФНС (бухгалтерская отчётность), ЕГРЮЛ, Rusprofile, сайт компании, Яндекс Карты, HH.ru",
+    "Период анализа": "Данные за 2021-2024 гг., анализ проведён в марте 2026",
+    "Допущения": "описание ключевых допущений"
+  }},
   "calc_traces": [
     {{
       "metric_name": "Название показателя",
@@ -287,60 +566,419 @@ def run(
       "confidence": "FACT/CALC/ESTIMATE"
     }}
   ],
-  "methodology": {{
-    "Источники данных": "перечисление",
-    "Период анализа": "даты",
-    "Допущения": "описание"
+  "open_questions": ["вопрос 1 (что нужно уточнить)", "вопрос 2"]
+}}
+
+## Правила
+1. glossary — 8-12 терминов, релевантных типу бизнеса ({bt})
+2. methodology — все 3 поля обязательны
+3. calc_traces — минимум 5 записей для ключевых показателей
+4. calc_traces confidence: FACT (данные ФНС), CALC (вычислено из фактов), ESTIMATE (с допущениями)
+5. Правило: если вход = ESTIMATE, результат = ESTIMATE
+6. open_questions — 3-5 вопросов, которые нужно уточнить у компании"""
+
+    result = _safe_llm_call(prompt, "appendix", max_tokens=4000)
+    return result
+
+
+# ════════════════════════════════════════════════════════
+# Секция 6: Фаундеры и мнения
+# ════════════════════════════════════════════════════════
+
+def analyze_opinions(
+    scraped: dict,
+    company_info: dict,
+    fns_data: dict,
+    market_info: dict,
+) -> dict:
+    """Фаундеры компании и мнения лидеров отрасли.
+
+    Возвращает dict с ключами: founders, opinions.
+    """
+    egrul = fns_data.get("egrul", {})
+    market_name = market_info.get("market_name", "")
+
+    # Данные учредителей из ЕГРЮЛ
+    founders_text = "Нет данных"
+    if egrul.get("founders"):
+        f_lines = []
+        for f in egrul["founders"]:
+            f_lines.append(f"  {f.get('name', '')} — доля: {f.get('share_percent', '')}%")
+        founders_text = "\n".join(f_lines)
+
+    director = egrul.get("director", {})
+    director_text = director.get("name", "Нет данных")
+
+    # Аффилированные лица
+    aff_text = "Нет данных"
+    if fns_data.get("affiliates"):
+        a_lines = []
+        for a in fns_data["affiliates"][:10]:
+            a_lines.append(
+                f"  {a.get('name', '')} (ИНН: {a.get('inn', '')}) — {a.get('connection', '')}"
+            )
+        aff_text = "\n".join(a_lines)
+
+    prompt = f"""Сформируй данные о фаундерах и мнения лидеров отрасли.
+
+## Компания
+Название: {company_info.get('name', '')}
+Юрлицо: {egrul.get('full_name', '')}
+Рынок: {market_name}
+
+## Учредители (ЕГРЮЛ)
+{founders_text}
+
+## Директор
+{director_text}
+
+## Аффилированные лица
+{aff_text}
+
+## Задание
+
+Верни JSON:
+
+{{
+  "founders": [
+    {{
+      "name": "ФИО",
+      "role": "Должность (Учредитель / Генеральный директор / ...)",
+      "share": "X%" или null,
+      "company": "{egrul.get('full_name', '')}",
+      "social": {{}}
+    }}
+  ],
+  "opinions": [
+    {{
+      "author": "Имя Фамилия",
+      "role": "Должность, Компания",
+      "quote": "Цитата о рынке/отрасли",
+      "date": "Месяц Год",
+      "source": "Название СМИ"
+    }}
+  ]
+}}
+
+## Правила
+1. founders — используй данные из ЕГРЮЛ выше, директора добавь отдельно
+2. Если доля не указана — share = null
+3. opinions — 3-5 цитат РЕАЛЬНЫХ лидеров рынка «{market_name}»
+4. Цитаты должны быть от реальных людей (руководители крупных компаний отрасли, аналитики)
+5. Если точные цитаты неизвестны — НЕ выдумывай, лучше меньше, но реальные"""
+
+    result = _safe_llm_call(prompt, "opinions", max_tokens=3000)
+    return result
+
+
+# ════════════════════════════════════════════════════════
+# Секция 7: HR-анализ
+# ════════════════════════════════════════════════════════
+
+def analyze_hr(
+    scraped: dict,
+    company_info: dict,
+    fns_data: dict,
+) -> dict:
+    """HR-анализ: вакансии, зарплаты, структура.
+
+    Возвращает dict с ключом: hr_data.
+    """
+    ctx = _prepare_context(scraped, company_info, fns_data)
+    bt = company_info.get("business_type_guess", "B2B_SERVICE")
+
+    # Количество сотрудников из ФНС
+    employees = None
+    if fns_data.get("financials"):
+        for f in reversed(fns_data["financials"]):
+            if f.get("employees"):
+                employees = f["employees"]
+                break
+
+    prompt = f"""Проведи HR-анализ компании.
+
+## Компания
+{ctx['company_text']}
+
+## Количество сотрудников (ФНС)
+{employees if employees else 'Нет данных'}
+
+## Тип бизнеса
+{bt}
+
+## Задание
+
+Верни JSON:
+
+{{
+  "hr_data": {{
+    "employees_count": {employees if employees else 'null'},
+    "avg_salary_market": "средняя зарплата в отрасли (gross)",
+    "key_positions": [
+      {{"title": "Должность", "salary_range": "от X до Y тыс. руб. gross", "demand": "высокий/средний/низкий"}}
+    ],
+    "hiring_channels": ["HH.ru", "Telegram-каналы", "Рекомендации"],
+    "turnover_estimate": "оценка текучести в отрасли",
+    "notes": "0 вакансий на HH != 0 найма — возможен найм через агентства, аффилированные юрлица, TG-каналы"
   }}
 }}
 
 ## Правила
+1. key_positions — 4-6 ключевых должностей для типа бизнеса {bt}
+2. Зарплаты: gross + KPI 15-20% для позиций с переменной частью
+3. 0 вакансий на HH ≠ 0 найма — упомянуть это
+4. Если данных нет — оценка по отрасли, пометить как оценочные"""
 
-1. Конкуренты — ИСПОЛЬЗУЙ тех что даны выше, для каждого добавь:
-   - x, y координаты на перцептуальной карте (ось X = {axis_x}, ось Y = {axis_y})
-   - radar_scores по 6 параметрам
-   - metrics (выручка если известна, сотрудники, год основания)
-   - lifecycle (стадия + обоснование + год основания)
-   - sales_channels (7-12 каналов: exists true/false/null)
-2. Финансы — ИСПОЛЬЗУЙ РЕАЛЬНЫЕ данные из ФНС выше, не выдумывай
-3. SWOT — конкретный, с цифрами, основанный на реальных данных
-4. Рекомендации — 5-6 штук, приоритизированные
-5. KPI — 6-8, релевантных типу бизнеса
-6. Сценарии — 3, с 3-5 метриками каждый, основанных на реальной выручке
-7. Founders — используй данные из ЕГРЮЛ выше
-8. Opinions — 3-5 цитат реальных лидеров этой отрасли
-9. Если данных нет — добавь в open_questions, НЕ выдумывай
-10. calc_traces — минимум 5 записей для ключевых показателей (RevPASH, средний чек, LTV, EBITDA margin и т.д.)
-11. methodology — заполни все 3 поля
-12. Если тип HYBRID — метрики B2C и B2B РАЗДЕЛЬНО в kpi_benchmarks и scenarios
-13. Lifecycle: если компания в инвестиционной фазе (CAPEX, стройка) — НЕ критикуй убытки"""
+    result = _safe_llm_call(prompt, "hr", max_tokens=3000)
+    return result
 
-    result = call_llm_json(
-        prompt, provider="openai", system=SYSTEM,
-        temperature=0.4, max_tokens=20000,
+
+# ════════════════════════════════════════════════════════
+# Главная точка входа: run()
+# ════════════════════════════════════════════════════════
+
+def _run_section(
+    name: str,
+    index: int,
+    total: int,
+    fn: Callable[..., dict],
+    *args: Any,
+    progress_callback: Optional[Callable[[str, str], None]] = None,
+    **kwargs: Any,
+) -> tuple[str, dict, float]:
+    """Обёртка для запуска одной секции с тайминг-логом и progress callback.
+
+    Возвращает (name, result_dict, elapsed_seconds).
+    При исключении внутри секции — логирует и возвращает пустой dict,
+    чтобы остальные секции не упали.
+
+    progress_callback(section_name, status) вызывается со статусами:
+      "started", "done", "error"
+    """
+    def _notify(status: str):
+        if progress_callback:
+            try:
+                progress_callback(name, status)
+            except Exception:
+                pass  # не ломать пайплайн из-за callback
+
+    logger.info(f"[step5] Секция {index}/{total}: {name} — старт")
+    _notify("started")
+    t0 = time.monotonic()
+    try:
+        result = fn(*args, **kwargs)
+    except Exception:
+        logger.exception(f"[step5] Секция {name} — ОШИБКА")
+        result = {}
+        elapsed = time.monotonic() - t0
+        logger.info(f"[step5] Секция {name} — ошибка за {elapsed:.1f}s")
+        _notify("error")
+        return name, result, elapsed
+    elapsed = time.monotonic() - t0
+    logger.info(f"[step5] Секция {name} — завершена за {elapsed:.1f}s")
+    _notify("done")
+    return name, result, elapsed
+
+
+def run(
+    scraped: dict,
+    company_info: dict,
+    fns_data: dict,
+    competitors: list[dict],
+    market_info: dict,
+    deep_models: Optional[dict] = None,
+    marketplace_data: Optional[dict] = None,
+    progress_callback: Optional[Callable[[str, str], None]] = None,
+) -> dict:
+    """Запуск секционного анализа (v3.1 — параллельный).
+
+    Все 7 секций запускаются параллельно через ThreadPoolExecutor
+    (max_workers=5, чтобы не перегружать LLM API).
+    Каждая секция независима — принимает сырые входные данные и
+    возвращает свою часть результата.
+    Если одна секция упала — остальные всё равно завершатся.
+
+    Args:
+        progress_callback: optional (section_name, status) callback для SSE-событий.
+            status: "started" | "done" | "error"
+
+    Собирает результаты в единый dict, совместимый с ReportData.
+    """
+    total = 7
+    logger.info(f"[step5] Запуск секционного анализа v3.1 — {total} секций параллельно (ThreadPoolExecutor, max_workers=5)")
+    t_total = time.monotonic()
+
+    # Описание секций: (name, function, args)
+    sections: list[tuple[str, Callable[..., dict], tuple]] = [
+        ("Анализ рынка", analyze_market, (scraped, company_info, fns_data, market_info)),
+        ("Глубокий анализ конкурентов", analyze_competitors_deep, (scraped, company_info, competitors, market_info, deep_models, marketplace_data)),
+        ("Анализ компании", analyze_company, (scraped, company_info, fns_data, competitors)),
+        ("Стратегический анализ", analyze_strategy, (scraped, company_info, fns_data, competitors)),
+        ("Приложения", analyze_appendix, (company_info, fns_data, market_info)),
+        ("Фаундеры и мнения", analyze_opinions, (scraped, company_info, fns_data, market_info)),
+        ("HR-анализ", analyze_hr, (scraped, company_info, fns_data)),
+    ]
+
+    # Запуск параллельно
+    results_map: dict[str, dict] = {}
+    timing_map: dict[str, float] = {}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {
+            executor.submit(
+                _run_section, name, idx, total, fn, *args,
+                progress_callback=progress_callback,
+            ): name
+            for idx, (name, fn, args) in enumerate(sections, 1)
+        }
+
+        for future in concurrent.futures.as_completed(futures):
+            section_name = futures[future]
+            try:
+                name, result, elapsed = future.result()
+                results_map[name] = result
+                timing_map[name] = elapsed
+            except Exception:
+                logger.exception(f"[step5] Неожиданная ошибка в future секции '{section_name}'")
+                results_map[section_name] = {}
+                timing_map[section_name] = 0.0
+
+    # Логирование тайминга
+    elapsed_total = time.monotonic() - t_total
+    logger.info("[step5] ── Тайминг секций ──")
+    for name, fn, _ in sections:
+        t = timing_map.get(name, 0.0)
+        logger.info(f"[step5]   {name}: {t:.1f}s")
+    logger.info(f"[step5] ── ИТОГО (параллельно): {elapsed_total:.1f}s ──")
+
+    # Распаковка результатов по позиции в sections
+    market_result = results_map.get("Анализ рынка", {})
+    competitors_result = results_map.get("Глубокий анализ конкурентов", {})
+    company_result = results_map.get("Анализ компании", {})
+    strategy_result = results_map.get("Стратегический анализ", {})
+    appendix_result = results_map.get("Приложения", {})
+    opinions_result = results_map.get("Фаундеры и мнения", {})
+    hr_result = results_map.get("HR-анализ", {})
+
+    # ── Сборка результата ──
+    logger.info("[step5] Сборка результата из 7 секций...")
+    result = _assemble_report(
+        market_result=market_result,
+        competitors_result=competitors_result,
+        company_result=company_result,
+        strategy_result=strategy_result,
+        appendix_result=appendix_result,
+        opinions_result=opinions_result,
+        hr_result=hr_result,
+        fns_data=fns_data,
+        company_info=company_info,
+        scraped=scraped,
     )
 
-    # Inject real financials if LLM ignored them
-    if fns_data.get("financials") and not result.get("financials"):
-        result["financials"] = fns_data["financials"]
+    logger.info(f"[step5] Секционный анализ завершён за {elapsed_total:.1f}s")
+    return result
 
-    # v2.0: Fallback — generate basic calc_traces from FNS data if LLM didn't
-    if not result.get("calc_traces") and fns_data.get("financials"):
-        result["calc_traces"] = _generate_basic_calc_traces(fns_data["financials"])
 
-    # v2.0: Ensure methodology exists
-    if not result.get("methodology"):
-        result["methodology"] = {
+def _assemble_report(
+    *,
+    market_result: dict,
+    competitors_result: dict,
+    company_result: dict,
+    strategy_result: dict,
+    appendix_result: dict,
+    opinions_result: dict,
+    hr_result: dict,
+    fns_data: dict,
+    company_info: dict,
+    scraped: dict,
+) -> dict:
+    """Собрать единый dict из результатов всех секций.
+
+    Гарантирует наличие всех обязательных полей для ReportData.
+    """
+    egrul = fns_data.get("egrul", {})
+
+    # Базовый company из секции 3, с fallback на входные данные
+    company = company_result.get("company", {})
+    if not company.get("name"):
+        company["name"] = company_info.get("name", "Компания")
+    if not company.get("business_type"):
+        company["business_type"] = company_info.get("business_type_guess", "B2B_SERVICE")
+    if not company.get("website"):
+        company["website"] = scraped.get("url", "")
+    if not company.get("inn"):
+        company["inn"] = egrul.get("inn", "")
+    if not company.get("legal_name"):
+        company["legal_name"] = egrul.get("full_name", "")
+    if not company.get("okved"):
+        company["okved"] = egrul.get("okved", "")
+
+    # Финансы — всегда из ФНС (ground truth)
+    financials = fns_data.get("financials", [])
+
+    # Calc traces — fallback из ФНС если LLM не вернул
+    calc_traces = appendix_result.get("calc_traces", [])
+    if not calc_traces and financials:
+        calc_traces = _generate_basic_calc_traces(financials)
+
+    # Methodology — fallback
+    methodology = appendix_result.get("methodology", {})
+    if not methodology:
+        methodology = {
             "Источники данных": "ФНС, Rusprofile, Яндекс Карты, HH.ru",
             "Период анализа": "Автоматический анализ",
             "Допущения": "Данные из открытых источников",
         }
 
+    result: dict[str, Any] = {
+        # Секция 3: Компания
+        "company": company,
+        "swot": company_result.get("swot"),
+        "digital": company_result.get("digital"),
+        "market_share": company_result.get("market_share", {}),
+
+        # Секция 1: Рынок
+        "market": market_result.get("market"),
+        "regulatory_trends": market_result.get("regulatory_trends", []),
+        "tech_trends": market_result.get("tech_trends", []),
+
+        # Секция 2: Конкуренты
+        "competitors": competitors_result.get("competitors", []),
+        "radar_dimensions": competitors_result.get("radar_dimensions", []),
+
+        # Финансы — из ФНС
+        "financials": financials,
+
+        # Секция 4: Стратегия
+        "recommendations": strategy_result.get("recommendations", []),
+        "kpi_benchmarks": strategy_result.get("kpi_benchmarks", []),
+        "scenarios": strategy_result.get("scenarios", []),
+        "implementation_timeline": strategy_result.get("implementation_timeline", []),
+
+        # Секция 5: Приложения
+        "open_questions": appendix_result.get("open_questions", []),
+        "glossary": appendix_result.get("glossary", {}),
+        "calc_traces": calc_traces,
+        "methodology": methodology,
+
+        # Секция 6: Фаундеры и мнения
+        "founders": opinions_result.get("founders", []),
+        "opinions": opinions_result.get("opinions", []),
+
+        # Секция 7: HR
+        "hr_data": hr_result.get("hr_data", {}),
+
+        # Pipeline metadata
+        "pipeline_version": "3.0",
+    }
+
     return result
 
 
+# ── Fallback: calc traces из ФНС (без LLM) ──
+
 def _generate_basic_calc_traces(financials: list[dict]) -> list[dict]:
-    """Generate basic calc traces from FNS financial data."""
+    """Генерация базовых calc_traces из данных ФНС (fallback без LLM)."""
     traces = []
     latest = financials[-1] if financials else {}
     rev = latest.get("revenue")
@@ -372,7 +1010,7 @@ def _generate_basic_calc_traces(financials: list[dict]) -> list[dict]:
         traces.append({
             "metric_name": "Рентабельность по чистой прибыли",
             "value": f"{margin}%",
-            "formula": "чистая_прибыль / выручка × 100",
+            "formula": "чистая_прибыль / выручка * 100",
             "inputs": {"чистая_прибыль": profit, "выручка": rev},
             "sources": ["ФНС"],
             "confidence": "CALC",

@@ -3,19 +3,22 @@
 
 {% if market %}
 <div class="card">
-    <h3>Обзор рынка: {{ market.market_name }}</h3>
+    <h3>Обзор рынка: {{ market.market_name }} <span class="ct-estimate">&#9888; Оценка</span></h3>
 
     {% if market.market_size or market.growth_rate %}
     <div class="grid-3" style="margin-bottom:20px;">
         {% if market.market_size %}
-        {{ metric_card(market.market_size, "Объём рынка", "gold") }}
+        {{ metric_card(market.market_size, "Объём рынка ⚠", "orange") }}
         {% endif %}
         {% if market.growth_rate %}
-        {{ metric_card(market.growth_rate, "Темп роста (CAGR)", "green") }}
+        {{ metric_card(market.growth_rate, "Темп роста (CAGR) ⚠", "orange") }}
         {% endif %}
         {% if market.data_points %}
         {{ metric_card(market.data_points|length ~ " лет", "Горизонт данных", "blue") }}
         {% endif %}
+    </div>
+    <div class="info-tip" style="margin-bottom:16px;">
+        <span><strong>&#9888; Оценка AI:</strong> Объём и темп роста рынка сгенерированы языковой моделью на основе данных до 2024 года. Для точных данных используйте отраслевые отчёты (РБК Исследования, Infoline, Euromonitor).</span>
     </div>
     {% endif %}
 

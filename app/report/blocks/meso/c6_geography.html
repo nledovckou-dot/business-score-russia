@@ -1,7 +1,12 @@
 {# C6: Geography of Competitors — B2C only #}
 {% from '_macros.html' import info_tip %}
 
-{% if competitors %}
+{% set has_geo = [] %}
+{% for comp in competitors %}
+  {% if comp.address %}{% if has_geo.append(1) %}{% endif %}{% endif %}
+{% endfor %}
+
+{% if has_geo %}
 <div class="card">
     <h3>Географическая карта конкурентов</h3>
     <p style="color:var(--text2); font-size:0.9em; margin-bottom:16px;">
