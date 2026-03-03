@@ -1612,7 +1612,7 @@ function startAnalysis(){
                 /* Suggest registration if not logged in */
                 if(!authUser){
                     var el=document.getElementById('error');
-                    el.innerHTML += '<br><br><a href="#" onclick="openModal(\"register\");return false" style="color:var(--accent)">Зарегистрируйтесь для получения 5 бесплатных отчётов</a>';
+                    el.innerHTML += '<br><br><span style="color:var(--accent);cursor:pointer;text-decoration:underline" onclick="openModal(&#39;register&#39;)">Зарегистрируйтесь для получения 5 бесплатных отчётов</span>';
                 }
             } else {
                 showError(res.error);

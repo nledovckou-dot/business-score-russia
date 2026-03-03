@@ -3,4 +3,5 @@ __pycache__/
 *.pyc
 app/storage/reports/*.html
 data/metrics.jsonl
+data/users/
 .venv/
