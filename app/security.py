@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import html
 import logging
+import os
 import re
 import time
 import threading
@@ -25,7 +26,7 @@ _rate_lock = threading.Lock()
 
 # Limits
 REQUESTS_PER_MINUTE = 30
-REPORTS_PER_HOUR = 5
+REPORTS_PER_HOUR = int(os.environ.get("BSR_REPORTS_PER_HOUR", "10"))
 
 
 def _cleanup_timestamps(timestamps: list[float], window_seconds: float) -> list[float]:
