@@ -68,7 +68,8 @@ def api_request(method, path, data=None, timeout=30):
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8") if e.fp else ""
-        print(f"  HTTP {e.code}: {body[:200]}")
+        if e.code != 429:  # suppress noisy rate-limit logs
+            print(f"  HTTP {e.code}: {body[:200]}")
         return None
     except Exception as e:
         print(f"  Error: {e}")
@@ -93,14 +94,14 @@ def poll_session(sid, timeout_sec=600):
             company_data = result.get("data", {}).get("company_info", {})
             print(f"  Компания: {company_data.get('name', '?')} | ИНН: {company_data.get('inn', '?')}")
             api_request("POST", f"/api/confirm-company/{sid}", company_data)
-            time.sleep(2)
+            time.sleep(5)
             continue
 
         if status == "waiting_competitors":
             competitors = result.get("data", {}).get("competitors", [])
             print(f"  Конкуренты: {len(competitors)} шт")
             api_request("POST", f"/api/confirm-competitors/{sid}", {"competitors": competitors})
-            time.sleep(2)
+            time.sleep(5)
             continue
 
         if status == "done":
@@ -122,7 +123,7 @@ def poll_session(sid, timeout_sec=600):
             print(f"  ❌ Ошибка: {error_msg}")
             return {"error": error_msg}
 
-        time.sleep(3)
+        time.sleep(10)
 
     return {"error": "timeout"}
 

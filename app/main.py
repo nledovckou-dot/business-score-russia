@@ -1002,13 +1002,27 @@ def _sanitize_llm_output(d: dict) -> dict:
     comp["business_type"] = bt
     d["company"] = comp
 
-    # --- digital.social_accounts ---
+    # --- digital: ensure numeric fields ---
     digital = d.get("digital") or {}
     if "social_accounts" in digital:
-        digital["social_accounts"] = [
-            acc for acc in digital["social_accounts"]
-            if isinstance(acc, dict) and acc.get("platform")
-        ]
+        clean_accounts = []
+        for acc in digital["social_accounts"]:
+            if not isinstance(acc, dict) or not acc.get("platform"):
+                continue
+            fol = acc.get("followers")
+            if fol is not None:
+                try:
+                    acc["followers"] = int(float(str(fol).replace(" ", "").replace(",", "")))
+                except (ValueError, TypeError):
+                    acc["followers"] = 0
+            clean_accounts.append(acc)
+        digital["social_accounts"] = clean_accounts
+    mt = digital.get("monthly_traffic")
+    if mt is not None:
+        try:
+            digital["monthly_traffic"] = int(float(str(mt).replace(" ", "").replace(",", "")))
+        except (ValueError, TypeError):
+            digital["monthly_traffic"] = 0
     d["digital"] = digital
 
     # --- competitors ---
@@ -1017,8 +1031,22 @@ def _sanitize_llm_output(d: dict) -> dict:
             continue
         if not c.get("name"):
             c["name"] = "Неизвестный"
+        # Ensure x, y are numeric
+        for coord in ("x", "y"):
+            val = c.get(coord)
+            if val is not None:
+                try:
+                    c[coord] = float(val)
+                except (ValueError, TypeError):
+                    c[coord] = 50.0
         rs = c.get("radar_scores") or {}
-        c["radar_scores"] = {k: (v if v is not None else 5) for k, v in rs.items()}
+        clean_rs: dict[str, float] = {}
+        for k, v in rs.items():
+            try:
+                clean_rs[k] = float(v) if v is not None else 5.0
+            except (ValueError, TypeError):
+                clean_rs[k] = 5.0
+        c["radar_scores"] = clean_rs
         tl = str(c.get("threat_level", "med")).lower()
         c["threat_level"] = tl if tl in ("high", "med", "low") else "med"
         # v2.1: verification fields — ensure defaults
@@ -1028,8 +1056,28 @@ def _sanitize_llm_output(d: dict) -> dict:
         if not isinstance(c.get("verification_sources"), list):
             c["verification_sources"] = []
 
-    # --- financials ---
-    d["financials"] = [f for f in (d.get("financials") or []) if isinstance(f, dict) and f.get("year")]
+    # --- financials: ensure numeric fields are float/int, not str ---
+    clean_fin = []
+    for f in (d.get("financials") or []):
+        if not isinstance(f, dict) or not f.get("year"):
+            continue
+        for fld in ("revenue", "net_profit", "assets", "equity", "liabilities"):
+            val = f.get(fld)
+            if val is not None:
+                try:
+                    if isinstance(val, str):
+                        val = val.replace(" ", "").replace(",", ".").replace("₽", "").replace("тыс", "").replace("руб", "")
+                    f[fld] = float(val)
+                except (ValueError, TypeError):
+                    f[fld] = None
+        emp = f.get("employees")
+        if emp is not None:
+            try:
+                f["employees"] = int(float(str(emp).replace(" ", "")))
+            except (ValueError, TypeError):
+                f["employees"] = None
+        clean_fin.append(f)
+    d["financials"] = clean_fin
 
     # --- recommendations ---
     for r in d.get("recommendations") or []:
@@ -1039,19 +1087,31 @@ def _sanitize_llm_output(d: dict) -> dict:
             if not r.get("description"):
                 r["description"] = r.get("title", "")
 
-    # --- scenarios ---
+    # --- scenarios: ensure metric values are float ---
     for sc in d.get("scenarios") or []:
         if isinstance(sc, dict):
             metrics = sc.get("metrics") or {}
-            sc["metrics"] = {
-                k: float(v) if v is not None else 0.0
-                for k, v in metrics.items()
-                if isinstance(v, (int, float, type(None)))
-            }
+            clean_m: dict[str, float] = {}
+            for k, v in metrics.items():
+                try:
+                    if isinstance(v, str):
+                        v = v.replace(" ", "").replace(",", ".").replace("%", "")
+                    clean_m[k] = float(v) if v is not None else 0.0
+                except (ValueError, TypeError):
+                    clean_m[k] = 0.0
+            sc["metrics"] = clean_m
 
-    # --- market_share ---
+    # --- market_share: ensure float values ---
     ms = d.get("market_share") or {}
-    d["market_share"] = {k: float(v) if v is not None else 0.0 for k, v in ms.items()}
+    clean_ms: dict[str, float] = {}
+    for k, v in ms.items():
+        try:
+            if isinstance(v, str):
+                v = v.replace(" ", "").replace(",", ".").replace("%", "")
+            clean_ms[k] = float(v) if v is not None else 0.0
+        except (ValueError, TypeError):
+            clean_ms[k] = 0.0
+    d["market_share"] = clean_ms
 
     # --- opinions ---
     d["opinions"] = [o for o in (d.get("opinions") or []) if isinstance(o, dict) and o.get("author") and o.get("quote")]
