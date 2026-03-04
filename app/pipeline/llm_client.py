@@ -305,7 +305,10 @@ def call_board_llm(prompt: str, system: str | None = None) -> str:
 
 
 def call_board_llm_parallel(prompts: list[dict]) -> list[str]:
-    """Параллельные вызовы для экспертов совета директоров.
+    """Последовательные вызовы для экспертов совета директоров.
+
+    ИЗМЕНЕНО: с параллельного на последовательный вызов с паузами,
+    чтобы уложиться в TPM лимит OpenAI (30K tokens/min).
 
     Args:
         prompts: список словарей [{"prompt": "...", "system": "..."}, ...]
@@ -317,16 +320,10 @@ def call_board_llm_parallel(prompts: list[dict]) -> list[str]:
         Если вызов для конкретного эксперта упал — возвращается строка с описанием ошибки
         (начинается с "[Board LLM Error]"), чтобы не ломать весь пайплайн.
     """
-    results: list[str | None] = [None] * len(prompts)
+    results: list[str] = []
+    delay_between = 5  # seconds between calls to stay under TPM limit
 
-    # T7: Capture parent thread's metrics collector for propagation
-    parent_mc = _get_metrics_collector()
-
-    def _call_single(idx: int, item: dict) -> tuple[int, str]:
-        # T7: Propagate metrics collector to child thread
-        if parent_mc is not None:
-            set_metrics_collector(parent_mc)
-
+    for idx, item in enumerate(prompts):
         t0 = time.monotonic()
         try:
             response = call_board_llm(
@@ -334,23 +331,18 @@ def call_board_llm_parallel(prompts: list[dict]) -> list[str]:
                 system=item.get("system"),
             )
             elapsed = round(time.monotonic() - t0, 2)
-            logger.info("Board parallel #%d done in %.2fs", idx, elapsed)
-            return idx, response
+            logger.info("Board sequential #%d done in %.2fs", idx, elapsed)
+            results.append(response)
         except Exception as exc:
             elapsed = round(time.monotonic() - t0, 2)
             logger.error(
-                "Board parallel #%d failed in %.2fs: %s", idx, elapsed, str(exc)[:300],
+                "Board sequential #%d failed in %.2fs: %s", idx, elapsed, str(exc)[:300],
             )
-            return idx, f"[Board LLM Error] Expert #{idx}: {str(exc)[:500]}"
+            results.append(f"[Board LLM Error] Expert #{idx}: {str(exc)[:500]}")
 
-    with ThreadPoolExecutor(max_workers=min(5, len(prompts))) as executor:
-        futures = {
-            executor.submit(_call_single, i, p): i
-            for i, p in enumerate(prompts)
-        }
-        for future in as_completed(futures):
-            idx, response = future.result()
-            results[idx] = response
+        # Pause between calls to avoid TPM rate limit
+        if idx < len(prompts) - 1:
+            logger.info("Board: pausing %ds before next expert (TPM limit)", delay_between)
+            time.sleep(delay_between)
 
-    # Гарантируем что нет None (на случай если futures не вернули результат)
-    return [r if r is not None else "[Board LLM Error] No response received" for r in results]
+    return results

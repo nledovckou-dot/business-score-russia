@@ -15,13 +15,14 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           FNS_API_KEY: ${{ secrets.FNS_API_KEY }}
           FALLBACK_LLM_API_KEY: ${{ secrets.FALLBACK_LLM_API_KEY }}
+          HH_APP_TOKEN: ${{ secrets.HH_APP_TOKEN }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 10m
-          envs: REPO_URL,GEMINI_API_KEY,FNS_API_KEY,FALLBACK_LLM_API_KEY
+          envs: REPO_URL,GEMINI_API_KEY,FNS_API_KEY,FALLBACK_LLM_API_KEY,HH_APP_TOKEN
           script: |
             set -e
             APP_DIR=/opt/business-score-russia
@@ -45,6 +46,7 @@ jobs:
               "GEMINI_API_KEY=${GEMINI_API_KEY}" \
               "FNS_API_KEY=${FNS_API_KEY}" \
               "FALLBACK_LLM_API_KEY=${FALLBACK_LLM_API_KEY}" \
+              "HH_APP_TOKEN=${HH_APP_TOKEN}" \
               > "$APP_DIR/.env"
 
             # Python venv

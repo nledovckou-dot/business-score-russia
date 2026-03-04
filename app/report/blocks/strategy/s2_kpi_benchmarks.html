@@ -32,8 +32,10 @@
                         {% else %}
                         <span class="b-red" style="padding:2px 8px;">Ниже</span>
                         {% endif %}
+                    {% elif kpi.benchmark is not none %}
+                    <span style="color:var(--text3); font-size:0.85em;">⚠ оценка</span>
                     {% else %}
-                    <span class="b-gold" style="padding:2px 8px;">Нет данных</span>
+                    <span style="color:var(--text3); font-size:0.85em;">—</span>
                     {% endif %}
                 </td>
             </tr>

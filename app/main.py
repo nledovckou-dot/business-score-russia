@@ -575,6 +575,127 @@ def _run_competitor_steps(sid: str):
         store.save(sid)
 
 
+def _generate_factcheck_items(report_data: dict, fns_data: dict, company_info: dict) -> dict:
+    """Generate basic factcheck items from FNS and other verified data sources."""
+    factcheck = report_data.get("factcheck", [])
+
+    # FNS financial facts
+    egrul = fns_data.get("egrul", {})
+    financials = fns_data.get("financials", [])
+
+    if egrul.get("inn"):
+        factcheck.append({
+            "fact": f"ИНН: {egrul['inn']}",
+            "sources_count": 2,
+            "verified": True,
+            "sources": ["ФНС", "ЕГРЮЛ"],
+        })
+    if egrul.get("full_name"):
+        factcheck.append({
+            "fact": f"Юридическое лицо: {egrul['full_name']}",
+            "sources_count": 2,
+            "verified": True,
+            "sources": ["ФНС", "ЕГРЮЛ"],
+        })
+    if egrul.get("okved"):
+        factcheck.append({
+            "fact": f"Основной ОКВЭД: {egrul['okved']}",
+            "sources_count": 1,
+            "verified": True,
+            "sources": ["ЕГРЮЛ"],
+        })
+
+    if financials:
+        latest = financials[-1]
+        year = latest.get("year", "?")
+        if latest.get("revenue") is not None:
+            factcheck.append({
+                "fact": f"Выручка {year}: {latest['revenue']:,.0f} тыс. ₽",
+                "sources_count": 1,
+                "verified": True,
+                "sources": ["ФНС (бухотчётность)"],
+            })
+        if latest.get("net_profit") is not None:
+            factcheck.append({
+                "fact": f"Чистая прибыль {year}: {latest['net_profit']:,.0f} тыс. ₽",
+                "sources_count": 1,
+                "verified": True,
+                "sources": ["ФНС (бухотчётность)"],
+            })
+        if latest.get("employees"):
+            factcheck.append({
+                "fact": f"Сотрудников {year}: {latest['employees']}",
+                "sources_count": 1,
+                "verified": True,
+                "sources": ["ФНС"],
+            })
+
+    # Company website
+    company = report_data.get("company", {})
+    if company.get("website"):
+        factcheck.append({
+            "fact": f"Сайт компании: {company['website']}",
+            "sources_count": 1,
+            "verified": True,
+            "sources": ["Прямая проверка"],
+        })
+
+    report_data["factcheck"] = factcheck
+    return report_data
+
+
+def _generate_digital_verification(report_data: dict, company_info: dict, competitors: list) -> dict:
+    """Generate digital_verification table from digital data and competitors."""
+    digital = report_data.get("digital") or {}
+    dv_items = []
+
+    # Company's own digital
+    company_name = company_info.get("name", report_data.get("company", {}).get("name", "Компания"))
+    social = digital.get("social_accounts", [])
+
+    company_item = {
+        "company": company_name,
+        "is_target": True,
+        "instagram": "—",
+        "telegram": "—",
+        "vk": "—",
+        "total_followers": 0,
+    }
+    total = 0
+    for acc in (social if isinstance(social, list) else []):
+        if not isinstance(acc, dict):
+            continue
+        platform = (acc.get("platform") or "").lower()
+        handle = acc.get("handle", "—")
+        followers = acc.get("followers") or 0
+        if "instagram" in platform:
+            company_item["instagram"] = f"{handle} ({followers:,})" if followers else handle
+        elif "telegram" in platform:
+            company_item["telegram"] = f"{handle} ({followers:,})" if followers else handle
+        elif "vk" in platform or "вк" in platform:
+            company_item["vk"] = f"{handle} ({followers:,})" if followers else handle
+        total += followers if isinstance(followers, (int, float)) else 0
+    company_item["total_followers"] = f"{int(total):,}" if total else "⚠ нет данных"
+    dv_items.append(company_item)
+
+    # Competitors
+    for comp in (competitors or []):
+        if isinstance(comp, dict):
+            comp_name = comp.get("name", "?")
+            dv_items.append({
+                "company": comp_name,
+                "is_target": False,
+                "instagram": "⚠ не проверено",
+                "telegram": "⚠ не проверено",
+                "vk": "⚠ не проверено",
+                "total_followers": "⚠ оценка",
+            })
+
+    if dv_items:
+        report_data["digital_verification"] = dv_items
+    return report_data
+
+
 def _run_analysis_steps(sid: str):
     """Steps 1b, 1c, 5, 2a, 2b, 6: Extended v2.0 pipeline."""
     session = store.get(sid)
@@ -634,6 +755,23 @@ def _run_analysis_steps(sid: str):
         if mc:
             mc.stop_timer("step1c_deep_models")
 
+        # Step 4.5: HH.ru API (real HR data)
+        hh_data = None
+        company_name = company_info.get("name", "")
+        if company_name:
+            _push_event(sid, "step", {"num": "4h", "status": "active", "text": "HH.ru API — вакансии и зарплаты..."})
+            try:
+                from app.pipeline.sources.hh_api import get_hr_data_for_company
+                hh_data = get_hr_data_for_company(
+                    company_name=company_name,
+                    industry_keywords=bt,
+                )
+                vcount = (hh_data or {}).get("vacancies_count", 0)
+                _push_event(sid, "step", {"num": "4h", "status": "done",
+                    "text": f"HH.ru: {vcount} вакансий найдено"})
+            except Exception as e:
+                _push_event(sid, "step", {"num": "4h", "status": "warning", "text": f"HH.ru: {e}"})
+
         # Step 5: Deep analysis with GPT-5.2 Pro (7 секций параллельно)
         _push_event(sid, "step", {"num": 5, "status": "active", "text": "Глубокий анализ (7 секций параллельно)..."})
 
@@ -660,6 +798,7 @@ def _run_analysis_steps(sid: str):
             deep_models=deep_models,
             marketplace_data=marketplace_data,
             progress_callback=_step5_progress,
+            hh_data=hh_data,
         )
         if mc:
             mc.stop_timer("step5_deep_analysis")
@@ -683,6 +822,10 @@ def _run_analysis_steps(sid: str):
             _push_event(sid, "step", {"num": "2a", "status": "warning", "text": f"Верификация: {e}"})
         if mc:
             mc.stop_timer("step2a_verify")
+
+        # Step 2a+: Generate basic factcheck & digital_verification from existing data
+        report_data = _generate_factcheck_items(report_data, data.get("fns_data", {}), company_info)
+        report_data = _generate_digital_verification(report_data, company_info, confirmed_competitors)
 
         # Step 2b: Relevance gate (pure Python)
         _push_event(sid, "step", {"num": "2b", "status": "active", "text": "Section Relevance Gate..."})

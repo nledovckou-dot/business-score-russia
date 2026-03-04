@@ -422,9 +422,15 @@ def analyze_company(
 1. company.description — на основе РЕАЛЬНОГО текста сайта
 2. badges — 3 коротких тега (уникальные характеристики компании)
 3. SWOT — по 4 пункта, конкретные, с цифрами из ФНС где возможно
-4. digital — social_accounts из данных соцсетей выше
+4. digital — social_accounts: ОБЯЗАТЕЛЬНО заполни минимум 2-3 платформы
+   - Для КАЖДОЙ компании в России проверь: VK, Telegram, Instagram
+   - handle: используй формат @company_name если не знаешь точный хендл
+   - followers: число или null если неизвестно
+   - seo_score: 50-80 по умолчанию если нет данных
+   - monthly_traffic: оценочное число посещений
 5. market_share — оценочный, в процентах, сумма = 100
-6. Если данных нет — НЕ выдумывай, ставь null"""
+6. Если данных social_accounts нет — всё равно верни массив с platform/handle/null для VK/TG/Instagram
+7. НЕ возвращай ПУСТОЙ список social_accounts — это ломает отчёт"""
 
     result = _safe_llm_call(prompt, "company", max_tokens=5000)
     return result
@@ -448,10 +454,29 @@ def analyze_strategy(
     ctx = _prepare_context(scraped, company_info, fns_data, competitors)
     bt = company_info.get("business_type_guess", "B2B_SERVICE")
 
-    # Финансы для сценариев
+    # Финансы для сценариев и KPI current values
     fin_json = "null"
+    fns_current_hint = ""
     if fns_data.get("financials"):
         fin_json = json.dumps(fns_data["financials"], ensure_ascii=False)
+        latest = fns_data["financials"][-1]
+        rev = latest.get("revenue")
+        profit = latest.get("net_profit")
+        emp = latest.get("employees")
+        yr = latest.get("year", "?")
+        hints = [f"Год: {yr}"]
+        if rev is not None:
+            hints.append(f"Выручка: {rev} тыс. ₽")
+            if profit is not None:
+                margin = round(profit / rev * 100, 1) if rev else 0
+                hints.append(f"Рентабельность: {margin}%")
+        if profit is not None:
+            hints.append(f"Чистая прибыль: {profit} тыс. ₽")
+        if emp:
+            hints.append(f"Сотрудников: {emp}")
+            if rev:
+                hints.append(f"Выручка/сотрудник: {round(rev / emp)} тыс. ₽")
+        fns_current_hint = "\n".join(hints)
 
     prompt = f"""Разработай стратегию для компании.
 
@@ -466,6 +491,9 @@ def analyze_strategy(
 
 ## Тип бизнеса
 {bt}
+
+## Текущие показатели (ФНС) — используй как current в KPI
+{fns_current_hint if fns_current_hint else "Нет данных ФНС"}
 
 ## Задание
 
@@ -498,10 +526,15 @@ def analyze_strategy(
 ## Правила
 1. Рекомендации — 5-6 штук, приоритизированные (минимум 2 high)
 2. KPI — 6-8, релевантных типу бизнеса ({bt})
-3. Сценарии — 3, с 3-5 метриками, основанных на реальной выручке из ФНС
-4. Реальные финансы: {fin_json}
-5. implementation_timeline — 4-6 шагов по кварталам
-6. Если тип HYBRID — метрики B2C и B2B РАЗДЕЛЬНО в kpi_benchmarks"""
+3. ВАЖНО для kpi_benchmarks: поле "current" заполняй РЕАЛЬНЫМИ данными из ФНС выше:
+   - Выручка = последний год из финансов
+   - Рентабельность = чистая_прибыль / выручка × 100
+   - Сотрудники = из данных ФНС
+   - Если данных нет — ставь null (не выдумывай)
+4. Сценарии — 3, с 3-5 метриками, основанных на реальной выручке из ФНС
+5. Реальные финансы: {fin_json}
+6. implementation_timeline — 4-6 шагов по кварталам
+7. Если тип HYBRID — метрики B2C и B2B РАЗДЕЛЬНО в kpi_benchmarks"""
 
     result = _safe_llm_call(prompt, "strategy", max_tokens=5000)
     return result
@@ -672,6 +705,61 @@ def analyze_opinions(
 
 
 # ════════════════════════════════════════════════════════
+# Секция 8: Продукты и услуги
+# ════════════════════════════════════════════════════════
+
+def analyze_products(
+    scraped: dict,
+    company_info: dict,
+    fns_data: dict,
+) -> dict:
+    """Анализ продуктов/услуг компании.
+
+    Возвращает dict с ключом: products.
+    """
+    ctx = _prepare_context(scraped, company_info, fns_data)
+    bt = company_info.get("business_type_guess", "B2B_SERVICE")
+
+    prompt = f"""Проанализируй продукты и услуги компании.
+
+## Компания
+{ctx['company_text']}
+
+## Текст сайта (фрагмент)
+{scraped.get('text', '')[:5000]}
+
+## Тип бизнеса
+{bt}
+
+## Задание
+
+Верни JSON:
+
+{{
+  "products": [
+    {{
+      "name": "Название продукта/услуги/тарифа",
+      "price": "Цена или ценовой диапазон (если известна)",
+      "description": "Краткое описание (1-2 предложения)",
+      "features": ["Ключевая особенность 1", "Ключевая особенность 2"]
+    }}
+  ]
+}}
+
+## Правила
+1. Извлеки 3-6 основных продуктов/услуг/тарифов из текста сайта
+2. Если компания — платформа (маркетплейс), перечисли основные сервисы
+3. Если SaaS — перечисли тарифы
+4. Если ритейл — перечисли категории товаров
+5. Если ресторан — перечисли направления (доставка, банкеты, кейтеринг)
+6. Цены — только если найдены на сайте, иначе null
+7. НЕ выдумывай продукты — только из текста сайта"""
+
+    result = _safe_llm_call(prompt, "products", max_tokens=3000)
+    return result
+
+
+# ════════════════════════════════════════════════════════
 # Секция 7: HR-анализ
 # ════════════════════════════════════════════════════════
 
@@ -797,6 +885,7 @@ def run(
     deep_models: Optional[dict] = None,
     marketplace_data: Optional[dict] = None,
     progress_callback: Optional[Callable[[str, str], None]] = None,
+    hh_data: Optional[dict] = None,
 ) -> dict:
     """Запуск секционного анализа (v3.1 — параллельный).
 
@@ -812,8 +901,8 @@ def run(
 
     Собирает результаты в единый dict, совместимый с ReportData.
     """
-    total = 7
-    logger.info(f"[step5] Запуск секционного анализа v3.1 — {total} секций параллельно (ThreadPoolExecutor, max_workers=5)")
+    total = 8
+    logger.info(f"[step5] Запуск секционного анализа v3.2 — {total} секций параллельно (ThreadPoolExecutor, max_workers=5)")
     t_total = time.monotonic()
 
     # Описание секций: (name, function, args)
@@ -825,6 +914,7 @@ def run(
         ("Приложения", analyze_appendix, (company_info, fns_data, market_info)),
         ("Фаундеры и мнения", analyze_opinions, (scraped, company_info, fns_data, market_info)),
         ("HR-анализ", analyze_hr, (scraped, company_info, fns_data)),
+        ("Продукты и услуги", analyze_products, (scraped, company_info, fns_data)),
     ]
 
     # T7: Capture parent thread's metrics collector for propagation to child threads
@@ -872,9 +962,10 @@ def run(
     appendix_result = results_map.get("Приложения", {})
     opinions_result = results_map.get("Фаундеры и мнения", {})
     hr_result = results_map.get("HR-анализ", {})
+    products_result = results_map.get("Продукты и услуги", {})
 
     # ── Сборка результата ──
-    logger.info("[step5] Сборка результата из 7 секций...")
+    logger.info("[step5] Сборка результата из 8 секций...")
     result = _assemble_report(
         market_result=market_result,
         competitors_result=competitors_result,
@@ -883,12 +974,132 @@ def run(
         appendix_result=appendix_result,
         opinions_result=opinions_result,
         hr_result=hr_result,
+        products_result=products_result,
         fns_data=fns_data,
         company_info=company_info,
         scraped=scraped,
+        hh_data=hh_data,
     )
 
     logger.info(f"[step5] Секционный анализ завершён за {elapsed_total:.1f}s")
+    return result
+
+
+def _extract_salary_value(salary_range: str) -> int:
+    """Extract numeric salary value from range string like 'от 80 до 120 тыс. руб. gross'."""
+    import re
+    if not salary_range:
+        return 0
+    # Find all numbers
+    numbers = re.findall(r'[\d]+(?:\s*\d+)*', salary_range.replace(' ', ''))
+    if not numbers:
+        return 0
+    values = [int(n) for n in numbers if n]
+    if not values:
+        return 0
+    # If values look like thousands (< 1000), multiply by 1000
+    avg = sum(values) // len(values)
+    if avg < 1000:
+        avg *= 1000
+    return avg
+
+
+def _transform_hr_data(hr_raw: dict, hh_data: dict | None = None) -> dict:
+    """Transform LLM hr_data to template-compatible format.
+
+    Template expects: metrics (list), salaries (list), notes (list), sources (str).
+    LLM returns: employees_count, avg_salary_market, key_positions, hiring_channels, etc.
+    """
+    if not hr_raw and not hh_data:
+        return {}
+
+    result: dict[str, Any] = {}
+
+    # ── Metrics cards ──
+    metrics = []
+    if hr_raw.get("employees_count"):
+        metrics.append({"value": str(hr_raw["employees_count"]), "label": "Сотрудников (ФНС)", "color": "gold"})
+    if hr_raw.get("avg_salary_market"):
+        metrics.append({"value": str(hr_raw["avg_salary_market"]), "label": "Средняя зарплата (рынок)", "color": "blue"})
+    if hr_raw.get("turnover_estimate"):
+        metrics.append({"value": str(hr_raw["turnover_estimate"]), "label": "Текучесть (оценка)", "color": "red"})
+
+    # HH.ru real data enrichment
+    if hh_data:
+        vcount = hh_data.get("vacancies_count", hh_data.get("open_vacancies_count", 0))
+        if vcount:
+            metrics.append({"value": str(vcount), "label": "Вакансий на HH.ru", "color": "green"})
+        ind_sal = hh_data.get("industry_salaries", {})
+        if ind_sal.get("median_salary_from"):
+            metrics.append({
+                "value": f'{ind_sal["median_salary_from"]:,} ₽'.replace(",", " "),
+                "label": "Медиана зарплат (HH.ru)",
+                "color": "blue",
+            })
+
+    result["metrics"] = metrics
+
+    # ── Salaries chart ──
+    salaries = []
+
+    # Prefer HH.ru real vacancies for chart
+    if hh_data and hh_data.get("salaries"):
+        salaries = hh_data["salaries"]
+    else:
+        # Fallback: build from LLM key_positions
+        for pos in (hr_raw.get("key_positions") or []):
+            if isinstance(pos, dict):
+                title = pos.get("title", "")
+                value = _extract_salary_value(pos.get("salary_range", ""))
+                if value and title:
+                    salaries.append({"label": title, "value": value, "color": "#4A8FE0"})
+        if salaries:
+            salaries = sorted(salaries, key=lambda x: x["value"], reverse=True)
+
+    if salaries:
+        result["salaries"] = salaries
+
+    # ── Notes ──
+    notes = []
+    notes_raw = hr_raw.get("notes", "")
+    if isinstance(notes_raw, str) and notes_raw:
+        notes.append(notes_raw)
+    elif isinstance(notes_raw, list):
+        notes.extend(notes_raw)
+
+    channels = hr_raw.get("hiring_channels", [])
+    if isinstance(channels, list) and channels:
+        notes.append(f"Каналы найма: {', '.join(str(c) for c in channels)}")
+
+    # Key positions detail
+    for pos in (hr_raw.get("key_positions") or []):
+        if isinstance(pos, dict):
+            title = pos.get("title", "")
+            salary = pos.get("salary_range", "")
+            demand = pos.get("demand", "")
+            if title:
+                parts = [title]
+                if salary:
+                    parts.append(salary)
+                if demand:
+                    parts.append(f"спрос: {demand}")
+                notes.append(" — ".join(parts))
+
+    # HH.ru vacancies detail
+    if hh_data and hh_data.get("vacancies"):
+        vac_titles = [v.get("title", "") for v in hh_data["vacancies"][:5] if v.get("title")]
+        if vac_titles:
+            notes.append(f"Актуальные вакансии (HH.ru): {', '.join(vac_titles)}")
+
+    result["notes"] = notes
+
+    # ── Sources ──
+    sources = []
+    if hh_data:
+        sources.append("HH.ru API (реальные данные)")
+    sources.append("Оценка по данным рынка")
+    result["sources"] = " + ".join(sources)
+
     return result
 
 
@@ -901,9 +1112,11 @@ def _assemble_report(
     appendix_result: dict,
     opinions_result: dict,
     hr_result: dict,
+    products_result: dict,
     fns_data: dict,
     company_info: dict,
     scraped: dict,
+    hh_data: dict | None = None,
 ) -> dict:
     """Собрать единый dict из результатов всех секций.
 
@@ -978,11 +1191,14 @@ def _assemble_report(
         "founders": opinions_result.get("founders", []),
         "opinions": opinions_result.get("opinions", []),
 
-        # Секция 7: HR
-        "hr_data": hr_result.get("hr_data", {}),
+        # Секция 7: HR (transform LLM format → template format, enrich with HH.ru)
+        "hr_data": _transform_hr_data(hr_result.get("hr_data", {}), hh_data),
+
+        # Секция 8: Продукты
+        "products": products_result.get("products", []),
 
         # Pipeline metadata
-        "pipeline_version": "3.0",
+        "pipeline_version": "3.2",
     }
 
     return result
