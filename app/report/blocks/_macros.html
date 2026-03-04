@@ -3,7 +3,7 @@
 {# --- Metric Card --- #}
 {% macro metric_card(value, label, color="gold", delta=None) %}
 <div class="metric">
-    <div class="val val-{{ color }}">{{ value }}{% if delta %}<span class="delta delta-{{ 'up' if delta > 0 else 'down' }}">{{ '+' if delta > 0 else '' }}{{ delta }}%</span>{% endif %}</div>
+    <div class="val val-{{ color }}">{{ value }}{% if delta %}<span class="delta delta-{{ 'up' if delta|float > 0 else 'down' }}">{{ '+' if delta|float > 0 else '' }}{{ delta }}%</span>{% endif %}</div>
     <div class="lbl">{{ label }}</div>
 </div>
 {% endmacro %}

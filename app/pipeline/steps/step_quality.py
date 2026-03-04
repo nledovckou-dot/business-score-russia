@@ -379,7 +379,10 @@ def _consistency_check(
         company_share = None
         for name, share in market_share.items():
             if name.lower() == company_name.lower():
-                company_share = share
+                try:
+                    company_share = float(share)
+                except (ValueError, TypeError):
+                    company_share = None
                 break
 
         if company_share is not None and company_share > 0:

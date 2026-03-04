@@ -27,7 +27,7 @@
                 <td>{{ kpi.unit }}</td>
                 <td>
                     {% if kpi.current is not none and kpi.benchmark is not none %}
-                        {% if kpi.current >= kpi.benchmark %}
+                        {% if kpi.current|float >= kpi.benchmark|float %}
                         <span class="b-green" style="padding:2px 8px;">Выше</span>
                         {% else %}
                         <span class="b-red" style="padding:2px 8px;">Ниже</span>

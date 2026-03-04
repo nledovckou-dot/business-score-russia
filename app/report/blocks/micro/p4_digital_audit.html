@@ -8,7 +8,7 @@
     {% if digital.monthly_traffic is not none or digital.seo_score is not none %}
     <div class="grid-3" style="margin-bottom:20px;">
         {% if digital.monthly_traffic is not none %}
-        {{ metric_card('{:,}'.format(digital.monthly_traffic), 'Трафик/мес ⚠', 'orange') }}
+        {{ metric_card('{:,}'.format(digital.monthly_traffic|int), 'Трафик/мес ⚠', 'orange') }}
         {% endif %}
         {% if digital.seo_score is not none %}
         {{ metric_card(digital.seo_score ~ '/100', 'SEO-оценка ⚠', 'orange') }}
@@ -36,7 +36,7 @@
             <tr>
                 <td style="font-weight:600;">{{ acc.platform }}</td>
                 <td>{% if acc.url %}<a href="{{ acc.url }}" style="color:var(--blue);">{{ acc.handle }}</a>{% else %}{{ acc.handle }}{% endif %}</td>
-                <td class="r">{{ '{:,}'.format(acc.followers) if acc.followers is not none else '—' }}</td>
+                <td class="r">{{ '{:,}'.format(acc.followers|int) if acc.followers is not none else '—' }}</td>
                 <td>{% if acc.verified %}<span class="b-green" style="padding:2px 8px;">Верифицирован</span>{% else %}<span class="b-gold" style="padding:2px 8px;">Активен</span>{% endif %}</td>
             </tr>
             {% endfor %}
