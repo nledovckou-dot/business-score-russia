@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
-MODEL_MAIN = "gpt-5.2-pro"       # основной мозг
-MODEL_FAST = "gemini-2.5-flash"   # быстрые задачи
-MODEL_REASON = "o3"               # reasoning
+MODEL_MAIN = os.environ.get("LLM_MODEL_MAIN", "gpt-4o")          # основной мозг
+MODEL_FAST = os.environ.get("LLM_MODEL_FAST", "gemini-2.5-flash") # быстрые задачи
+MODEL_REASON = os.environ.get("LLM_MODEL_REASON", "o3-mini")      # reasoning
 
 
 # ── Metrics hook (T7) ──

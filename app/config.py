@@ -13,7 +13,7 @@ REPORTS_DIR = BASE_DIR / "app" / "storage" / "reports"
 
 
 # ── Board of Directors LLM (T28) ──
-BOARD_LLM_MODEL = os.getenv("BOARD_LLM_MODEL", "gpt-5.3-codex")
+BOARD_LLM_MODEL = os.getenv("BOARD_LLM_MODEL", "gpt-4o")
 BOARD_LLM_TEMPERATURE = float(os.getenv("BOARD_LLM_TEMPERATURE", "0.3"))
 BOARD_LLM_MAX_TOKENS = int(os.getenv("BOARD_LLM_MAX_TOKENS", "8000"))
 

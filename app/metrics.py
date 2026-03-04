@@ -34,10 +34,10 @@ METRICS_FILE = METRICS_DIR / "metrics.jsonl"
 
 MODEL_PRICING: dict[str, dict[str, float]] = {
     # model_name -> {"input": $/1K, "output": $/1K}
-    "gpt-5.2-pro": {"input": 0.005, "output": 0.015},
-    "gpt-5.3-codex": {"input": 0.008, "output": 0.024},
-    "gemini-2.5-flash": {"input": 0.0001, "output": 0.0001},
-    "o3": {"input": 0.010, "output": 0.030},
+    "gpt-4o": {"input": 0.0025, "output": 0.010},
+    "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
+    "o3-mini": {"input": 0.0011, "output": 0.0044},
+    "gemini-2.5-flash": {"input": 0.0001, "output": 0.0004},
 }
 
 # Fallback for unknown models
