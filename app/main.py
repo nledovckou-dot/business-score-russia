@@ -970,6 +970,8 @@ def _run_analysis_steps(sid: str):
         store.save(sid)  # persist final state
 
     except Exception as e:
+        import traceback
+        tb_str = traceback.format_exc()
         logger.exception("Error in analysis steps for session %s", sid)
         # T7: Finalize metrics even on error
         session = store.get(sid)
@@ -980,6 +982,7 @@ def _run_analysis_steps(sid: str):
             session["status"] = "error"
         _push_event(sid, "error", {
             "message": sanitize_error(e, include_details=not IS_PRODUCTION),
+            "traceback": tb_str,  # temporary: for debugging type errors
         })
         store.save(sid)
 
@@ -1232,7 +1235,10 @@ async def session_status(sid: str):
     elif status == "error":
         for ev in reversed(all_events):
             if ev.get("event") == "error":
-                result_data["error"] = ev.get("data", {}).get("message", "Unknown error")
+                err_data = ev.get("data", {})
+                result_data["error"] = err_data.get("message", "Unknown error")
+                if err_data.get("traceback"):
+                    result_data["traceback"] = err_data["traceback"]
                 break
 
     return {
