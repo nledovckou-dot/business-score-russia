@@ -608,27 +608,35 @@ def _generate_factcheck_items(report_data: dict, fns_data: dict, company_info: d
     if financials:
         latest = financials[-1]
         year = latest.get("year", "?")
-        if latest.get("revenue") is not None:
-            factcheck.append({
-                "fact": f"Выручка {year}: {latest['revenue']:,.0f} тыс. ₽",
-                "sources_count": 1,
-                "verified": True,
-                "sources": ["ФНС (бухотчётность)"],
-            })
-        if latest.get("net_profit") is not None:
-            factcheck.append({
-                "fact": f"Чистая прибыль {year}: {latest['net_profit']:,.0f} тыс. ₽",
-                "sources_count": 1,
-                "verified": True,
-                "sources": ["ФНС (бухотчётность)"],
-            })
-        if latest.get("employees"):
-            factcheck.append({
-                "fact": f"Сотрудников {year}: {latest['employees']}",
-                "sources_count": 1,
-                "verified": True,
-                "sources": ["ФНС"],
-            })
+        try:
+            rev = latest.get("revenue")
+            if rev is not None:
+                rev = float(rev)
+                factcheck.append({
+                    "fact": f"Выручка {year}: {rev:,.0f} тыс. ₽",
+                    "sources_count": 1,
+                    "verified": True,
+                    "sources": ["ФНС (бухотчётность)"],
+                })
+            profit = latest.get("net_profit")
+            if profit is not None:
+                profit = float(profit)
+                factcheck.append({
+                    "fact": f"Чистая прибыль {year}: {profit:,.0f} тыс. ₽",
+                    "sources_count": 1,
+                    "verified": True,
+                    "sources": ["ФНС (бухотчётность)"],
+                })
+            emp = latest.get("employees")
+            if emp:
+                factcheck.append({
+                    "fact": f"Сотрудников {year}: {emp}",
+                    "sources_count": 1,
+                    "verified": True,
+                    "sources": ["ФНС"],
+                })
+        except (TypeError, ValueError):
+            pass  # skip malformed financial data
 
     # Company website
     company = report_data.get("company", {})
@@ -1051,8 +1059,23 @@ def _sanitize_llm_output(d: dict) -> dict:
     # --- founders ---
     d["founders"] = [f for f in (d.get("founders") or []) if isinstance(f, dict) and f.get("name")]
 
-    # --- kpi_benchmarks ---
-    d["kpi_benchmarks"] = [k for k in (d.get("kpi_benchmarks") or []) if isinstance(k, dict) and k.get("name")]
+    # --- kpi_benchmarks: ensure current/benchmark are float or None ---
+    clean_kpis = []
+    for k in (d.get("kpi_benchmarks") or []):
+        if not isinstance(k, dict) or not k.get("name"):
+            continue
+        for field in ("current", "benchmark"):
+            val = k.get(field)
+            if val is not None:
+                try:
+                    # Remove spaces, currency symbols, percent signs
+                    if isinstance(val, str):
+                        val = val.replace(" ", "").replace(",", ".").replace("%", "").replace("₽", "").replace("тыс", "").replace("руб", "")
+                    k[field] = float(val)
+                except (ValueError, TypeError):
+                    k[field] = None
+        clean_kpis.append(k)
+    d["kpi_benchmarks"] = clean_kpis
 
     # --- v2.0: lifecycle in competitors ---
     valid_stages = {"startup", "growth", "investment", "mature"}
