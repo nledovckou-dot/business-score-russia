@@ -20,6 +20,15 @@ def render_horizontal_bars_svg(
     if not items:
         return ""
 
+    # Ensure all values are numeric (LLM can return strings)
+    for item in items:
+        v = item.get("value", 0)
+        if not isinstance(v, (int, float)):
+            try:
+                item["value"] = float(str(v).replace(" ", "").replace(",", ""))
+            except (ValueError, TypeError):
+                item["value"] = 0
+
     label_w = 160
     val_w = 80
     chart_w = width - label_w - val_w - 20
@@ -66,6 +75,14 @@ def render_grouped_bars_svg(
     """
     if not categories or not series:
         return ""
+
+    # Ensure all values are numeric
+    for s in series:
+        s["values"] = [
+            float(v) if isinstance(v, (int, float)) else
+            (float(str(v).replace(" ", "").replace(",", "")) if v is not None else 0.0)
+            for v in s.get("values", [])
+        ]
 
     margin = {"top": 30, "right": 20, "bottom": 50, "left": 70}
     chart_w = width - margin["left"] - margin["right"]

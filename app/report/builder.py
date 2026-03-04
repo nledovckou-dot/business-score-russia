@@ -401,10 +401,13 @@ def _render_all_charts(data: ReportData) -> dict[str, str]:
 
     # F2: Digital verification bars
     if data.digital_verification:
-        items = [
-            {"label": v.get("company", "?"), "value": v.get("total_followers", 0), "color": "#4A8FE0"}
-            for v in data.digital_verification
-        ]
+        items = []
+        for v in data.digital_verification:
+            try:
+                fol = float(v.get("total_followers", 0))
+            except (ValueError, TypeError):
+                fol = 0
+            items.append({"label": v.get("company", "?"), "value": fol, "color": "#4A8FE0"})
         if items:
             charts["digital_verification_bars"] = render_horizontal_bars_svg(items=items)
 
