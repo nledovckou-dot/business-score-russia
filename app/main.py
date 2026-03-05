@@ -1322,117 +1322,130 @@ LANDING_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Анализ бизнеса 360</title>
+<title>BSR — Анализ бизнеса 360°</title>
 <style>
-:root{--bg:#101014;--card:#18181E;--border:#28283A;--text:#E4E4EE;--text2:#9898AA;--text3:#606070;--accent:#5B8DEF;--accent2:#7DACFF;--accent-bg:rgba(91,141,239,0.08);--accent-border:rgba(91,141,239,0.22);--red:#E05555;--green:#44C080;--orange:#E0A040}
+:root{--bg:#0D0B0E;--bg2:#151217;--bg3:#1C1820;--card:#1A1620;--card2:#211D28;--border:#2E2838;--border2:#3D3548;--text:#E8E4EC;--text2:#A8A0B0;--text3:#706880;--gold:#C9A44C;--gold2:#E8C46A;--gold-bg:rgba(201,164,76,0.08);--gold-border:rgba(201,164,76,0.25);--red:#D44040;--green:#3DB86A;--orange:#E08040;--blue:#4A8FE0}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:40px 20px}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-apple-system,BlinkMacSystemFont,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:0 20px;-webkit-font-smoothing:antialiased}
 
-.wrap{max-width:640px;width:100%}
+.wrap{max-width:680px;width:100%}
 
-/* Phase: URL input */
-#phase-url{text-align:center;margin-top:15vh}
-.logo{font-size:0.82em;color:var(--text3);text-transform:uppercase;letter-spacing:0.18em;margin-bottom:32px}
-h1{color:var(--text);font-weight:600;font-size:1.9em;margin-bottom:10px;line-height:1.25}
-h1 span{color:var(--accent)}
-.sub{color:var(--text2);font-size:0.95em;margin-bottom:40px;line-height:1.6}
-.input-row{display:flex;gap:10px;margin-bottom:12px}
-.input-row input{flex:1;padding:14px 18px;background:var(--card);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-size:1em;font-family:inherit;transition:border-color 0.2s}
-.input-row input:focus{outline:none;border-color:var(--accent)}
+/* ═══ BSR Logo ═══ */
+.bsr-logo{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:28px}
+.bsr-logo svg{flex-shrink:0}
+.bsr-logo-text{font-size:1.6em;font-weight:700;color:var(--gold);letter-spacing:0.12em}
+
+/* ═══ Phase: URL input ═══ */
+#phase-url{text-align:center;margin-top:12vh;position:relative}
+#phase-url::before{content:'';position:absolute;top:-120px;left:50%;transform:translateX(-50%);width:600px;height:600px;background:radial-gradient(circle,rgba(201,164,76,0.06) 0%,transparent 70%);pointer-events:none}
+.tagline{display:inline-block;font-size:0.78em;color:var(--gold);text-transform:uppercase;letter-spacing:0.18em;padding:6px 18px;background:var(--gold-bg);border:1px solid var(--gold-border);border-radius:20px;margin-bottom:28px}
+h1{color:var(--text);font-weight:300;font-size:2.2em;margin-bottom:12px;line-height:1.3;letter-spacing:0.01em;position:relative}
+h1 span{color:var(--gold);font-weight:600}
+.sub{color:var(--text2);font-size:0.95em;margin-bottom:36px;line-height:1.65;max-width:520px;margin-left:auto;margin-right:auto;position:relative}
+.input-row{display:flex;gap:10px;margin-bottom:16px;position:relative}
+.input-row input{flex:1;padding:15px 20px;background:var(--card);border:1.5px solid var(--border);border-radius:12px;color:var(--text);font-size:1em;font-family:inherit;transition:border-color 0.25s,box-shadow 0.25s}
+.input-row input:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(201,164,76,0.12)}
 .input-row input::placeholder{color:var(--text3)}
-.btn{padding:14px 28px;background:var(--accent);border:none;border-radius:10px;color:#fff;font-size:1em;font-weight:600;cursor:pointer;transition:all 0.2s;font-family:inherit;white-space:nowrap}
-.btn:hover{background:#4A7CE0;transform:translateY(-1px)}
-.btn:disabled{opacity:0.35;cursor:not-allowed;transform:none}
+.btn{padding:15px 32px;background:var(--gold);border:none;border-radius:12px;color:var(--bg);font-size:1em;font-weight:700;cursor:pointer;transition:all 0.25s;font-family:inherit;white-space:nowrap;letter-spacing:0.02em}
+.btn:hover{background:var(--gold2);transform:translateY(-1px);box-shadow:0 4px 20px rgba(201,164,76,0.3)}
+.btn:disabled{opacity:0.35;cursor:not-allowed;transform:none;box-shadow:none}
 .btn-outline{background:transparent;border:1.5px solid var(--border);color:var(--text2)}
-.btn-outline:hover{border-color:var(--accent);color:var(--accent);background:transparent}
+.btn-outline:hover{border-color:var(--gold);color:var(--gold);background:transparent}
 .btn-sm{padding:8px 16px;font-size:0.85em;border-radius:8px}
-.btn-red{background:var(--red)}
-.btn-red:hover{background:#C04444}
+.btn-red{background:var(--red);color:#fff}
+.btn-red:hover{background:#C03030}
+.input-hint{font-size:0.78em;color:var(--text3);margin-top:4px;text-align:left}
 
-/* Phase: Pipeline */
+/* ═══ Phase: Pipeline ═══ */
 #phase-pipeline{display:none}
 .pipeline-header{text-align:center;margin-bottom:24px}
-.pipeline-header h2{font-size:1.3em;font-weight:500;margin-bottom:4px}
+.pipeline-header h2{font-size:1.3em;font-weight:400;margin-bottom:4px;color:var(--gold)}
 .pipeline-header .url-tag{color:var(--text3);font-size:0.85em}
 .steps{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:6px 0;margin-bottom:20px}
-.step{display:flex;align-items:center;gap:12px;padding:13px 22px;font-size:0.9em;color:var(--text3);transition:color 0.2s;border-bottom:1px solid rgba(40,40,58,0.4)}
+.step{display:flex;align-items:center;gap:12px;padding:14px 22px;font-size:0.9em;color:var(--text3);transition:color 0.2s;border-bottom:1px solid rgba(46,40,56,0.5)}
 .step:last-child{border-bottom:none}
-.step.active{color:var(--accent)}
+.step.active{color:var(--gold)}
 .step.done{color:var(--green)}
 .step.fail{color:var(--red)}
 .step.warning{color:var(--orange)}
-.step-icon{width:24px;height:24px;border-radius:50%;border:2px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:0.75em;flex-shrink:0;transition:all 0.2s}
-.step.active .step-icon{animation:pulse 1.5s infinite}
+.step-icon{width:26px;height:26px;border-radius:50%;border:2px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:0.75em;flex-shrink:0;transition:all 0.2s}
+.step.active .step-icon{animation:pulse 1.5s infinite;border-color:var(--gold)}
 .step.done .step-icon{background:var(--green);border-color:var(--green);color:var(--bg)}
 .step.fail .step-icon{background:var(--red);border-color:var(--red);color:var(--bg)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.35}}
 
-/* Interactive panels */
+/* ═══ Interactive panels ═══ */
 .panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:20px;display:none}
-.panel h3{font-size:1.05em;font-weight:600;margin-bottom:16px;color:var(--accent2)}
+.panel h3{font-size:1.05em;font-weight:600;margin-bottom:16px;color:var(--gold2)}
 .field{margin-bottom:14px}
 .field label{display:block;font-size:0.8em;color:var(--text3);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em}
 .field input,.field select{width:100%;padding:10px 14px;background:var(--bg);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-size:0.92em;font-family:inherit}
-.field input:focus,.field select:focus{outline:none;border-color:var(--accent)}
+.field input:focus,.field select:focus{outline:none;border-color:var(--gold)}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.fns-info{background:rgba(68,192,128,0.08);border:1px solid rgba(68,192,128,0.2);border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:0.88em;color:var(--green)}
-.fns-warning{background:rgba(224,160,64,0.08);border:1px solid rgba(224,160,64,0.2);border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:0.88em;color:var(--orange)}
+.fns-info{background:rgba(61,184,106,0.08);border:1px solid rgba(61,184,106,0.2);border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:0.88em;color:var(--green)}
+.fns-warning{background:rgba(224,128,64,0.08);border:1px solid rgba(224,128,64,0.2);border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:0.88em;color:var(--orange)}
 
-/* Competitor cards */
+/* ═══ Competitor cards ═══ */
 .comp-list{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
 .comp-item{display:flex;align-items:center;gap:14px;background:var(--bg);border:1.5px solid var(--border);border-radius:10px;padding:14px 16px;transition:border-color 0.2s}
 .comp-item.excluded{opacity:0.4;border-style:dashed}
-.comp-item:not(.excluded):hover{border-color:var(--accent-border)}
+.comp-item:not(.excluded):hover{border-color:var(--gold-border)}
 .comp-toggle{width:22px;height:22px;border-radius:6px;border:2px solid var(--border);background:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--green);font-size:0.9em;flex-shrink:0;transition:all 0.15s}
 .comp-toggle.on{background:var(--green);border-color:var(--green);color:var(--bg)}
 .comp-info{flex:1;min-width:0}
 .comp-name{font-weight:600;font-size:0.95em;margin-bottom:2px}
 .comp-desc{font-size:0.8em;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .comp-threat{font-size:0.75em;font-weight:600;padding:3px 8px;border-radius:12px;flex-shrink:0}
-.threat-high{background:rgba(224,85,85,0.12);color:var(--red)}
-.threat-med{background:rgba(224,160,64,0.12);color:var(--orange)}
-.threat-low{background:rgba(68,192,128,0.12);color:var(--green)}
+.threat-high{background:rgba(212,64,64,0.12);color:var(--red)}
+.threat-med{background:rgba(224,128,64,0.12);color:var(--orange)}
+.threat-low{background:rgba(61,184,106,0.12);color:var(--green)}
 
-/* Result */
-.result{display:none;text-align:center;padding:40px 28px;background:var(--accent-bg);border:1px solid var(--accent-border);border-radius:14px}
-.result h3{color:var(--accent2);font-weight:500;font-size:1.3em;margin-bottom:6px}
+/* ═══ Result ═══ */
+.result{display:none;text-align:center;padding:40px 28px;background:var(--gold-bg);border:1px solid var(--gold-border);border-radius:14px}
+.result h3{color:var(--gold2);font-weight:400;font-size:1.3em;margin-bottom:6px}
 .result .company{color:var(--text2);font-size:0.9em;margin-bottom:20px}
-.result a{display:inline-block;padding:14px 44px;background:var(--accent);color:#fff;font-weight:600;font-size:1.05em;border-radius:10px;text-decoration:none;transition:all 0.2s}
-.result a:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(91,141,239,0.3)}
+.result a{display:inline-block;padding:14px 44px;background:var(--gold);color:var(--bg);font-weight:700;font-size:1.05em;border-radius:12px;text-decoration:none;transition:all 0.2s}
+.result a:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(201,164,76,0.35);background:var(--gold2)}
 .result .meta{color:var(--text3);font-size:0.78em;margin-top:14px}
 
-.error{display:none;padding:14px 18px;background:rgba(224,85,85,0.08);border:1px solid rgba(224,85,85,0.2);border-radius:10px;color:var(--red);font-size:0.85em;margin-bottom:16px}
+.error{display:none;padding:14px 18px;background:rgba(212,64,64,0.08);border:1px solid rgba(212,64,64,0.2);border-radius:10px;color:var(--red);font-size:0.85em;margin-bottom:16px}
 .again{display:inline-block;margin-top:16px;color:var(--text3);font-size:0.82em;cursor:pointer;text-decoration:underline;border:none;background:none;font-family:inherit}
-.again:hover{color:var(--accent)}
+.again:hover{color:var(--gold)}
 
-/* Features section */
-.section-title{font-size:1.35em;font-weight:600;text-align:center;margin-bottom:8px;color:var(--text)}
+/* ═══ Features section ═══ */
+.section-title{font-size:1.35em;font-weight:400;text-align:center;margin-bottom:8px;color:var(--text);letter-spacing:0.02em}
 .section-sub{text-align:center;color:var(--text2);font-size:0.9em;margin-bottom:32px}
 .features{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:56px}
-.feature-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:22px 20px;transition:border-color 0.2s,transform 0.2s}
-.feature-card:hover{border-color:var(--accent-border);transform:translateY(-2px)}
-.feature-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.15em;margin-bottom:14px;background:var(--accent-bg);color:var(--accent)}
+.feature-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:22px 20px;transition:border-color 0.25s,transform 0.25s}
+.feature-card:hover{border-color:var(--gold-border);transform:translateY(-2px);box-shadow:0 4px 20px rgba(0,0,0,0.3)}
+.feature-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.15em;margin-bottom:14px;background:var(--gold-bg);color:var(--gold)}
 .feature-card h3{font-size:0.95em;font-weight:600;color:var(--text);margin-bottom:6px}
 .feature-card p{font-size:0.82em;color:var(--text2);line-height:1.55}
 
-/* How it works section */
+/* ═══ How it works section ═══ */
 .how-steps{display:flex;gap:20px;margin-bottom:56px;position:relative}
 .how-step{flex:1;text-align:center;position:relative}
-.how-num{width:44px;height:44px;border-radius:50%;background:var(--accent-bg);border:1.5px solid var(--accent-border);color:var(--accent);font-weight:700;font-size:1.1em;display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
+.how-num{width:44px;height:44px;border-radius:50%;background:var(--gold);color:var(--bg);font-weight:800;font-size:1.1em;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;box-shadow:0 2px 12px rgba(201,164,76,0.25)}
 .how-step h4{font-size:0.92em;font-weight:600;color:var(--text);margin-bottom:6px}
 .how-step p{font-size:0.8em;color:var(--text2);line-height:1.5}
-.how-connector{position:absolute;top:22px;left:calc(50% + 30px);width:calc(100% - 60px);height:0;border-top:1.5px dashed var(--border)}
+.how-connector{position:absolute;top:22px;left:calc(50% + 30px);width:calc(100% - 60px);height:0;border-top:1.5px dashed var(--gold-border)}
 .how-step:last-child .how-connector{display:none}
 
-/* Footer */
-.footer{text-align:center;padding:40px 0 20px;color:var(--text3);font-size:0.8em;border-top:1px solid var(--border);margin-top:32px}
-.footer a{color:var(--accent);text-decoration:none;transition:color 0.2s}
-.footer a:hover{color:var(--accent2)}
+/* ═══ Stats bar ═══ */
+.stats-bar{display:flex;justify-content:center;gap:40px;margin:40px 0 56px;padding:24px;background:var(--card);border:1px solid var(--border);border-radius:14px}
+.stat-item{text-align:center}
+.stat-val{font-size:1.6em;font-weight:700;color:var(--gold);line-height:1.2}
+.stat-lbl{font-size:0.75em;color:var(--text3);margin-top:4px;text-transform:uppercase;letter-spacing:0.04em}
 
-/* Responsive */
+/* ═══ Footer ═══ */
+.footer{text-align:center;padding:40px 0 20px;color:var(--text3);font-size:0.8em;border-top:1px solid var(--border);margin-top:32px;width:100%;max-width:680px}
+.footer a{color:var(--gold);text-decoration:none;transition:color 0.2s}
+.footer a:hover{color:var(--gold2)}
+
+/* ═══ Responsive ═══ */
 @media(max-width:600px){
     #phase-url{margin-top:8vh}
-    h1{font-size:1.5em}
+    h1{font-size:1.6em}
     .input-row{flex-direction:column}
     .input-row .btn{width:100%}
     .features{grid-template-columns:1fr}
@@ -1441,26 +1454,29 @@ h1 span{color:var(--accent)}
     .field-row{grid-template-columns:1fr}
     .auth-bar{padding:8px 14px}
     .modal{margin:16px;padding:24px 20px}
+    .stats-bar{flex-direction:column;gap:20px}
 }
 
-/* Auth bar */
-.auth-bar{position:fixed;top:0;right:0;left:0;display:flex;justify-content:flex-end;align-items:center;gap:10px;padding:10px 24px;z-index:100;background:rgba(16,16,20,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
+/* ═══ Auth bar ═══ */
+.auth-bar{position:fixed;top:0;right:0;left:0;display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 24px;z-index:100;background:rgba(13,11,14,0.88);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
+.auth-bar .auth-logo{display:flex;align-items:center;gap:8px;color:var(--gold);font-weight:700;font-size:0.95em;letter-spacing:0.08em}
+.auth-bar .auth-right{display:flex;align-items:center;gap:10px}
 .auth-bar .auth-user{display:flex;align-items:center;gap:10px;font-size:0.85em;color:var(--text2)}
 .auth-bar .auth-email{color:var(--text);font-weight:500}
-.auth-bar .quota-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:0.78em;font-weight:600;background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent-border)}
-.auth-bar .quota-badge.depleted{background:rgba(224,85,85,0.08);color:var(--red);border-color:rgba(224,85,85,0.2)}
+.auth-bar .quota-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:0.78em;font-weight:600;background:var(--gold-bg);color:var(--gold);border:1px solid var(--gold-border)}
+.auth-bar .quota-badge.depleted{background:rgba(212,64,64,0.08);color:var(--red);border-color:rgba(212,64,64,0.2)}
 .auth-bar .btn-auth{padding:6px 14px;font-size:0.82em;border-radius:8px;cursor:pointer;font-family:inherit;border:none;transition:all 0.15s}
-.btn-auth-login{background:transparent;color:var(--accent);border:1.5px solid var(--accent-border) !important}
-.btn-auth-login:hover{background:var(--accent-bg)}
-.btn-auth-register{background:var(--accent);color:#fff}
-.btn-auth-register:hover{background:#4A7CE0}
+.btn-auth-login{background:transparent;color:var(--gold);border:1.5px solid var(--gold-border) !important}
+.btn-auth-login:hover{background:var(--gold-bg)}
+.btn-auth-register{background:var(--gold);color:var(--bg);font-weight:600}
+.btn-auth-register:hover{background:var(--gold2)}
 .btn-auth-logout{background:transparent;color:var(--text3);font-size:0.78em !important}
 .btn-auth-logout:hover{color:var(--red)}
 
-/* Auth modal */
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:200;align-items:center;justify-content:center}
+/* ═══ Auth modal ═══ */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(6px);z-index:200;align-items:center;justify-content:center}
 .modal-overlay.open{display:flex}
-.modal{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:32px 28px;width:100%;max-width:400px;position:relative}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:32px 28px;width:100%;max-width:400px;position:relative;box-shadow:0 16px 48px rgba(0,0,0,0.5)}
 .modal h2{font-size:1.2em;font-weight:600;color:var(--text);margin-bottom:6px}
 .modal .modal-sub{font-size:0.85em;color:var(--text2);margin-bottom:24px}
 .modal .modal-close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--text3);font-size:1.2em;cursor:pointer;padding:4px 8px;border-radius:6px;transition:all 0.15s}
@@ -1468,29 +1484,35 @@ h1 span{color:var(--accent)}
 .modal .field{margin-bottom:16px}
 .modal .field label{display:block;font-size:0.8em;color:var(--text3);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em}
 .modal .field input{width:100%;padding:10px 14px;background:var(--bg);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-size:0.92em;font-family:inherit}
-.modal .field input:focus{outline:none;border-color:var(--accent)}
-.modal .modal-error{display:none;padding:10px 14px;background:rgba(224,85,85,0.08);border:1px solid rgba(224,85,85,0.2);border-radius:8px;color:var(--red);font-size:0.83em;margin-bottom:16px}
+.modal .field input:focus{outline:none;border-color:var(--gold)}
+.modal .modal-error{display:none;padding:10px 14px;background:rgba(212,64,64,0.08);border:1px solid rgba(212,64,64,0.2);border-radius:8px;color:var(--red);font-size:0.83em;margin-bottom:16px}
 .modal .modal-error.visible{display:block}
-.modal .btn-full{width:100%;padding:12px;background:var(--accent);border:none;border-radius:10px;color:#fff;font-size:0.95em;font-weight:600;cursor:pointer;font-family:inherit;transition:all 0.15s}
-.modal .btn-full:hover{background:#4A7CE0}
+.modal .btn-full{width:100%;padding:12px;background:var(--gold);border:none;border-radius:10px;color:var(--bg);font-size:0.95em;font-weight:700;cursor:pointer;font-family:inherit;transition:all 0.15s}
+.modal .btn-full:hover{background:var(--gold2)}
 .modal .btn-full:disabled{opacity:0.4;cursor:not-allowed}
 .modal .modal-switch{text-align:center;margin-top:16px;font-size:0.83em;color:var(--text3)}
-.modal .modal-switch a{color:var(--accent);cursor:pointer;text-decoration:none}
+.modal .modal-switch a{color:var(--gold);cursor:pointer;text-decoration:none}
 .modal .modal-switch a:hover{text-decoration:underline}
 </style>
 </head>
 <body>
 
-<!-- Auth bar (top right) -->
+<!-- Auth bar -->
 <div class="auth-bar" id="auth-bar">
-    <div id="auth-guest">
-        <button class="btn-auth btn-auth-login" onclick="openModal('login')">Войти</button>
-        <button class="btn-auth btn-auth-register" onclick="openModal('register')">Регистрация</button>
+    <div class="auth-logo">
+        <svg width="22" height="22" viewBox="0 0 32 32" fill="none"><path d="M16 2L4 8v6c0 9.94 5.12 15.6 12 18 6.88-2.4 12-8.06 12-18V8L16 2z" fill="#C9A44C" opacity="0.15" stroke="#C9A44C" stroke-width="1.5"/><text x="16" y="21" text-anchor="middle" fill="#C9A44C" font-weight="800" font-size="14" font-family="system-ui">B</text></svg>
+        BSR
     </div>
-    <div id="auth-logged" style="display:none" class="auth-user">
-        <span class="auth-email" id="auth-email"></span>
-        <span class="quota-badge" id="auth-quota"></span>
-        <button class="btn-auth btn-auth-logout" onclick="doLogout()">Выйти</button>
+    <div class="auth-right">
+        <div id="auth-guest">
+            <button class="btn-auth btn-auth-login" onclick="openModal('login')">Войти</button>
+            <button class="btn-auth btn-auth-register" onclick="openModal('register')">Регистрация</button>
+        </div>
+        <div id="auth-logged" style="display:none" class="auth-user">
+            <span class="auth-email" id="auth-email"></span>
+            <span class="quota-badge" id="auth-quota"></span>
+            <button class="btn-auth btn-auth-logout" onclick="doLogout()">Выйти</button>
+        </div>
     </div>
 </div>
 
@@ -1534,23 +1556,36 @@ h1 span{color:var(--accent)}
     </div>
 </div>
 
-<div class="wrap" style="padding-top:50px">
+<div class="wrap" style="padding-top:64px">
     <!-- Phase 1: URL Input -->
     <div id="phase-url">
-        <div class="logo">Анализ бизнеса</div>
-        <h1>Полный отчёт <span>за 2 минуты</span></h1>
-        <p class="sub">Вставьте ссылку на сайт компании — мы найдём юрлицо, конкурентов и соберём отчёт с реальными данными</p>
+        <div class="bsr-logo">
+            <svg width="40" height="40" viewBox="0 0 32 32" fill="none"><path d="M16 2L4 8v6c0 9.94 5.12 15.6 12 18 6.88-2.4 12-8.06 12-18V8L16 2z" fill="#C9A44C" opacity="0.15" stroke="#C9A44C" stroke-width="1.5"/><text x="16" y="21" text-anchor="middle" fill="#C9A44C" font-weight="800" font-size="14" font-family="system-ui">B</text></svg>
+            <span class="bsr-logo-text">BSR</span>
+        </div>
+        <div class="tagline">Полная картина. 90 секунд.</div>
+        <h1>Анализ компании за <span>90 секунд</span>?<br>Реальность с BSR.</h1>
+        <p class="sub">Финансы, конкуренты, рынок, SWOT, стратегия — всё в одном отчёте на основе реальных данных из ФНС, ЕГРЮЛ и открытых источников</p>
         <div class="input-row">
-            <input id="url" type="url" placeholder="https://example.com" autofocus
+            <input id="url" type="url" placeholder="https://example.com — сайт компании" autofocus
                    onkeydown="if(event.key==='Enter')startAnalysis()">
             <button class="btn" id="gobtn" onclick="startAnalysis()">Анализировать</button>
         </div>
+        <div class="input-hint">Вставьте ссылку на сайт — мы найдём юрлицо, конкурентов и соберём отчёт</div>
     </div>
 
-    <!-- Features section -->
-    <div id="section-features" class="landing-section" style="margin-top:64px">
+    <!-- Stats bar -->
+    <div id="section-features" class="landing-section" style="margin-top:48px">
+        <div class="stats-bar">
+            <div class="stat-item"><div class="stat-val">30+</div><div class="stat-lbl">Разделов в отчёте</div></div>
+            <div class="stat-item"><div class="stat-val">10</div><div class="stat-lbl">Конкурентов</div></div>
+            <div class="stat-item"><div class="stat-val">40+</div><div class="stat-lbl">Фактов проверено</div></div>
+            <div class="stat-item"><div class="stat-val">ФНС</div><div class="stat-lbl">Реальные данные</div></div>
+        </div>
+
+        <!-- Features section -->
         <div class="section-title">Что вы получите</div>
-        <p class="section-sub">Полный бизнес-анализ на основе реальных данных</p>
+        <p class="section-sub">Полный бизнес-анализ 360° на основе реальных данных</p>
         <div class="features">
             <div class="feature-card">
                 <div class="feature-icon">
@@ -1614,7 +1649,7 @@ h1 span{color:var(--accent)}
             <div class="how-step">
                 <div class="how-num">3</div>
                 <h4>Получите отчёт</h4>
-                <p>GPT-5.2 Pro соберёт полный отчёт с графиками и рекомендациями</p>
+                <p>AI соберёт полный отчёт с графиками и рекомендациями</p>
             </div>
         </div>
     </div>
@@ -1696,7 +1731,8 @@ h1 span{color:var(--accent)}
 </div>
 
 <footer class="footer">
-    BSR — Анализ бизнеса 360 | <a href="https://github.com/nledovckou-dot/business-score-russia" target="_blank" rel="noopener">Open Source</a>
+    <div style="margin-bottom:8px"><svg width="18" height="18" viewBox="0 0 32 32" fill="none" style="vertical-align:middle;margin-right:6px"><path d="M16 2L4 8v6c0 9.94 5.12 15.6 12 18 6.88-2.4 12-8.06 12-18V8L16 2z" fill="#C9A44C" opacity="0.15" stroke="#C9A44C" stroke-width="1.5"/><text x="16" y="21" text-anchor="middle" fill="#C9A44C" font-weight="800" font-size="14" font-family="system-ui">B</text></svg><span style="color:var(--gold);font-weight:600;letter-spacing:0.08em">BSR</span> — Анализ бизнеса 360°</div>
+    <a href="https://github.com/nledovckou-dot/business-score-russia" target="_blank" rel="noopener">Open Source</a> &nbsp;|&nbsp; Business Score Russia
 </footer>
 
 <script>
@@ -1844,7 +1880,7 @@ function startAnalysis(){
                 /* Suggest registration if not logged in */
                 if(!authUser){
                     var el=document.getElementById('error');
-                    el.innerHTML += '<br><br><span style="color:var(--accent);cursor:pointer;text-decoration:underline" onclick="openModal(&#39;register&#39;)">Зарегистрируйтесь для получения 5 бесплатных отчётов</span>';
+                    el.innerHTML += '<br><br><span style="color:var(--gold);cursor:pointer;text-decoration:underline" onclick="openModal(&#39;register&#39;)">Зарегистрируйтесь для получения 5 бесплатных отчётов</span>';
                 }
             } else {
                 showError(res.error);
