@@ -111,6 +111,17 @@ def call_openai(
             return body["choices"][0]["message"]["content"]
         except urllib.error.HTTPError as e:
             error_body = e.read().decode("utf-8") if e.fp else ""
+            # Quota exhausted → fallback to Gemini
+            if "insufficient_quota" in error_body:
+                logger.warning("OpenAI quota exhausted, falling back to Gemini")
+                full_prompt = prompt
+                if system:
+                    full_prompt = f"[System]: {system}\n\n{prompt}"
+                return call_gemini(
+                    full_prompt, model=MODEL_FAST,
+                    temperature=temperature, max_tokens=max_tokens,
+                    json_mode=json_mode,
+                )
             if e.code in (429, 500, 502, 503) and attempt < 2:
                 wait = (attempt + 1) * 5
                 time.sleep(wait)
@@ -276,6 +287,13 @@ def call_board_llm(prompt: str, system: str | None = None) -> str:
                 "Board LLM attempt %d failed: model=%s, status=%d, time=%.2fs, error=%s",
                 attempt + 1, model, e.code, elapsed, error_body[:200],
             )
+            # Quota exhausted → skip retries, go straight to Gemini fallback
+            if "insufficient_quota" in error_body:
+                logger.warning("Board LLM: OpenAI quota exhausted, falling back to Gemini")
+                full_prompt = prompt
+                if system:
+                    full_prompt = f"[System]: {system}\n\n{prompt}"
+                return call_gemini(full_prompt, temperature=temperature, max_tokens=max_tokens)
             if e.code in (429, 500, 502, 503) and attempt < 1:
                 time.sleep((attempt + 1) * 5)
                 continue
