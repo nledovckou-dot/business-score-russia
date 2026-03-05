@@ -1883,7 +1883,7 @@ function listenSSE(){
         document.getElementById('rlink').href = d.url;
         document.getElementById('rmeta').textContent = d.size_kb + ' KB';
         /* Update auth quota after report generation */
-        if(authUser && d.reports_remaining \!== undefined){
+        if(authUser && d.reports_remaining !== undefined){
             authUser.reports_remaining = d.reports_remaining;
             authUser.reports_used = 5 - d.reports_remaining;
             updateAuthUI();
