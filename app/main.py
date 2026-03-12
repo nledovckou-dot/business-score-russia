@@ -29,6 +29,7 @@ from app.security import (
     sanitize_error,
     get_client_ip,
 )
+from app.admin import router as admin_router
 from app.session_store import get_store
 
 load_dotenv()
@@ -95,6 +96,9 @@ async def error_sanitization_middleware(request: Request, call_next):
 
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/reports", StaticFiles(directory=str(REPORTS_DIR)), name="reports")
+
+# ── Admin dashboard ──
+app.include_router(admin_router)
 
 # ── Session storage (T1: pluggable backend via STORE_BACKEND env var) ──
 
