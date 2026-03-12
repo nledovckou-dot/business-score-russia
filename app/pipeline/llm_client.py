@@ -125,6 +125,25 @@ def call_openai(
         method="POST",
     )
 
+    def _fallback_to_opus_or_gemini():
+        """Claude Opus → Gemini fallback when OpenAI fails."""
+        try:
+            return call_anthropic(
+                prompt, model=MODEL_OPUS, system=system,
+                temperature=temperature, max_tokens=max_tokens,
+                json_mode=json_mode,
+            )
+        except Exception as opus_err:
+            logger.warning("Claude Opus fallback failed: %s, trying Gemini", str(opus_err)[:200])
+            full_prompt = prompt
+            if system:
+                full_prompt = f"[System]: {system}\n\n{prompt}"
+            return call_gemini(
+                full_prompt, model=MODEL_FAST,
+                temperature=temperature, max_tokens=max_tokens,
+                json_mode=json_mode,
+            )
+
     for attempt in range(3):
         try:
             with urllib.request.urlopen(req, timeout=180) as resp:
@@ -139,35 +158,27 @@ def call_openai(
             return body["choices"][0]["message"]["content"]
         except urllib.error.HTTPError as e:
             error_body = e.read().decode("utf-8") if e.fp else ""
-            # Quota exhausted → fallback: Claude Opus → Gemini
-            if "insufficient_quota" in error_body:
-                logger.warning("OpenAI quota exhausted, trying Claude Opus fallback")
-                try:
-                    return call_anthropic(
-                        prompt, model=MODEL_OPUS, system=system,
-                        temperature=temperature, max_tokens=max_tokens,
-                        json_mode=json_mode,
-                    )
-                except Exception as opus_err:
-                    logger.warning("Claude Opus fallback failed: %s, trying Gemini", str(opus_err)[:200])
-                    full_prompt = prompt
-                    if system:
-                        full_prompt = f"[System]: {system}\n\n{prompt}"
-                    return call_gemini(
-                        full_prompt, model=MODEL_FAST,
-                        temperature=temperature, max_tokens=max_tokens,
-                        json_mode=json_mode,
-                    )
+            # Non-retryable errors → immediate fallback to Claude/Gemini
+            if "insufficient_quota" in error_body or "exceeded" in error_body:
+                logger.warning("OpenAI quota exhausted, falling back to Claude/Gemini")
+                return _fallback_to_opus_or_gemini()
+            if e.code == 404:
+                logger.warning("OpenAI model %s not found (404), falling back", model)
+                return _fallback_to_opus_or_gemini()
             if e.code in (429, 500, 502, 503) and attempt < 2:
                 wait = (attempt + 1) * 5
                 time.sleep(wait)
                 continue
-            raise RuntimeError(f"OpenAI API error {e.code}: {error_body[:500]}")
+            # All retries exhausted → fallback instead of crashing
+            logger.warning("OpenAI failed after %d attempts (HTTP %d), falling back", attempt + 1, e.code)
+            return _fallback_to_opus_or_gemini()
         except Exception as e:
             if attempt < 2:
                 time.sleep(3)
                 continue
-            raise
+            # All retries exhausted → fallback instead of crashing
+            logger.warning("OpenAI failed after %d attempts: %s, falling back", attempt + 1, str(e)[:200])
+            return _fallback_to_opus_or_gemini()
 
 
 def call_gemini(

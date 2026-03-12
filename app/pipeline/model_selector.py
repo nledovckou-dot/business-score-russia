@@ -24,12 +24,11 @@ logger = logging.getLogger(__name__)
 # Updated: 2026-03-12
 
 OPENAI_MODELS = [
-    "gpt-5.4-pro",        # top tier: best reasoning, most demanding tasks (Mar 2026)
     "gpt-5.4",            # flagship: 1M ctx, best reasoning + coding (Mar 2026)
-    "gpt-5.4-thinking",   # extended thinking for complex tasks
-    "gpt-5.3-instant",    # fast + accurate (Mar 2026)
+    "gpt-4.1",            # strong reasoning, stable (Apr 2025)
     "gpt-4o",             # previous gen, stable fallback
-    "gpt-5-mini",         # budget
+    "gpt-4.1-mini",       # fast + cheap
+    "gpt-4o-mini",        # budget fallback
 ]
 
 ANTHROPIC_MODELS = [
@@ -39,10 +38,10 @@ ANTHROPIC_MODELS = [
 ]
 
 GEMINI_MODELS = [
-    "gemini-3.1-pro",     # best reasoning (Feb 2026)
-    "gemini-3-flash",     # balanced: Pro-grade at Flash speed (Feb 2026)
-    "gemini-3.1-flash-lite",  # cheapest ($0.25/1M in)
-    "gemini-2.5-flash",   # previous gen fallback
+    "gemini-2.5-pro",     # best reasoning, stable
+    "gemini-2.5-flash",   # balanced: fast + accurate
+    "gemini-2.5-flash-lite",  # cheapest
+    "gemini-2.0-flash",   # previous gen fallback
 ]
 
 
