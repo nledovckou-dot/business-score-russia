@@ -326,14 +326,23 @@ def _render_all_charts(data: ReportData) -> dict[str, str]:
             ],
         )
 
-    # P4: Digital followers bars
+    # P4: Digital ER bars (engagement rate — главная метрика вместо followers)
     if data.digital and data.digital.social_accounts:
-        charts["digital_bars"] = render_horizontal_bars_svg(
-            items=[
-                {"label": acc.platform + " " + acc.handle, "value": acc.followers or 0, "color": "#4A8FE0"}
-                for acc in data.digital.social_accounts
-            ],
-        )
+        er_items = [
+            {"label": acc.platform + " " + (acc.handle or ""), "value": acc.engagement_rate or 0, "color": "#3DB86A" if (acc.engagement_rate or 0) >= 3 else "#C9A44C" if (acc.engagement_rate or 0) >= 1 else "#D44040"}
+            for acc in data.digital.social_accounts
+            if acc.engagement_rate is not None
+        ]
+        if er_items:
+            charts["digital_bars"] = render_horizontal_bars_svg(items=er_items)
+        else:
+            # Fallback на followers если ER нет
+            charts["digital_bars"] = render_horizontal_bars_svg(
+                items=[
+                    {"label": acc.platform + " " + (acc.handle or ""), "value": acc.followers or 0, "color": "#4A8FE0"}
+                    for acc in data.digital.social_accounts
+                ],
+            )
 
     # P10: Market share donut
     if data.market_share:
@@ -399,16 +408,27 @@ def _render_all_charts(data: ReportData) -> dict[str, str]:
             values=values,
         )
 
-    # F2: Digital verification bars
+    # F2: Digital verification bars — ER as primary metric
     if data.digital_verification:
-        items = []
+        er_items = []
+        fol_items = []
         for v in data.digital_verification:
+            label = v.get("company", "?")
+            try:
+                er = float(v.get("avg_er", 0))
+            except (ValueError, TypeError):
+                er = 0
             try:
                 fol = float(v.get("total_followers", 0))
             except (ValueError, TypeError):
                 fol = 0
-            items.append({"label": v.get("company", "?"), "value": fol, "color": "#4A8FE0"})
-        if items:
-            charts["digital_verification_bars"] = render_horizontal_bars_svg(items=items)
+            color = "#3DB86A" if er >= 3 else "#C9A44C" if er >= 1 else "#D44040"
+            if er > 0:
+                er_items.append({"label": label, "value": er, "color": color})
+            fol_items.append({"label": label, "value": fol, "color": "#4A8FE0"})
+        if er_items:
+            charts["digital_verification_bars"] = render_horizontal_bars_svg(items=er_items)
+        elif fol_items:
+            charts["digital_verification_bars"] = render_horizontal_bars_svg(items=fol_items)
 
     return charts

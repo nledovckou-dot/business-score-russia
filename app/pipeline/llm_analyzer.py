@@ -113,8 +113,8 @@ Description: {scraped.get('description', '')}
   }},
   "digital": {{
     "social_accounts": [
-      {{"platform": "Instagram", "handle": "@...", "followers": число_или_null}},
-      {{"platform": "Telegram", "handle": "@...", "followers": число_или_null}}
+      {{"platform": "Instagram", "handle": "@...", "followers": число_или_null, "engagement_rate": число_или_null, "avg_likes": число_или_null, "avg_comments": число_или_null, "avg_views": число_или_null}},
+      {{"platform": "Telegram", "handle": "@...", "followers": число_или_null, "engagement_rate": число_или_null, "avg_likes": число_или_null, "avg_comments": число_или_null, "avg_views": число_или_null}}
     ],
     "seo_score": 0-100 (оценка),
     "monthly_traffic": число_оценка

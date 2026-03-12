@@ -105,6 +105,10 @@ class SocialAccount(BaseModel):
     platform: str
     handle: Optional[str] = None
     followers: Optional[int] = None
+    engagement_rate: Optional[float] = None  # ER в процентах (лайки+комменты+репосты)/подписчики*100
+    avg_likes: Optional[int] = None
+    avg_comments: Optional[int] = None
+    avg_views: Optional[int] = None
     verified: bool = False
     url: Optional[str] = None
 

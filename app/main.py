@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.auth import AuthManager
 from app.config import REPORTS_DIR, BusinessType
+from app.landing import LANDING_HTML
 from app.metrics import MetricsCollector, get_aggregate_stats
 from app.security import (
     check_rate_limit_request,
@@ -415,10 +416,22 @@ def _run_initial_steps(sid: str, url: str):
     # T7: Initialize metrics collector and bind to this thread
     mc = MetricsCollector(session_id=sid)
     session["_metrics"] = mc
-    from app.pipeline.llm_client import set_metrics_collector
+    from app.pipeline.llm_client import set_metrics_collector, refresh_models
     set_metrics_collector(mc)
 
     try:
+        # Step 0: Auto-select best available models from all providers
+        _push_event(sid, "step", {"num": 0, "status": "active", "text": "Выбираю лучшие AI-модели..."})
+        try:
+            probe_results = refresh_models()
+            from app.pipeline.llm_client import MODEL_MAIN, MODEL_OPUS, MODEL_FAST
+            models_text = f"AI: {MODEL_MAIN} + {MODEL_OPUS} + {MODEL_FAST}"
+            _push_event(sid, "step", {"num": 0, "status": "done", "text": models_text})
+            session["data"]["selected_models"] = probe_results
+        except Exception as e:
+            logger.warning("Model probe failed, using defaults: %s", str(e)[:200])
+            _push_event(sid, "step", {"num": 0, "status": "warning", "text": "AI-модели: defaults"})
+
         # Step 1: Scrape
         _push_event(sid, "step", {"num": 1, "status": "active", "text": "Загрузка и скрапинг сайта..."})
         mc.start_timer("step1_scrape")
@@ -668,22 +681,29 @@ def _generate_digital_verification(report_data: dict, company_info: dict, compet
         "telegram": "—",
         "vk": "—",
         "total_followers": 0,
+        "avg_er": 0,
     }
     total = 0
+    er_values = []
     for acc in (social if isinstance(social, list) else []):
         if not isinstance(acc, dict):
             continue
         platform = (acc.get("platform") or "").lower()
         handle = acc.get("handle", "—")
         followers = acc.get("followers") or 0
+        er = acc.get("engagement_rate")
+        er_str = f", ER {er:.1f}%" if er else ""
         if "instagram" in platform:
-            company_item["instagram"] = f"{handle} ({followers:,})" if followers else handle
+            company_item["instagram"] = f"{handle} ({followers:,}{er_str})" if followers else handle
         elif "telegram" in platform:
-            company_item["telegram"] = f"{handle} ({followers:,})" if followers else handle
+            company_item["telegram"] = f"{handle} ({followers:,}{er_str})" if followers else handle
         elif "vk" in platform or "вк" in platform:
-            company_item["vk"] = f"{handle} ({followers:,})" if followers else handle
+            company_item["vk"] = f"{handle} ({followers:,}{er_str})" if followers else handle
         total += followers if isinstance(followers, (int, float)) else 0
+        if er and isinstance(er, (int, float)):
+            er_values.append(er)
     company_item["total_followers"] = f"{int(total):,}" if total else "⚠ нет данных"
+    company_item["avg_er"] = round(sum(er_values) / len(er_values), 1) if er_values else 0
     dv_items.append(company_item)
 
     # Competitors
@@ -697,6 +717,7 @@ def _generate_digital_verification(report_data: dict, company_info: dict, compet
                 "telegram": "⚠ не проверено",
                 "vk": "⚠ не проверено",
                 "total_followers": "⚠ оценка",
+                "avg_er": 0,
             })
 
     if dv_items:
@@ -1018,6 +1039,15 @@ def _sanitize_llm_output(d: dict) -> dict:
                     acc["followers"] = int(float(str(fol).replace(" ", "").replace(",", "")))
                 except (ValueError, TypeError):
                     acc["followers"] = 0
+            # Sanitize ER fields
+            for er_field in ("engagement_rate", "avg_likes", "avg_comments", "avg_views"):
+                val = acc.get(er_field)
+                if val is not None:
+                    try:
+                        cleaned = float(str(val).replace(" ", "").replace(",", "").replace("%", ""))
+                        acc[er_field] = cleaned if er_field == "engagement_rate" else int(cleaned)
+                    except (ValueError, TypeError):
+                        acc[er_field] = None
             clean_accounts.append(acc)
         digital["social_accounts"] = clean_accounts
     mt = digital.get("monthly_traffic")
@@ -1316,735 +1346,5 @@ async def analyze_simple(request: Request):
             "company": report_data.get("company", {}).get("name", "")}
 
 
-# ──────────────────────────────────────────────────────────
-LANDING_HTML = r"""<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BSR — Анализ бизнеса 360°</title>
-<style>
-:root{--bg:#0D0B0E;--bg2:#151217;--bg3:#1C1820;--card:#1A1620;--card2:#211D28;--border:#2E2838;--border2:#3D3548;--text:#E8E4EC;--text2:#A8A0B0;--text3:#706880;--gold:#C9A44C;--gold2:#E8C46A;--gold-bg:rgba(201,164,76,0.08);--gold-border:rgba(201,164,76,0.25);--red:#D44040;--green:#3DB86A;--orange:#E08040;--blue:#4A8FE0}
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-apple-system,BlinkMacSystemFont,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:0 20px;-webkit-font-smoothing:antialiased}
-
-.wrap{max-width:680px;width:100%}
-
-/* ═══ BSR Logo ═══ */
-.bsr-logo{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:28px}
-.bsr-logo svg{flex-shrink:0}
-.bsr-logo-text{font-size:1.6em;font-weight:700;color:var(--gold);letter-spacing:0.12em}
-
-/* ═══ Phase: URL input ═══ */
-#phase-url{text-align:center;margin-top:12vh;position:relative}
-#phase-url::before{content:'';position:absolute;top:-120px;left:50%;transform:translateX(-50%);width:600px;height:600px;background:radial-gradient(circle,rgba(201,164,76,0.06) 0%,transparent 70%);pointer-events:none}
-.tagline{display:inline-block;font-size:0.78em;color:var(--gold);text-transform:uppercase;letter-spacing:0.18em;padding:6px 18px;background:var(--gold-bg);border:1px solid var(--gold-border);border-radius:20px;margin-bottom:28px}
-h1{color:var(--text);font-weight:300;font-size:2.2em;margin-bottom:12px;line-height:1.3;letter-spacing:0.01em;position:relative}
-h1 span{color:var(--gold);font-weight:600}
-.sub{color:var(--text2);font-size:0.95em;margin-bottom:36px;line-height:1.65;max-width:520px;margin-left:auto;margin-right:auto;position:relative}
-.input-row{display:flex;gap:10px;margin-bottom:16px;position:relative}
-.input-row input{flex:1;padding:15px 20px;background:var(--card);border:1.5px solid var(--border);border-radius:12px;color:var(--text);font-size:1em;font-family:inherit;transition:border-color 0.25s,box-shadow 0.25s}
-.input-row input:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(201,164,76,0.12)}
-.input-row input::placeholder{color:var(--text3)}
-.btn{padding:15px 32px;background:var(--gold);border:none;border-radius:12px;color:var(--bg);font-size:1em;font-weight:700;cursor:pointer;transition:all 0.25s;font-family:inherit;white-space:nowrap;letter-spacing:0.02em}
-.btn:hover{background:var(--gold2);transform:translateY(-1px);box-shadow:0 4px 20px rgba(201,164,76,0.3)}
-.btn:disabled{opacity:0.35;cursor:not-allowed;transform:none;box-shadow:none}
-.btn-outline{background:transparent;border:1.5px solid var(--border);color:var(--text2)}
-.btn-outline:hover{border-color:var(--gold);color:var(--gold);background:transparent}
-.btn-sm{padding:8px 16px;font-size:0.85em;border-radius:8px}
-.btn-red{background:var(--red);color:#fff}
-.btn-red:hover{background:#C03030}
-.input-hint{font-size:0.78em;color:var(--text3);margin-top:4px;text-align:left}
-
-/* ═══ Phase: Pipeline ═══ */
-#phase-pipeline{display:none}
-.pipeline-header{text-align:center;margin-bottom:24px}
-.pipeline-header h2{font-size:1.3em;font-weight:400;margin-bottom:4px;color:var(--gold)}
-.pipeline-header .url-tag{color:var(--text3);font-size:0.85em}
-.steps{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:6px 0;margin-bottom:20px}
-.step{display:flex;align-items:center;gap:12px;padding:14px 22px;font-size:0.9em;color:var(--text3);transition:color 0.2s;border-bottom:1px solid rgba(46,40,56,0.5)}
-.step:last-child{border-bottom:none}
-.step.active{color:var(--gold)}
-.step.done{color:var(--green)}
-.step.fail{color:var(--red)}
-.step.warning{color:var(--orange)}
-.step-icon{width:26px;height:26px;border-radius:50%;border:2px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:0.75em;flex-shrink:0;transition:all 0.2s}
-.step.active .step-icon{animation:pulse 1.5s infinite;border-color:var(--gold)}
-.step.done .step-icon{background:var(--green);border-color:var(--green);color:var(--bg)}
-.step.fail .step-icon{background:var(--red);border-color:var(--red);color:var(--bg)}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.35}}
-
-/* ═══ Interactive panels ═══ */
-.panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:20px;display:none}
-.panel h3{font-size:1.05em;font-weight:600;margin-bottom:16px;color:var(--gold2)}
-.field{margin-bottom:14px}
-.field label{display:block;font-size:0.8em;color:var(--text3);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em}
-.field input,.field select{width:100%;padding:10px 14px;background:var(--bg);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-size:0.92em;font-family:inherit}
-.field input:focus,.field select:focus{outline:none;border-color:var(--gold)}
-.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.fns-info{background:rgba(61,184,106,0.08);border:1px solid rgba(61,184,106,0.2);border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:0.88em;color:var(--green)}
-.fns-warning{background:rgba(224,128,64,0.08);border:1px solid rgba(224,128,64,0.2);border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:0.88em;color:var(--orange)}
-
-/* ═══ Competitor cards ═══ */
-.comp-list{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
-.comp-item{display:flex;align-items:center;gap:14px;background:var(--bg);border:1.5px solid var(--border);border-radius:10px;padding:14px 16px;transition:border-color 0.2s}
-.comp-item.excluded{opacity:0.4;border-style:dashed}
-.comp-item:not(.excluded):hover{border-color:var(--gold-border)}
-.comp-toggle{width:22px;height:22px;border-radius:6px;border:2px solid var(--border);background:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--green);font-size:0.9em;flex-shrink:0;transition:all 0.15s}
-.comp-toggle.on{background:var(--green);border-color:var(--green);color:var(--bg)}
-.comp-info{flex:1;min-width:0}
-.comp-name{font-weight:600;font-size:0.95em;margin-bottom:2px}
-.comp-desc{font-size:0.8em;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.comp-threat{font-size:0.75em;font-weight:600;padding:3px 8px;border-radius:12px;flex-shrink:0}
-.threat-high{background:rgba(212,64,64,0.12);color:var(--red)}
-.threat-med{background:rgba(224,128,64,0.12);color:var(--orange)}
-.threat-low{background:rgba(61,184,106,0.12);color:var(--green)}
-
-/* ═══ Result ═══ */
-.result{display:none;text-align:center;padding:40px 28px;background:var(--gold-bg);border:1px solid var(--gold-border);border-radius:14px}
-.result h3{color:var(--gold2);font-weight:400;font-size:1.3em;margin-bottom:6px}
-.result .company{color:var(--text2);font-size:0.9em;margin-bottom:20px}
-.result a{display:inline-block;padding:14px 44px;background:var(--gold);color:var(--bg);font-weight:700;font-size:1.05em;border-radius:12px;text-decoration:none;transition:all 0.2s}
-.result a:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(201,164,76,0.35);background:var(--gold2)}
-.result .meta{color:var(--text3);font-size:0.78em;margin-top:14px}
-
-.error{display:none;padding:14px 18px;background:rgba(212,64,64,0.08);border:1px solid rgba(212,64,64,0.2);border-radius:10px;color:var(--red);font-size:0.85em;margin-bottom:16px}
-.again{display:inline-block;margin-top:16px;color:var(--text3);font-size:0.82em;cursor:pointer;text-decoration:underline;border:none;background:none;font-family:inherit}
-.again:hover{color:var(--gold)}
-
-/* ═══ Features section ═══ */
-.section-title{font-size:1.35em;font-weight:400;text-align:center;margin-bottom:8px;color:var(--text);letter-spacing:0.02em}
-.section-sub{text-align:center;color:var(--text2);font-size:0.9em;margin-bottom:32px}
-.features{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:56px}
-.feature-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:22px 20px;transition:border-color 0.25s,transform 0.25s}
-.feature-card:hover{border-color:var(--gold-border);transform:translateY(-2px);box-shadow:0 4px 20px rgba(0,0,0,0.3)}
-.feature-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.15em;margin-bottom:14px;background:var(--gold-bg);color:var(--gold)}
-.feature-card h3{font-size:0.95em;font-weight:600;color:var(--text);margin-bottom:6px}
-.feature-card p{font-size:0.82em;color:var(--text2);line-height:1.55}
-
-/* ═══ How it works section ═══ */
-.how-steps{display:flex;gap:20px;margin-bottom:56px;position:relative}
-.how-step{flex:1;text-align:center;position:relative}
-.how-num{width:44px;height:44px;border-radius:50%;background:var(--gold);color:var(--bg);font-weight:800;font-size:1.1em;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;box-shadow:0 2px 12px rgba(201,164,76,0.25)}
-.how-step h4{font-size:0.92em;font-weight:600;color:var(--text);margin-bottom:6px}
-.how-step p{font-size:0.8em;color:var(--text2);line-height:1.5}
-.how-connector{position:absolute;top:22px;left:calc(50% + 30px);width:calc(100% - 60px);height:0;border-top:1.5px dashed var(--gold-border)}
-.how-step:last-child .how-connector{display:none}
-
-/* ═══ Stats bar ═══ */
-.stats-bar{display:flex;justify-content:center;gap:40px;margin:40px 0 56px;padding:24px;background:var(--card);border:1px solid var(--border);border-radius:14px}
-.stat-item{text-align:center}
-.stat-val{font-size:1.6em;font-weight:700;color:var(--gold);line-height:1.2}
-.stat-lbl{font-size:0.75em;color:var(--text3);margin-top:4px;text-transform:uppercase;letter-spacing:0.04em}
-
-/* ═══ Footer ═══ */
-.footer{text-align:center;padding:40px 0 20px;color:var(--text3);font-size:0.8em;border-top:1px solid var(--border);margin-top:32px;width:100%;max-width:680px}
-.footer a{color:var(--gold);text-decoration:none;transition:color 0.2s}
-.footer a:hover{color:var(--gold2)}
-
-/* ═══ Responsive ═══ */
-@media(max-width:600px){
-    #phase-url{margin-top:8vh}
-    h1{font-size:1.6em}
-    .input-row{flex-direction:column}
-    .input-row .btn{width:100%}
-    .features{grid-template-columns:1fr}
-    .how-steps{flex-direction:column;gap:24px}
-    .how-connector{display:none}
-    .field-row{grid-template-columns:1fr}
-    .auth-bar{padding:8px 14px}
-    .modal{margin:16px;padding:24px 20px}
-    .stats-bar{flex-direction:column;gap:20px}
-}
-
-/* ═══ Auth bar ═══ */
-.auth-bar{position:fixed;top:0;right:0;left:0;display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 24px;z-index:100;background:rgba(13,11,14,0.88);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
-.auth-bar .auth-logo{display:flex;align-items:center;gap:8px;color:var(--gold);font-weight:700;font-size:0.95em;letter-spacing:0.08em}
-.auth-bar .auth-right{display:flex;align-items:center;gap:10px}
-.auth-bar .auth-user{display:flex;align-items:center;gap:10px;font-size:0.85em;color:var(--text2)}
-.auth-bar .auth-email{color:var(--text);font-weight:500}
-.auth-bar .quota-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:0.78em;font-weight:600;background:var(--gold-bg);color:var(--gold);border:1px solid var(--gold-border)}
-.auth-bar .quota-badge.depleted{background:rgba(212,64,64,0.08);color:var(--red);border-color:rgba(212,64,64,0.2)}
-.auth-bar .btn-auth{padding:6px 14px;font-size:0.82em;border-radius:8px;cursor:pointer;font-family:inherit;border:none;transition:all 0.15s}
-.btn-auth-login{background:transparent;color:var(--gold);border:1.5px solid var(--gold-border) !important}
-.btn-auth-login:hover{background:var(--gold-bg)}
-.btn-auth-register{background:var(--gold);color:var(--bg);font-weight:600}
-.btn-auth-register:hover{background:var(--gold2)}
-.btn-auth-logout{background:transparent;color:var(--text3);font-size:0.78em !important}
-.btn-auth-logout:hover{color:var(--red)}
-
-/* ═══ Auth modal ═══ */
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(6px);z-index:200;align-items:center;justify-content:center}
-.modal-overlay.open{display:flex}
-.modal{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:32px 28px;width:100%;max-width:400px;position:relative;box-shadow:0 16px 48px rgba(0,0,0,0.5)}
-.modal h2{font-size:1.2em;font-weight:600;color:var(--text);margin-bottom:6px}
-.modal .modal-sub{font-size:0.85em;color:var(--text2);margin-bottom:24px}
-.modal .modal-close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--text3);font-size:1.2em;cursor:pointer;padding:4px 8px;border-radius:6px;transition:all 0.15s}
-.modal .modal-close:hover{color:var(--text);background:var(--bg)}
-.modal .field{margin-bottom:16px}
-.modal .field label{display:block;font-size:0.8em;color:var(--text3);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em}
-.modal .field input{width:100%;padding:10px 14px;background:var(--bg);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-size:0.92em;font-family:inherit}
-.modal .field input:focus{outline:none;border-color:var(--gold)}
-.modal .modal-error{display:none;padding:10px 14px;background:rgba(212,64,64,0.08);border:1px solid rgba(212,64,64,0.2);border-radius:8px;color:var(--red);font-size:0.83em;margin-bottom:16px}
-.modal .modal-error.visible{display:block}
-.modal .btn-full{width:100%;padding:12px;background:var(--gold);border:none;border-radius:10px;color:var(--bg);font-size:0.95em;font-weight:700;cursor:pointer;font-family:inherit;transition:all 0.15s}
-.modal .btn-full:hover{background:var(--gold2)}
-.modal .btn-full:disabled{opacity:0.4;cursor:not-allowed}
-.modal .modal-switch{text-align:center;margin-top:16px;font-size:0.83em;color:var(--text3)}
-.modal .modal-switch a{color:var(--gold);cursor:pointer;text-decoration:none}
-.modal .modal-switch a:hover{text-decoration:underline}
-</style>
-</head>
-<body>
-
-<!-- Auth bar -->
-<div class="auth-bar" id="auth-bar">
-    <div class="auth-logo">
-        <svg width="22" height="22" viewBox="0 0 32 32" fill="none"><path d="M16 2L4 8v6c0 9.94 5.12 15.6 12 18 6.88-2.4 12-8.06 12-18V8L16 2z" fill="#C9A44C" opacity="0.15" stroke="#C9A44C" stroke-width="1.5"/><text x="16" y="21" text-anchor="middle" fill="#C9A44C" font-weight="800" font-size="14" font-family="system-ui">B</text></svg>
-        BSR
-    </div>
-    <div class="auth-right">
-        <div id="auth-guest">
-            <button class="btn-auth btn-auth-login" onclick="openModal('login')">Войти</button>
-            <button class="btn-auth btn-auth-register" onclick="openModal('register')">Регистрация</button>
-        </div>
-        <div id="auth-logged" style="display:none" class="auth-user">
-            <span class="auth-email" id="auth-email"></span>
-            <span class="quota-badge" id="auth-quota"></span>
-            <button class="btn-auth btn-auth-logout" onclick="doLogout()">Выйти</button>
-        </div>
-    </div>
-</div>
-
-<!-- Auth modal: Login -->
-<div class="modal-overlay" id="modal-login">
-    <div class="modal">
-        <button class="modal-close" onclick="closeModal('login')">&times;</button>
-        <h2>Войти</h2>
-        <p class="modal-sub">Войдите, чтобы сохранять отчёты и отслеживать лимиты</p>
-        <div class="modal-error" id="login-error"></div>
-        <div class="field">
-            <label>Email</label>
-            <input id="login-email" type="email" placeholder="name@example.com" onkeydown="if(event.key==='Enter')doLogin()">
-        </div>
-        <div class="field">
-            <label>Пароль</label>
-            <input id="login-password" type="password" placeholder="Минимум 6 символов" onkeydown="if(event.key==='Enter')doLogin()">
-        </div>
-        <button class="btn-full" id="login-btn" onclick="doLogin()">Войти</button>
-        <div class="modal-switch">Нет аккаунта? <a onclick="closeModal('login');openModal('register')">Зарегистрируйтесь</a></div>
-    </div>
-</div>
-
-<!-- Auth modal: Register -->
-<div class="modal-overlay" id="modal-register">
-    <div class="modal">
-        <button class="modal-close" onclick="closeModal('register')">&times;</button>
-        <h2>Регистрация</h2>
-        <p class="modal-sub">5 бесплатных отчётов после регистрации</p>
-        <div class="modal-error" id="register-error"></div>
-        <div class="field">
-            <label>Email</label>
-            <input id="register-email" type="email" placeholder="name@example.com" onkeydown="if(event.key==='Enter')doRegister()">
-        </div>
-        <div class="field">
-            <label>Пароль</label>
-            <input id="register-password" type="password" placeholder="Минимум 6 символов" onkeydown="if(event.key==='Enter')doRegister()">
-        </div>
-        <button class="btn-full" id="register-btn" onclick="doRegister()">Создать аккаунт</button>
-        <div class="modal-switch">Уже есть аккаунт? <a onclick="closeModal('register');openModal('login')">Войдите</a></div>
-    </div>
-</div>
-
-<div class="wrap" style="padding-top:64px">
-    <!-- Phase 1: URL Input -->
-    <div id="phase-url">
-        <div class="bsr-logo">
-            <svg width="40" height="40" viewBox="0 0 32 32" fill="none"><path d="M16 2L4 8v6c0 9.94 5.12 15.6 12 18 6.88-2.4 12-8.06 12-18V8L16 2z" fill="#C9A44C" opacity="0.15" stroke="#C9A44C" stroke-width="1.5"/><text x="16" y="21" text-anchor="middle" fill="#C9A44C" font-weight="800" font-size="14" font-family="system-ui">B</text></svg>
-            <span class="bsr-logo-text">BSR</span>
-        </div>
-        <div class="tagline">Полная картина. 90 секунд.</div>
-        <h1>Анализ компании за <span>90 секунд</span>?<br>Реальность с BSR.</h1>
-        <p class="sub">Финансы, конкуренты, рынок, SWOT, стратегия — всё в одном отчёте на основе реальных данных из ФНС, ЕГРЮЛ и открытых источников</p>
-        <div class="input-row">
-            <input id="url" type="url" placeholder="https://example.com — сайт компании" autofocus
-                   onkeydown="if(event.key==='Enter')startAnalysis()">
-            <button class="btn" id="gobtn" onclick="startAnalysis()">Анализировать</button>
-        </div>
-        <div class="input-hint">Вставьте ссылку на сайт — мы найдём юрлицо, конкурентов и соберём отчёт</div>
-    </div>
-
-    <!-- Stats bar -->
-    <div id="section-features" class="landing-section" style="margin-top:48px">
-        <div class="stats-bar">
-            <div class="stat-item"><div class="stat-val">30+</div><div class="stat-lbl">Разделов в отчёте</div></div>
-            <div class="stat-item"><div class="stat-val">10</div><div class="stat-lbl">Конкурентов</div></div>
-            <div class="stat-item"><div class="stat-val">40+</div><div class="stat-lbl">Фактов проверено</div></div>
-            <div class="stat-item"><div class="stat-val">ФНС</div><div class="stat-lbl">Реальные данные</div></div>
-        </div>
-
-        <!-- Features section -->
-        <div class="section-title">Что вы получите</div>
-        <p class="section-sub">Полный бизнес-анализ 360° на основе реальных данных</p>
-        <div class="features">
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M7 7h6M7 10h6M7 13h3"/></svg>
-                </div>
-                <h3>Профиль компании</h3>
-                <p>Данные из ФНС и ЕГРЮЛ: выручка, прибыль, юрлицо, учредители, ОКВЭД</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2"/></svg>
-                </div>
-                <h3>Конкурентный анализ</h3>
-                <p>До 10 прямых конкурентов с верификацией, перцептуальная карта рынка</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h5v5H4zM11 4h5v5h-5zM4 11h5v5H4zM11 11h5v5h-5z"/></svg>
-                </div>
-                <h3>SWOT-анализ</h3>
-                <p>Сильные и слабые стороны, возможности и угрозы с обоснованием</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16l4-6 3 4 2-3 3 5"/><path d="M3 3v14h14"/></svg>
-                </div>
-                <h3>Финансовая аналитика</h3>
-                <p>Реальные данные ФНС: выручка, прибыль, активы, рентабельность за 3 года</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3l2.5 5 5.5.8-4 3.9.9 5.3L10 15.5 5.1 18l.9-5.3-4-3.9 5.5-.8z"/></svg>
-                </div>
-                <h3>Стратегия и рекомендации</h3>
-                <p>Три сценария роста (базовый, оптимистичный, пессимистичный) с KPI</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 8l-6 6-3-3"/><circle cx="10" cy="10" r="7"/></svg>
-                </div>
-                <h3>Верификация данных</h3>
-                <p>Автоматический фактчек: каждый факт проверяется по 2+ источникам</p>
-            </div>
-        </div>
-
-        <div class="section-title">Как это работает</div>
-        <p class="section-sub">Три простых шага до готового отчёта</p>
-        <div class="how-steps">
-            <div class="how-step">
-                <div class="how-connector"></div>
-                <div class="how-num">1</div>
-                <h4>Вставьте ссылку</h4>
-                <p>Укажите URL сайта компании, которую хотите проанализировать</p>
-            </div>
-            <div class="how-step">
-                <div class="how-connector"></div>
-                <div class="how-num">2</div>
-                <h4>Подтвердите данные</h4>
-                <p>Проверьте найденную компанию и выберите релевантных конкурентов</p>
-            </div>
-            <div class="how-step">
-                <div class="how-num">3</div>
-                <h4>Получите отчёт</h4>
-                <p>AI соберёт полный отчёт с графиками и рекомендациями</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Phase 2: Pipeline -->
-    <div id="phase-pipeline">
-        <div class="pipeline-header">
-            <h2>Анализ</h2>
-            <div class="url-tag" id="url-tag"></div>
-        </div>
-
-        <div class="steps">
-            <div class="step" id="s1"><div class="step-icon">1</div><span>Загрузка сайта</span></div>
-            <div class="step" id="s2"><div class="step-icon">2</div><span>Определение компании</span></div>
-            <div class="step" id="s3"><div class="step-icon">3</div><span>Поиск в ФНС</span></div>
-            <div class="step" id="s4"><div class="step-icon">4</div><span>Поиск конкурентов</span></div>
-            <div class="step" id="s5"><div class="step-icon">5</div><span>Глубокий анализ</span></div>
-            <div class="step" id="s6"><div class="step-icon">6</div><span>Сборка отчёта</span></div>
-        </div>
-
-        <!-- Panel: Verify Company -->
-        <div class="panel" id="panel-company">
-            <h3>Подтвердите компанию</h3>
-            <div id="fns-status"></div>
-            <div class="field-row">
-                <div class="field">
-                    <label>Название</label>
-                    <input id="c-name" type="text">
-                </div>
-                <div class="field">
-                    <label>ИНН</label>
-                    <input id="c-inn" type="text" placeholder="10 или 12 цифр">
-                </div>
-            </div>
-            <div class="field-row">
-                <div class="field">
-                    <label>Юрлицо</label>
-                    <input id="c-legal" type="text" placeholder='ООО "..."'>
-                </div>
-                <div class="field">
-                    <label>Тип бизнеса</label>
-                    <select id="c-type">
-                        <option value="B2C_SERVICE">B2C Услуги</option>
-                        <option value="B2C_PRODUCT">B2C Товары</option>
-                        <option value="B2B_SERVICE">B2B Услуги</option>
-                        <option value="B2B_PRODUCT">B2B Товары</option>
-                        <option value="PLATFORM">Платформа</option>
-                        <option value="B2B_B2C_HYBRID">B2B+B2C Гибрид</option>
-                    </select>
-                </div>
-            </div>
-            <div class="field">
-                <label>Адрес</label>
-                <input id="c-address" type="text">
-            </div>
-            <div style="display:flex;gap:10px;margin-top:8px">
-                <button class="btn" onclick="confirmCompany()">Подтвердить и продолжить</button>
-            </div>
-        </div>
-
-        <!-- Panel: Edit Competitors -->
-        <div class="panel" id="panel-competitors">
-            <h3>Конкуренты <span id="market-name" style="font-weight:400;color:var(--text3);font-size:0.85em"></span></h3>
-            <p style="font-size:0.85em;color:var(--text2);margin-bottom:16px">Уберите нерелевантных конкурентов нажатием на чекбокс</p>
-            <div class="comp-list" id="comp-list"></div>
-            <button class="btn" onclick="confirmCompetitors()">Подтвердить и запустить анализ</button>
-        </div>
-
-        <div class="error" id="error"></div>
-
-        <div class="result" id="result">
-            <h3>Отчёт готов</h3>
-            <div class="company" id="rcompany"></div>
-            <a id="rlink" href="#" target="_blank">Открыть отчёт</a>
-            <div class="meta" id="rmeta"></div>
-            <button class="again" onclick="location.reload()">Проанализировать другую компанию</button>
-        </div>
-    </div>
-</div>
-
-<footer class="footer">
-    <div style="margin-bottom:8px"><svg width="18" height="18" viewBox="0 0 32 32" fill="none" style="vertical-align:middle;margin-right:6px"><path d="M16 2L4 8v6c0 9.94 5.12 15.6 12 18 6.88-2.4 12-8.06 12-18V8L16 2z" fill="#C9A44C" opacity="0.15" stroke="#C9A44C" stroke-width="1.5"/><text x="16" y="21" text-anchor="middle" fill="#C9A44C" font-weight="800" font-size="14" font-family="system-ui">B</text></svg><span style="color:var(--gold);font-weight:600;letter-spacing:0.08em">BSR</span> — Анализ бизнеса 360°</div>
-    <a href="https://github.com/nledovckou-dot/business-score-russia" target="_blank" rel="noopener">Open Source</a> &nbsp;|&nbsp; Business Score Russia
-</footer>
-
-<script>
-/* ── Auth state ── */
-var authUser = null;
-
-function openModal(type){
-    document.getElementById('modal-'+type).classList.add('open');
-    var firstInput = document.querySelector('#modal-'+type+' input');
-    if(firstInput) setTimeout(function(){ firstInput.focus(); }, 100);
-}
-function closeModal(type){
-    document.getElementById('modal-'+type).classList.remove('open');
-    var err = document.getElementById(type+'-error');
-    if(err){ err.classList.remove('visible'); err.textContent=''; }
-}
-function showModalError(type, msg){
-    var el = document.getElementById(type+'-error');
-    el.textContent = msg;
-    el.classList.add('visible');
-}
-
-function updateAuthUI(){
-    if(authUser){
-        document.getElementById('auth-guest').style.display='none';
-        document.getElementById('auth-logged').style.display='flex';
-        document.getElementById('auth-email').textContent=authUser.email;
-        var q = document.getElementById('auth-quota');
-        var rem = authUser.reports_remaining;
-        q.textContent = rem + ' из 5 отчётов';
-        q.className = 'quota-badge' + (rem <= 0 ? ' depleted' : '');
-    } else {
-        document.getElementById('auth-guest').style.display='flex';
-        document.getElementById('auth-logged').style.display='none';
-    }
-}
-
-function doRegister(){
-    var email = document.getElementById('register-email').value.trim();
-    var password = document.getElementById('register-password').value;
-    if(!email || !password){ showModalError('register','Заполните все поля'); return; }
-    var btn = document.getElementById('register-btn');
-    btn.disabled = true;
-    fetch('/api/auth/register',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({email:email, password:password})
-    })
-    .then(function(r){ return r.json(); })
-    .then(function(res){
-        btn.disabled = false;
-        if(!res.ok){ showModalError('register', res.error||'Ошибка'); return; }
-        authUser = {email:res.email, reports_used:res.reports_used, reports_remaining:res.reports_remaining};
-        updateAuthUI();
-        closeModal('register');
-    })
-    .catch(function(err){ btn.disabled=false; showModalError('register','Ошибка сети: '+err.message); });
-}
-
-function doLogin(){
-    var email = document.getElementById('login-email').value.trim();
-    var password = document.getElementById('login-password').value;
-    if(!email || !password){ showModalError('login','Заполните все поля'); return; }
-    var btn = document.getElementById('login-btn');
-    btn.disabled = true;
-    fetch('/api/auth/login',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({email:email, password:password})
-    })
-    .then(function(r){ return r.json(); })
-    .then(function(res){
-        btn.disabled = false;
-        if(!res.ok){ showModalError('login', res.error||'Ошибка'); return; }
-        authUser = {email:res.email, reports_used:res.reports_used, reports_remaining:res.reports_remaining};
-        updateAuthUI();
-        closeModal('login');
-    })
-    .catch(function(err){ btn.disabled=false; showModalError('login','Ошибка сети: '+err.message); });
-}
-
-function doLogout(){
-    fetch('/api/auth/logout',{method:'POST'})
-    .then(function(){ authUser=null; updateAuthUI(); })
-    .catch(function(){ authUser=null; updateAuthUI(); });
-}
-
-function checkAuth(){
-    fetch('/api/auth/me')
-    .then(function(r){ return r.json(); })
-    .then(function(res){
-        if(res.ok && res.authenticated){
-            authUser = {email:res.email, reports_used:res.reports_used, reports_remaining:res.reports_remaining};
-        }
-        updateAuthUI();
-    })
-    .catch(function(){ updateAuthUI(); });
-}
-
-/* Close modals on overlay click */
-document.addEventListener('click', function(e){
-    if(e.target.classList.contains('modal-overlay')){
-        e.target.classList.remove('open');
-    }
-});
-/* Close modals on Escape */
-document.addEventListener('keydown', function(e){
-    if(e.key==='Escape'){
-        document.querySelectorAll('.modal-overlay.open').forEach(function(m){ m.classList.remove('open'); });
-    }
-});
-
-/* Check auth on page load */
-checkAuth();
-
-/* ── Pipeline state ── */
-var SID = null;
-var evtSource = null;
-var competitorData = [];
-
-function startAnalysis(){
-    var url = document.getElementById('url').value.trim();
-    if(!url){ document.getElementById('url').focus(); return; }
-    if(!url.match(/^https?:\/\//)) url = 'https://' + url;
-
-    document.getElementById('gobtn').disabled = true;
-    document.getElementById('phase-url').style.display = 'none';
-    var sf = document.getElementById('section-features');
-    if(sf) sf.style.display = 'none';
-    var ft = document.querySelector('.footer');
-    if(ft) ft.style.display = 'none';
-    document.getElementById('phase-pipeline').style.display = 'block';
-    document.getElementById('url-tag').textContent = url;
-
-    fetch('/api/start', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({url: url})
-    })
-    .then(function(r){ return r.json() })
-    .then(function(res){
-        if(!res.ok){
-            if(res.quota_exceeded){
-                showError(res.error);
-                /* Suggest registration if not logged in */
-                if(!authUser){
-                    var el=document.getElementById('error');
-                    el.innerHTML += '<br><br><span style="color:var(--gold);cursor:pointer;text-decoration:underline" onclick="openModal(&#39;register&#39;)">Зарегистрируйтесь для получения 5 бесплатных отчётов</span>';
-                }
-            } else {
-                showError(res.error);
-            }
-            return;
-        }
-        SID = res.session_id;
-        listenSSE();
-    })
-    .catch(function(err){ showError('Ошибка сети: ' + err.message); });
-}
-
-function listenSSE(){
-    evtSource = new EventSource('/api/events/' + SID);
-
-    evtSource.addEventListener('step', function(e){
-        var d = JSON.parse(e.data);
-        setStep(d.num, d.status, d.text);
-    });
-
-    evtSource.addEventListener('waiting_company', function(e){
-        var d = JSON.parse(e.data);
-        showCompanyPanel(d);
-    });
-
-    evtSource.addEventListener('waiting_competitors', function(e){
-        var d = JSON.parse(e.data);
-        showCompetitorPanel(d);
-    });
-
-    evtSource.addEventListener('done', function(e){
-        var d = JSON.parse(e.data);
-        evtSource.close();
-        document.getElementById('result').style.display = 'block';
-        document.getElementById('rcompany').textContent = d.company || '';
-        document.getElementById('rlink').href = d.url;
-        document.getElementById('rmeta').textContent = d.size_kb + ' KB';
-        /* Update auth quota after report generation */
-        if(authUser && d.reports_remaining !== undefined){
-            authUser.reports_remaining = d.reports_remaining;
-            authUser.reports_used = 5 - d.reports_remaining;
-            updateAuthUI();
-        }
-    });
-
-    evtSource.addEventListener('error', function(e){
-        try {
-            var d = JSON.parse(e.data);
-            showError(d.message || 'Неизвестная ошибка');
-        } catch(ex) {
-            showError('Соединение потеряно');
-        }
-        evtSource.close();
-    });
-}
-
-function showCompanyPanel(d){
-    var ci = d.company_info || {};
-    var fns = d.fns_data || {};
-    var fc = fns.fns_company || {};
-
-    document.getElementById('c-name').value = ci.name || fc.name || '';
-    document.getElementById('c-inn').value = fc.inn || ci.inn || '';
-    document.getElementById('c-legal').value = fc.full_name || ci.legal_name || '';
-    document.getElementById('c-address').value = fc.address || ci.address || '';
-
-    var bt = ci.business_type_guess || 'B2B_SERVICE';
-    var sel = document.getElementById('c-type');
-    for(var i=0; i<sel.options.length; i++){
-        if(sel.options[i].value === bt) sel.selectedIndex = i;
-    }
-
-    var statusDiv = document.getElementById('fns-status');
-    if(fc.inn){
-        statusDiv.className = 'fns-info';
-        statusDiv.innerHTML = '\u2713 Найдено в ФНС: ' + (fc.name||'') + ' | ИНН ' + fc.inn +
-            (fc.okved ? ' | ОКВЭД ' + fc.okved : '');
-    } else {
-        statusDiv.className = 'fns-warning';
-        statusDiv.textContent = '\u26A0 Юрлицо не найдено автоматически. Введите ИНН вручную или продолжите без него.';
-    }
-
-    document.getElementById('panel-company').style.display = 'block';
-}
-
-function confirmCompany(){
-    document.getElementById('panel-company').style.display = 'none';
-    fetch('/api/confirm-company/' + SID, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            name: document.getElementById('c-name').value,
-            inn: document.getElementById('c-inn').value,
-            legal_name: document.getElementById('c-legal').value,
-            address: document.getElementById('c-address').value,
-            business_type_guess: document.getElementById('c-type').value
-        })
-    });
-}
-
-function showCompetitorPanel(d){
-    competitorData = d.competitors || [];
-    document.getElementById('market-name').textContent = d.market_name ? '| ' + d.market_name : '';
-    renderCompetitors();
-    document.getElementById('panel-competitors').style.display = 'block';
-}
-
-function renderCompetitors(){
-    var html = '';
-    for(var i=0; i<competitorData.length; i++){
-        var c = competitorData[i];
-        var on = c._enabled !== false;
-        var threatCls = 'threat-' + (c.threat_level || 'med');
-        var verBadge = '';
-        if(c.verified === false){
-            verBadge = '<span style="font-size:0.7em;color:var(--orange);margin-left:6px;font-weight:400">\u26A0 \u043D\u0435 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0451\u043D</span>';
-        } else if(c.verification_confidence === 'high'){
-            verBadge = '<span style="font-size:0.7em;color:var(--green);margin-left:6px;font-weight:400">\uD83D\uDD12</span>';
-        } else if(c.verification_confidence === 'medium'){
-            verBadge = '<span style="font-size:0.7em;color:var(--green);margin-left:6px;font-weight:400">\u2713</span>';
-        } else if(c.verification_confidence === 'low'){
-            verBadge = '<span style="font-size:0.7em;color:var(--orange);margin-left:6px;font-weight:400">\u2713?</span>';
-        }
-        var verNote = c.verification_notes ? '<div style="font-size:0.72em;color:var(--text3);margin-top:2px">' + c.verification_notes + '</div>' : '';
-        html += '<div class="comp-item' + (on ? '' : ' excluded') + '">' +
-            '<button class="comp-toggle ' + (on ? 'on' : '') + '" onclick="toggleComp(' + i + ')">' + (on ? '\u2713' : '') + '</button>' +
-            '<div class="comp-info"><div class="comp-name">' + (c.name||'') + verBadge + '</div>' +
-            '<div class="comp-desc">' + (c.description||c.why_competitor||'') + '</div>' + verNote + '</div>' +
-            '<span class="comp-threat ' + threatCls + '">' + (c.threat_level||'med') + '</span></div>';
-    }
-    document.getElementById('comp-list').innerHTML = html;
-}
-
-function toggleComp(idx){
-    competitorData[idx]._enabled = competitorData[idx]._enabled === false ? true : false;
-    renderCompetitors();
-}
-
-function confirmCompetitors(){
-    var selected = competitorData.filter(function(c){ return c._enabled !== false; });
-    document.getElementById('panel-competitors').style.display = 'none';
-    fetch('/api/confirm-competitors/' + SID, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({competitors: selected})
-    });
-}
-
-function setStep(n, status, text){
-    var el = document.getElementById('s' + n);
-    if(!el) return;
-    el.className = 'step ' + status;
-    if(text) el.querySelector('span').textContent = text;
-    var icon = el.querySelector('.step-icon');
-    if(status === 'done') icon.textContent = '\u2713';
-    else if(status === 'fail') icon.textContent = '\u2717';
-    else if(status === 'warning') icon.textContent = '!';
-}
-
-function showError(msg){
-    var el = document.getElementById('error');
-    el.style.display = 'block';
-    el.textContent = msg;
-}
-</script>
-</body>
-</html>"""
+# ── LANDING_HTML imported from app/landing.py ──
+_LANDING_HTML_REMOVED = True  # old inline HTML removed, see app/landing.py

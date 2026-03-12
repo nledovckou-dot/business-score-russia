@@ -1,11 +1,11 @@
-{# F2: Digital Verification — verified social accounts #}
+{# F2: Digital Verification — verified social accounts + ER #}
 {% from '_macros.html' import info_tip, chart_wrap %}
 
 {% if digital_verification %}
 <div class="card">
     <h3>Верификация digital-присутствия</h3>
     <p style="color:var(--text2); font-size:0.9em; margin-bottom:16px;">
-        Проверка Instagram/Telegram/VK аккаунтов компании и каждого конкурента — существует ли, активен ли, подписчики.
+        Проверка Instagram/Telegram/VK аккаунтов компании и каждого конкурента — подписчики и Engagement Rate.
     </p>
     <div style="overflow-x:auto;">
     <table>
@@ -15,7 +15,8 @@
                 <th>Instagram</th>
                 <th>Telegram</th>
                 <th>VK</th>
-                <th>Подписчики (всего)</th>
+                <th>Подписчики</th>
+                <th>Ср. ER, %</th>
             </tr>
         </thead>
         <tbody>
@@ -26,6 +27,9 @@
                 <td>{{ item.get('telegram', '—') }}</td>
                 <td>{{ item.get('vk', '—') }}</td>
                 <td class="r" style="font-weight:700;">{{ item.get('total_followers', '—') }}</td>
+                <td class="r" style="font-weight:700;{% if item.get('avg_er') %}{% if item.avg_er >= 3 %} color:var(--green);{% elif item.avg_er >= 1 %} color:var(--gold);{% else %} color:var(--red);{% endif %}{% endif %}">
+                    {{ '%.1f'|format(item.avg_er) if item.get('avg_er') else '—' }}
+                </td>
             </tr>
             {% endfor %}
         </tbody>
@@ -33,7 +37,7 @@
     </div>
 
     {% if digital_verification_chart_svg %}
-    {{ chart_wrap("Подписчики: компания vs конкуренты", "Суммарные подписчики по всем платформам", digital_verification_chart_svg) }}
+    {{ chart_wrap("Engagement Rate: компания vs конкуренты", "Средний ER по всем платформам (%)", digital_verification_chart_svg) }}
     {% endif %}
 </div>
 {% endif %}

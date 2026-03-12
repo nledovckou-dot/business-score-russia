@@ -1,4 +1,8 @@
-"""Multi-provider LLM client: GPT-5.2 Pro (main) + Gemini 2.5 Flash (fast) + GPT-5.3 Codex (board)."""
+"""Multi-provider LLM client with auto-selection of best available models.
+
+Before each report, model_selector probes OpenAI/Anthropic/Gemini APIs
+and picks the best available model. Fallback chain: GPT → Opus → Gemini.
+"""
 
 from __future__ import annotations
 
@@ -20,10 +24,27 @@ logger = logging.getLogger(__name__)
 
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 
-MODEL_MAIN = os.environ.get("LLM_MODEL_MAIN", "gpt-4o")          # основной мозг
-MODEL_FAST = os.environ.get("LLM_MODEL_FAST", "gemini-2.5-flash") # быстрые задачи
-MODEL_REASON = os.environ.get("LLM_MODEL_REASON", "o3-mini")      # reasoning
+# Defaults — will be overridden by model_selector.get_models() at runtime
+MODEL_MAIN = os.environ.get("LLM_MODEL_MAIN", "gpt-5.4")            # основной мозг
+MODEL_FAST = os.environ.get("LLM_MODEL_FAST", "gemini-3-flash")     # быстрые задачи
+MODEL_REASON = os.environ.get("LLM_MODEL_REASON", "gpt-5.4-thinking")  # reasoning
+MODEL_OPUS = os.environ.get("LLM_MODEL_OPUS", "claude-opus-4-6")    # Claude Opus — board + fallback
+
+
+def refresh_models() -> dict:
+    """Probe all providers and update MODEL_* globals with best available models.
+    Call this before each report generation. Returns probe results dict.
+    """
+    global MODEL_MAIN, MODEL_FAST, MODEL_OPUS, MODEL_REASON
+    from app.pipeline.model_selector import get_models
+    selected = get_models(force_refresh=True)
+    MODEL_MAIN = selected.main
+    MODEL_FAST = selected.fast
+    MODEL_OPUS = selected.board
+    logger.info("Models refreshed — MAIN: %s, BOARD: %s, FAST: %s", MODEL_MAIN, MODEL_OPUS, MODEL_FAST)
+    return selected.probe_results
 
 
 # ── Metrics hook (T7) ──
@@ -60,6 +81,13 @@ def _gemini_key() -> str:
     key = os.environ.get("GEMINI_API_KEY", "")
     if not key:
         raise RuntimeError("GEMINI_API_KEY not set")
+    return key
+
+
+def _anthropic_key() -> str:
+    key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not key:
+        raise RuntimeError("ANTHROPIC_API_KEY not set")
     return key
 
 
@@ -111,17 +139,25 @@ def call_openai(
             return body["choices"][0]["message"]["content"]
         except urllib.error.HTTPError as e:
             error_body = e.read().decode("utf-8") if e.fp else ""
-            # Quota exhausted → fallback to Gemini
+            # Quota exhausted → fallback: Claude Opus → Gemini
             if "insufficient_quota" in error_body:
-                logger.warning("OpenAI quota exhausted, falling back to Gemini")
-                full_prompt = prompt
-                if system:
-                    full_prompt = f"[System]: {system}\n\n{prompt}"
-                return call_gemini(
-                    full_prompt, model=MODEL_FAST,
-                    temperature=temperature, max_tokens=max_tokens,
-                    json_mode=json_mode,
-                )
+                logger.warning("OpenAI quota exhausted, trying Claude Opus fallback")
+                try:
+                    return call_anthropic(
+                        prompt, model=MODEL_OPUS, system=system,
+                        temperature=temperature, max_tokens=max_tokens,
+                        json_mode=json_mode,
+                    )
+                except Exception as opus_err:
+                    logger.warning("Claude Opus fallback failed: %s, trying Gemini", str(opus_err)[:200])
+                    full_prompt = prompt
+                    if system:
+                        full_prompt = f"[System]: {system}\n\n{prompt}"
+                    return call_gemini(
+                        full_prompt, model=MODEL_FAST,
+                        temperature=temperature, max_tokens=max_tokens,
+                        json_mode=json_mode,
+                    )
             if e.code in (429, 500, 502, 503) and attempt < 2:
                 wait = (attempt + 1) * 5
                 time.sleep(wait)
@@ -189,6 +225,67 @@ def call_gemini(
             raise
 
 
+def call_anthropic(
+    prompt: str,
+    model: str = MODEL_OPUS,
+    system: str = "",
+    temperature: float = 0.4,
+    max_tokens: int = 16000,
+    json_mode: bool = False,
+) -> str:
+    """Call Anthropic Claude API. Returns text response."""
+    messages = [{"role": "user", "content": prompt}]
+
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    if system:
+        payload["system"] = system
+
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        ANTHROPIC_URL,
+        data=data,
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": _anthropic_key(),
+            "anthropic-version": "2023-06-01",
+        },
+        method="POST",
+    )
+
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=300) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+            # Record token usage
+            usage = body.get("usage", {})
+            _record_usage(
+                model,
+                tokens_in=usage.get("input_tokens", 0),
+                tokens_out=usage.get("output_tokens", 0),
+            )
+            # Extract text from content blocks
+            content = body.get("content", [])
+            text_parts = [b["text"] for b in content if b.get("type") == "text"]
+            return "\n".join(text_parts)
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode("utf-8") if e.fp else ""
+            if e.code in (429, 500, 502, 503, 529) and attempt < 2:
+                wait = (attempt + 1) * 5
+                time.sleep(wait)
+                continue
+            raise RuntimeError(f"Anthropic API error {e.code}: {error_body[:500]}")
+        except Exception as e:
+            if attempt < 2:
+                time.sleep(3)
+                continue
+            raise
+
+
 def call_llm_json(
     prompt: str,
     provider: str = "openai",
@@ -198,7 +295,14 @@ def call_llm_json(
     max_tokens: int = 16000,
 ) -> dict:
     """Call LLM and parse JSON response. Strips markdown fences if present."""
-    if provider == "openai":
+    if provider == "anthropic":
+        # Claude: просим JSON через system prompt
+        json_system = (system + "\n\n" if system else "") + "Ответ — ТОЛЬКО валидный JSON (без markdown, без ```)."
+        text = call_anthropic(
+            prompt, model=model or MODEL_OPUS, system=json_system,
+            temperature=temperature, max_tokens=max_tokens, json_mode=True,
+        )
+    elif provider == "openai":
         text = call_openai(
             prompt, model=model or MODEL_MAIN, system=system,
             temperature=temperature, max_tokens=max_tokens, json_mode=True,
@@ -224,124 +328,85 @@ def call_llm_json(
 
 
 def call_board_llm(prompt: str, system: str | None = None) -> str:
-    """Вызов LLM для совета директоров (GPT-5.3 Codex).
+    """Вызов LLM для совета директоров — Claude Opus (основной) + GPT (fallback).
 
     Используется для AI-экспертов, которые критикуют и рецензируют отчёт.
+    Claude Opus выбран для board т.к. нет TPM лимитов OpenAI на длинные промпты.
     Низкая temperature (0.3) для точных, выверенных ответов.
 
-    Fallback: если GPT-5.3 Codex недоступен, используется основной LLM (GPT-5.2 Pro).
-    Retry: 2 попытки с backoff перед fallback.
+    Chain: Claude Opus → GPT → Gemini.
     """
-    from app.config import BOARD_LLM_MODEL, BOARD_LLM_TEMPERATURE, BOARD_LLM_MAX_TOKENS
+    from app.config import BOARD_LLM_TEMPERATURE, BOARD_LLM_MAX_TOKENS
 
-    model = BOARD_LLM_MODEL
     temperature = BOARD_LLM_TEMPERATURE
     max_tokens = BOARD_LLM_MAX_TOKENS
 
-    messages: list[dict[str, str]] = []
+    # --- Попытка 1: Claude Opus (основной для board) ---
+    t0 = time.monotonic()
+    try:
+        result = call_anthropic(
+            prompt=prompt,
+            model=MODEL_OPUS,
+            system=system or "",
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        elapsed = round(time.monotonic() - t0, 2)
+        logger.info("Board LLM OK: model=%s, time=%.2fs", MODEL_OPUS, elapsed)
+        return result
+    except Exception as exc:
+        elapsed = round(time.monotonic() - t0, 2)
+        logger.warning(
+            "Board LLM Claude Opus failed in %.2fs: %s", elapsed, str(exc)[:200],
+        )
+
+    # --- Попытка 2: GPT fallback ---
+    t0 = time.monotonic()
+    try:
+        result = call_openai(
+            prompt=prompt,
+            model=MODEL_MAIN,
+            system=system or "",
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        elapsed = round(time.monotonic() - t0, 2)
+        logger.info("Board LLM fallback GPT OK: model=%s, time=%.2fs", MODEL_MAIN, elapsed)
+        return result
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode("utf-8") if e.fp else ""
+        elapsed = round(time.monotonic() - t0, 2)
+        logger.warning(
+            "Board LLM GPT fallback failed: status=%d, time=%.2fs, error=%s",
+            e.code, elapsed, error_body[:200],
+        )
+    except Exception as exc:
+        elapsed = round(time.monotonic() - t0, 2)
+        logger.warning("Board LLM GPT fallback exception: %.2fs: %s", elapsed, str(exc)[:200])
+
+    # --- Попытка 3: Gemini (последний fallback) ---
+    logger.info("Board LLM final fallback → Gemini")
+    full_prompt = prompt
     if system:
-        messages.append({"role": "system", "content": system})
-    messages.append({"role": "user", "content": prompt})
-
-    payload: dict[str, Any] = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-    }
-
-    data = json.dumps(payload).encode("utf-8")
-
-    # --- Попытка 1-2: GPT-5.3 Codex ---
-    for attempt in range(2):
-        t0 = time.monotonic()
-        try:
-            req = urllib.request.Request(
-                OPENAI_URL,
-                data=data,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {_openai_key()}",
-                },
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=180) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
-
-            elapsed = round(time.monotonic() - t0, 2)
-            usage = body.get("usage", {})
-            tokens_in = usage.get("prompt_tokens", 0)
-            tokens_out = usage.get("completion_tokens", 0)
-            # Record token usage for metrics (T7)
-            _record_usage(model, tokens_in=tokens_in, tokens_out=tokens_out)
-            logger.info(
-                "Board LLM OK: model=%s, tokens_in=%s, tokens_out=%s, time=%.2fs",
-                model, tokens_in, tokens_out, elapsed,
-            )
-            return body["choices"][0]["message"]["content"]
-
-        except urllib.error.HTTPError as e:
-            error_body = e.read().decode("utf-8") if e.fp else ""
-            elapsed = round(time.monotonic() - t0, 2)
-            logger.warning(
-                "Board LLM attempt %d failed: model=%s, status=%d, time=%.2fs, error=%s",
-                attempt + 1, model, e.code, elapsed, error_body[:200],
-            )
-            # Quota exhausted → skip retries, go straight to Gemini fallback
-            if "insufficient_quota" in error_body:
-                logger.warning("Board LLM: OpenAI quota exhausted, falling back to Gemini")
-                full_prompt = prompt
-                if system:
-                    full_prompt = f"[System]: {system}\n\n{prompt}"
-                return call_gemini(full_prompt, temperature=temperature, max_tokens=max_tokens)
-            if e.code in (429, 500, 502, 503) and attempt < 1:
-                time.sleep((attempt + 1) * 5)
-                continue
-            # Не retryable или исчерпаны попытки — идём в fallback
-            break
-
-        except Exception as exc:
-            elapsed = round(time.monotonic() - t0, 2)
-            logger.warning(
-                "Board LLM attempt %d exception: model=%s, time=%.2fs, error=%s",
-                attempt + 1, model, elapsed, str(exc)[:200],
-            )
-            if attempt < 1:
-                time.sleep(3)
-                continue
-            break
-
-    # --- Fallback: основной LLM (GPT-5.2 Pro) ---
-    logger.info("Board LLM fallback: %s -> %s", model, MODEL_MAIN)
-    return call_openai(
-        prompt=prompt,
-        model=MODEL_MAIN,
-        system=system or "",
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
+        full_prompt = f"[System]: {system}\n\n{prompt}"
+    return call_gemini(full_prompt, temperature=temperature, max_tokens=max_tokens)
 
 
 def call_board_llm_parallel(prompts: list[dict]) -> list[str]:
-    """Последовательные вызовы для экспертов совета директоров.
+    """Параллельные вызовы для экспертов совета директоров.
 
-    ИЗМЕНЕНО: с параллельного на последовательный вызов с паузами,
-    чтобы уложиться в TPM лимит OpenAI (30K tokens/min).
+    С Claude Opus не нужны паузы между вызовами (нет TPM лимита OpenAI).
+    Используем ThreadPoolExecutor для параллельного выполнения.
 
     Args:
         prompts: список словарей [{"prompt": "...", "system": "..."}, ...]
-            - prompt (str): обязательный текст запроса
-            - system (str, optional): системный промпт для эксперта
 
     Returns:
         list[str]: ответы в том же порядке, что и prompts.
-        Если вызов для конкретного эксперта упал — возвращается строка с описанием ошибки
-        (начинается с "[Board LLM Error]"), чтобы не ломать весь пайплайн.
     """
-    results: list[str] = []
-    delay_between = 5  # seconds between calls to stay under TPM limit
+    results: list[str | None] = [None] * len(prompts)
 
-    for idx, item in enumerate(prompts):
+    def _call_one(idx: int, item: dict) -> tuple[int, str]:
         t0 = time.monotonic()
         try:
             response = call_board_llm(
@@ -349,18 +414,18 @@ def call_board_llm_parallel(prompts: list[dict]) -> list[str]:
                 system=item.get("system"),
             )
             elapsed = round(time.monotonic() - t0, 2)
-            logger.info("Board sequential #%d done in %.2fs", idx, elapsed)
-            results.append(response)
+            logger.info("Board parallel #%d done in %.2fs", idx, elapsed)
+            return idx, response
         except Exception as exc:
             elapsed = round(time.monotonic() - t0, 2)
-            logger.error(
-                "Board sequential #%d failed in %.2fs: %s", idx, elapsed, str(exc)[:300],
-            )
-            results.append(f"[Board LLM Error] Expert #{idx}: {str(exc)[:500]}")
+            logger.error("Board parallel #%d failed in %.2fs: %s", idx, elapsed, str(exc)[:300])
+            return idx, f"[Board LLM Error] Expert #{idx}: {str(exc)[:500]}"
 
-        # Pause between calls to avoid TPM rate limit
-        if idx < len(prompts) - 1:
-            logger.info("Board: pausing %ds before next expert (TPM limit)", delay_between)
-            time.sleep(delay_between)
+    # Параллельно — Claude Opus не имеет TPM лимитов OpenAI
+    with ThreadPoolExecutor(max_workers=min(len(prompts), 4)) as pool:
+        futures = [pool.submit(_call_one, i, item) for i, item in enumerate(prompts)]
+        for future in as_completed(futures):
+            idx, response = future.result()
+            results[idx] = response
 
-    return results
+    return [r or "[Board LLM Error] No response" for r in results]

@@ -406,7 +406,7 @@ def analyze_company(
   }},
   "digital": {{
     "social_accounts": [
-      {{"platform": "...", "handle": "@...", "followers": число_или_null}}
+      {{"platform": "...", "handle": "@...", "followers": число_или_null, "engagement_rate": число_или_null, "avg_likes": число_или_null, "avg_comments": число_или_null, "avg_views": число_или_null}}
     ],
     "seo_score": 0-100,
     "monthly_traffic": число
@@ -425,9 +425,14 @@ def analyze_company(
 4. digital — social_accounts: ОБЯЗАТЕЛЬНО заполни минимум 2-3 платформы
    - Для КАЖДОЙ компании в России проверь: VK, Telegram, Instagram
    - handle: используй формат @company_name если не знаешь точный хендл
-   - followers: число или null если неизвестно
+   - followers: число подписчиков или null если неизвестно
+   - engagement_rate: ER в процентах = (лайки + комменты + репосты) / подписчики * 100. Оцени по типичным для отрасли. Обычно: 1-3% хорошо, 3-6% отлично, >6% вирусный контент. null если неизвестно
+   - avg_likes: среднее лайков на пост (оценка). null если неизвестно
+   - avg_comments: среднее комментариев на пост (оценка). null если неизвестно
+   - avg_views: среднее просмотров (для TG/VK). null если неизвестно
    - seo_score: 50-80 по умолчанию если нет данных
    - monthly_traffic: оценочное число посещений
+   - ВАЖНО: engagement_rate — ГЛАВНАЯ метрика, важнее чем followers. Подписчики можно накрутить, ER нельзя
 5. market_share — оценочный, в процентах, сумма = 100
 6. Если данных social_accounts нет — всё равно верни массив с platform/handle/null для VK/TG/Instagram
 7. НЕ возвращай ПУСТОЙ список social_accounts — это ломает отчёт"""
