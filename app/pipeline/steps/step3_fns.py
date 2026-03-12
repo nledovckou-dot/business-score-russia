@@ -35,7 +35,7 @@ def run(company_info: dict, confirmed_inn: Optional[str] = None) -> dict:
         except Exception as e:
             result["fns_error"] = str(e)
 
-    # Also search by name
+    # Also search by name / search_query
     if not result["fns_company"] and search_query:
         try:
             candidates = search_company(search_query, limit=5)
@@ -44,6 +44,23 @@ def run(company_info: dict, confirmed_inn: Optional[str] = None) -> dict:
                 result["fns_company"] = candidates[0]
         except Exception as e:
             result["fns_error"] = str(e)
+
+    # Try legal_name (e.g. "ООО «ИМПЕРИЯ КОСМЕТИКИ»" → "ИМПЕРИЯ КОСМЕТИКИ")
+    if not result["fns_company"]:
+        import re
+        legal_name = company_info.get("legal_name", "")
+        if legal_name:
+            # Strip org form prefix and quotes for cleaner FNS search
+            clean = re.sub(r"^(ООО|ЗАО|АО|ПАО|ИП)\s*", "", legal_name)
+            clean = re.sub(r"[«»\"']+", "", clean).strip()
+            if clean and clean != search_query:
+                try:
+                    candidates = search_company(clean, limit=5)
+                    if candidates:
+                        result["fns_candidates"] = candidates
+                        result["fns_company"] = candidates[0]
+                except Exception as e:
+                    result["fns_error"] = str(e)
 
     # If we found a company, get detailed data
     fns_inn = result["fns_company"].get("inn", "")
