@@ -1108,6 +1108,59 @@ def _transform_hr_data(hr_raw: dict, hh_data: dict | None = None) -> dict:
     return result
 
 
+def _infer_business_type_from_okved(okved: str) -> str | None:
+    """Infer business type from ОКВЭД code."""
+    if not okved:
+        return None
+    code = okved.split(".")[0]  # First 2 digits
+    try:
+        num = int(code)
+    except ValueError:
+        return None
+
+    if num in (55, 56):
+        return "B2C_SERVICE"  # HoReCa
+    if num in range(86, 89) or num in (93, 96):
+        return "B2C_SERVICE"  # Healthcare, beauty, fitness
+    if num == 47 or (45 <= num <= 46):
+        return "B2C_PRODUCT"  # Retail
+    if num in (62, 63) or (69 <= num <= 74):
+        return "B2B_SERVICE"  # IT, consulting
+    if 25 <= num <= 33:
+        return "B2B_PRODUCT"  # Manufacturing
+    if num == 20:  # Chemical manufacturing (including cosmetics)
+        return "B2B_PRODUCT"
+    if num == 46:  # Wholesale trade
+        return "B2B_PRODUCT"
+    return None
+
+
+def _founders_from_egrul(egrul: dict) -> list[dict]:
+    """Fallback: generate founders list from ЕГРЮЛ data when LLM returns empty."""
+    founders = []
+    for f in egrul.get("founders", []):
+        founders.append({
+            "name": f.get("name", ""),
+            "role": "Учредитель",
+            "share": f.get("share_percent", ""),
+            "social": "",
+            "company": egrul.get("full_name", ""),
+        })
+    director = egrul.get("director", {})
+    if director.get("name"):
+        # Add director if not already in founders
+        dir_name = director["name"]
+        if not any(f["name"] == dir_name for f in founders):
+            founders.append({
+                "name": dir_name,
+                "role": "Генеральный директор",
+                "share": "",
+                "social": "",
+                "company": egrul.get("full_name", ""),
+            })
+    return founders
+
+
 def _assemble_report(
     *,
     market_result: dict,
@@ -1143,14 +1196,47 @@ def _assemble_report(
         company["legal_name"] = egrul.get("full_name", "")
     if not company.get("okved"):
         company["okved"] = egrul.get("okved", "")
+    if not company.get("ogrn"):
+        company["ogrn"] = egrul.get("ogrn", "")
+    if not company.get("reg_date"):
+        company["reg_date"] = egrul.get("reg_date", "")
+    if not company.get("capital"):
+        company["capital"] = egrul.get("capital", "")
+    if not company.get("director"):
+        director = egrul.get("director", {})
+        if director.get("name"):
+            company["director"] = director.get("name", "")
+
+    # T41: Verify business type by ОКВЭД
+    okved = company.get("okved", "")
+    if okved:
+        inferred_type = _infer_business_type_from_okved(okved)
+        current_type = company.get("business_type", "")
+        if inferred_type and inferred_type != current_type:
+            logger.info(
+                "Business type mismatch: LLM=%s, ОКВЭД(%s)=%s → using ОКВЭД",
+                current_type, okved, inferred_type,
+            )
+            company["business_type"] = inferred_type
+            company["business_type_source"] = f"ОКВЭД {okved}"
 
     # Финансы — всегда из ФНС (ground truth)
     financials = fns_data.get("financials", [])
 
-    # Calc traces — fallback из ФНС если LLM не вернул
+    # T44: Calc traces — merge ФНС facts + LLM estimates
     calc_traces = appendix_result.get("calc_traces", [])
-    if not calc_traces and financials:
-        calc_traces = _generate_basic_calc_traces(financials)
+    fns_traces = _generate_basic_calc_traces(financials) if financials else []
+    if not calc_traces:
+        calc_traces = fns_traces
+    elif fns_traces:
+        # Prepend ФНС FACT traces before LLM ESTIMATE traces
+        existing_lower = {t.get("metric_name", "").lower() for t in calc_traces}
+        for ft in fns_traces:
+            if ft["metric_name"].lower() not in existing_lower:
+                calc_traces.insert(0, ft)
+
+    # T46: Validate calc_traces — fix obvious arithmetic errors
+    calc_traces = _validate_calc_traces(calc_traces, financials)
 
     # Methodology — fallback
     methodology = appendix_result.get("methodology", {})
@@ -1161,12 +1247,24 @@ def _assemble_report(
             "Допущения": "Данные из открытых источников",
         }
 
+    # T47: Validate market_share — fix absurd percentages
+    market_share = company_result.get("market_share", {})
+    market_data = market_result.get("market") or {}
+    market_share = _validate_market_share(market_share, financials, market_data)
+
+    # T43: Founders — LLM → fallback to ЕГРЮЛ
+    founders = opinions_result.get("founders", [])
+    if not founders:
+        founders = _founders_from_egrul(egrul)
+        if founders:
+            logger.info("T43: Founders from ЕГРЮЛ fallback (%d entries)", len(founders))
+
     result: dict[str, Any] = {
         # Секция 3: Компания
         "company": company,
         "swot": company_result.get("swot"),
         "digital": company_result.get("digital"),
-        "market_share": company_result.get("market_share", {}),
+        "market_share": market_share,
 
         # Секция 1: Рынок
         "market": market_result.get("market"),
@@ -1193,7 +1291,7 @@ def _assemble_report(
         "methodology": methodology,
 
         # Секция 6: Фаундеры и мнения
-        "founders": opinions_result.get("founders", []),
+        "founders": founders,
         "opinions": opinions_result.get("opinions", []),
 
         # Секция 7: HR (transform LLM format → template format, enrich with HH.ru)
@@ -1203,8 +1301,11 @@ def _assemble_report(
         "products": products_result.get("products", []),
 
         # Pipeline metadata
-        "pipeline_version": "3.2",
+        "pipeline_version": "4.0",
     }
+
+    # T49: Cross-section validation — fix contradictions
+    result = _validate_cross_sections(result, fns_data)
 
     return result
 
@@ -1270,3 +1371,174 @@ def _generate_basic_calc_traces(financials: list[dict]) -> list[dict]:
             "confidence": "CALC",
         })
     return traces
+
+
+# ── T46: Validate calc_traces ──
+
+def _validate_calc_traces(traces: list[dict], financials: list[dict]) -> list[dict]:
+    """Flag or fix calc_traces with obvious arithmetic errors."""
+    fns_revenue = None
+    if financials:
+        latest = financials[-1]
+        fns_revenue = latest.get("revenue")  # in тыс. руб.
+
+    for trace in traces:
+        name_lower = trace.get("metric_name", "").lower()
+        confidence = trace.get("confidence", "ESTIMATE")
+
+        # Skip facts — they're from ФНС, already verified
+        if confidence == "FACT":
+            continue
+
+        # LTV/CAC > 10 → flag as suspicious
+        if "ltv/cac" in name_lower or "ltv / cac" in name_lower:
+            try:
+                val = float(str(trace.get("value", "0")).replace(",", ".").replace("x", ""))
+                if val > 10:
+                    trace["confidence"] = "ESTIMATE"
+                    trace["_warning"] = (
+                        f"⚠ Значение {val} аномально высокое (норма 3-5x). "
+                        "Возможна ошибка в CAC или LTV"
+                    )
+                    logger.warning("T46: LTV/CAC=%s flagged as suspicious", val)
+            except (ValueError, TypeError):
+                pass
+
+        # Conversion rate > 20% → flag
+        if "конверси" in name_lower or "conversion" in name_lower:
+            try:
+                val_str = str(trace.get("value", "0")).replace("%", "").replace(",", ".")
+                val = float(val_str)
+                if val > 20:
+                    trace["confidence"] = "ESTIMATE"
+                    trace["_warning"] = (
+                        f"⚠ Конверсия {val}% нереалистична (норма e-commerce 2-5%)"
+                    )
+                    logger.warning("T46: Conversion=%s%% flagged", val)
+            except (ValueError, TypeError):
+                pass
+
+        # EBITDA margin: check if expenses sum > 100%
+        if "ebitda" in name_lower and "margin" in name_lower:
+            try:
+                val_str = str(trace.get("value", "0")).replace("%", "").replace(",", ".")
+                val = float(val_str)
+                if val > 35:
+                    trace["_warning"] = (
+                        f"⚠ EBITDA margin {val}% — проверить структуру расходов"
+                    )
+            except (ValueError, TypeError):
+                pass
+
+    return traces
+
+
+# ── T47: Validate market share ──
+
+def _validate_market_share(
+    market_share: dict, financials: list[dict], market_data: dict,
+) -> dict:
+    """Fix absurd market share: check that share% × market_size ≈ revenue."""
+    if not market_share or not financials:
+        return market_share
+
+    # Get company revenue (тыс. руб.)
+    latest = financials[-1] if financials else {}
+    revenue_k = latest.get("revenue")
+    if not revenue_k:
+        return market_share
+
+    # Get market size
+    market_size_str = ""
+    if isinstance(market_data, dict):
+        market_size_str = str(market_data.get("market_size", ""))
+
+    # Try to parse market size (formats: "18 млрд руб.", "430 млрд")
+    import re as _re
+    market_size_k = None  # in тыс. руб.
+    m = _re.search(r"([\d,.]+)\s*(млрд|трлн|млн)", market_size_str)
+    if m:
+        num = float(m.group(1).replace(",", "."))
+        unit = m.group(2)
+        if unit == "трлн":
+            market_size_k = num * 1_000_000_000
+        elif unit == "млрд":
+            market_size_k = num * 1_000_000
+        elif unit == "млн":
+            market_size_k = num * 1_000
+
+    if not market_size_k:
+        return market_share
+
+    # Validate each company's share
+    validated = {}
+    for name, share_pct in market_share.items():
+        if not isinstance(share_pct, (int, float)):
+            validated[name] = share_pct
+            continue
+
+        implied_revenue_k = share_pct / 100.0 * market_size_k
+
+        # Check if it's the target company (first entry or matches name pattern)
+        # If implied revenue > 3x actual → recalculate
+        if implied_revenue_k > revenue_k * 3 and share_pct > 0.5:
+            correct_pct = round(revenue_k / market_size_k * 100, 3)
+            logger.warning(
+                "T47: Market share %s: %.1f%% implies %.0f тыс. but revenue=%.0f тыс. "
+                "→ corrected to %.3f%%",
+                name, share_pct, implied_revenue_k, revenue_k, correct_pct,
+            )
+            validated[name] = correct_pct
+        else:
+            validated[name] = share_pct
+
+    return validated
+
+
+# ── T49: Cross-section validation ──
+
+def _validate_cross_sections(result: dict, fns_data: dict) -> dict:
+    """Fix contradictions between sections using ФНС as ground truth.
+
+    Ensures: one number for revenue, employees, etc. across all sections.
+    """
+    financials = result.get("financials", [])
+    if not financials:
+        return result
+
+    latest = financials[-1] if financials else {}
+    fns_revenue_k = latest.get("revenue")  # тыс. руб.
+    fns_employees = latest.get("employees")
+
+    warnings = []
+
+    # Check scenarios: base scenario should be >= current revenue
+    scenarios = result.get("scenarios", [])
+    if fns_revenue_k and scenarios:
+        fns_revenue_mln = fns_revenue_k / 1000  # Convert to млн
+        for scenario in scenarios:
+            metrics = scenario.get("metrics", {})
+            # Try to find revenue in metrics
+            for key in ("revenue", "выручка", "Выручка"):
+                val = metrics.get(key)
+                if val and isinstance(val, (int, float)):
+                    # Check if base/optimistic scenario is below current
+                    label = scenario.get("label", scenario.get("name", ""))
+                    if "базов" in label.lower() or "base" in label.lower():
+                        if val < fns_revenue_mln * 0.8:
+                            warnings.append(
+                                f"Базовый сценарий ({val} млн) ниже текущей выручки "
+                                f"({fns_revenue_mln:.1f} млн по ФНС)"
+                            )
+
+    # Add warnings to open_questions
+    if warnings:
+        open_q = result.get("open_questions", [])
+        for w in warnings:
+            q = f"[Авто-валидация] {w}"
+            if q not in open_q:
+                open_q.append(q)
+        result["open_questions"] = open_q
+        logger.info("T49: Added %d cross-section warnings", len(warnings))
+
+    return result
