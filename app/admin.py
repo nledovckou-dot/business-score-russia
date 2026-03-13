@@ -311,11 +311,55 @@ def _run_board_review_on_text(report_text: str, company_name: str = "") -> dict:
     }
 
 
+_BOARD_RESULTS_DIR = Path("data/board_reviews")
+
+
+def _board_review_worker(report_file: str, report_text: str, company_name: str):
+    """Background worker: runs board review and saves result to JSON file."""
+    _BOARD_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    result_path = _BOARD_RESULTS_DIR / f"{report_file}.json"
+
+    # Write "running" status
+    result_path.write_text(json.dumps({
+        "status": "running",
+        "report_file": report_file,
+        "company_name": company_name,
+        "started_at": time.time(),
+    }, ensure_ascii=False), encoding="utf-8")
+
+    try:
+        result = _run_board_review_on_text(report_text, company_name)
+        output = {
+            "status": "done",
+            "ok": True,
+            "report_file": report_file,
+            "company_name": company_name,
+            "finished_at": time.time(),
+            **result,
+        }
+    except Exception as e:
+        logger.exception("Board review worker failed for %s", report_file)
+        output = {
+            "status": "error",
+            "ok": False,
+            "report_file": report_file,
+            "error": str(e)[:500],
+            "finished_at": time.time(),
+        }
+
+    result_path.write_text(
+        json.dumps(output, ensure_ascii=False, default=str),
+        encoding="utf-8",
+    )
+    logger.info("Board review saved: %s → %s", report_file, output.get("status"))
+
+
 @router.post("/api/board-review")
 async def admin_board_review(request: Request):
-    """Run Board of Directors review on a report file.
+    """Launch Board of Directors review in background.
 
     Body: {"report_file": "report_XXX.html", "company_name": "..."}
+    Returns immediately. Poll GET /admin/api/board-review/{filename} for result.
     """
     if not _check_admin(request):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -344,21 +388,38 @@ async def admin_board_review(request: Request):
     report_text = _html_to_text(html_content)
 
     logger.info(
-        "Board review requested: file=%s, company=%s, text_len=%d",
+        "Board review requested (background): file=%s, company=%s, text_len=%d",
         report_file, company_name, len(report_text),
     )
 
-    try:
-        result = await asyncio.to_thread(
-            _run_board_review_on_text, report_text, company_name,
-        )
-        return {"ok": True, "report_file": report_file, **result}
-    except Exception as e:
-        logger.exception("Board review failed for %s", report_file)
-        return JSONResponse(
-            {"ok": False, "error": str(e)[:500]},
-            status_code=500,
-        )
+    # Launch in background thread
+    import threading
+    t = threading.Thread(
+        target=_board_review_worker,
+        args=(report_file, report_text, company_name),
+        daemon=True,
+    )
+    t.start()
+
+    return {
+        "ok": True,
+        "message": "Board review started in background",
+        "poll_url": f"/admin/api/board-review/{report_file}?token={ADMIN_TOKEN}",
+    }
+
+
+@router.get("/api/board-review/{report_file}")
+async def admin_board_review_result(report_file: str, request: Request):
+    """Get board review result (poll until status=done)."""
+    if not _check_admin(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    result_path = _BOARD_RESULTS_DIR / f"{report_file}.json"
+    if not result_path.exists():
+        return JSONResponse({"error": "No board review found for this report"}, status_code=404)
+
+    data = json.loads(result_path.read_text(encoding="utf-8"))
+    return data
 
 
 @router.get("/api/reports")
