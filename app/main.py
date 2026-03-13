@@ -1303,11 +1303,107 @@ async def session_status(sid: str):
     }
 
 
-# ── Legacy endpoint (simple, no interactive) ──
+# ── Auto pipeline (full pipeline without interactive pauses) ──
+
+
+def _run_full_pipeline_auto(sid: str, url: str):
+    """Full pipeline without interactive pauses (auto-confirm company & competitors).
+
+    Runs ALL steps: scrape → identify → FNS → competitors → enrich → deep analysis
+    → verify → board review → quality check → build report.
+    Same quality as interactive pipeline, but auto-confirms at each pause point.
+    """
+    session = store.get(sid)
+    if session is None:
+        return
+
+    mc = MetricsCollector(session_id=sid)
+    session["_metrics"] = mc
+    from app.pipeline.llm_client import set_metrics_collector, refresh_models
+    set_metrics_collector(mc)
+
+    try:
+        # Step 0: Refresh models
+        _push_event(sid, "step", {"num": 0, "status": "active", "text": "Выбираю AI-модели..."})
+        try:
+            refresh_models()
+        except Exception:
+            pass
+        _push_event(sid, "step", {"num": 0, "status": "done", "text": "AI-модели выбраны"})
+
+        # Step 1: Scrape
+        _push_event(sid, "step", {"num": 1, "status": "active", "text": "Загрузка сайта..."})
+        mc.start_timer("step1_scrape")
+        from app.pipeline.steps.step1_scrape import run as scrape
+        scraped = scrape(url)
+        mc.stop_timer("step1_scrape")
+        session["data"]["scraped"] = scraped
+        _push_event(sid, "step", {"num": 1, "status": "done", "text": f"Сайт: {scraped.get('title', '')}"})
+
+        # Step 2: Identify
+        _push_event(sid, "step", {"num": 2, "status": "active", "text": "Определяю компанию..."})
+        mc.start_timer("step2_identify")
+        from app.pipeline.steps.step2_identify import run as identify
+        company_info = identify(scraped)
+        mc.stop_timer("step2_identify")
+        session["data"]["company_info"] = company_info
+        _push_event(sid, "step", {"num": 2, "status": "done", "text": f"Компания: {company_info.get('name', '?')}"})
+
+        # Step 3: FNS lookup
+        _push_event(sid, "step", {"num": 3, "status": "active", "text": "Поиск в ФНС..."})
+        mc.start_timer("step3_fns")
+        try:
+            from app.pipeline.steps.step3_fns import run as fns_lookup
+            fns_data = fns_lookup(company_info)
+            session["data"]["fns_data"] = fns_data
+        except Exception as e:
+            logger.warning("FNS lookup failed: %s", str(e)[:200])
+            session["data"]["fns_data"] = {"fns_error": str(e)}
+        mc.stop_timer("step3_fns")
+        _push_event(sid, "step", {"num": 3, "status": "done", "text": "ФНС данные получены"})
+
+        # AUTO-CONFIRM company (no user pause)
+        session["data"]["confirmed_company"] = company_info
+
+        # Step 4: Find competitors
+        _push_event(sid, "step", {"num": 4, "status": "active", "text": "Поиск конкурентов..."})
+        mc.start_timer("step4_competitors")
+        from app.pipeline.steps.step4_competitors import run as find_competitors
+        comp_result = find_competitors(
+            session["data"].get("scraped", {}),
+            company_info,
+            session["data"].get("fns_data", {}),
+        )
+        mc.stop_timer("step4_competitors")
+        session["data"]["market_info"] = comp_result
+        comps = comp_result.get("competitors", [])
+        _push_event(sid, "step", {"num": 4, "status": "done", "text": f"Конкурентов: {len(comps)}"})
+
+        # AUTO-CONFIRM competitors (no user pause)
+        session["data"]["confirmed_competitors"] = comps
+
+        # Now run the full analysis pipeline (same as _run_analysis_steps)
+        session["status"] = "analyzing"
+        _run_analysis_steps(sid)
+
+    except Exception as e:
+        import traceback
+        logger.exception("Error in auto pipeline for session %s", sid)
+        session = store.get(sid)
+        mc_ref = session.get("_metrics") if session else None
+        if mc_ref and not mc_ref._finalized:
+            mc_ref.finalize()
+        if session:
+            session["status"] = "error"
+        _push_event(sid, "error", {
+            "message": sanitize_error(e, include_details=not IS_PRODUCTION),
+        })
+        store.save(sid)
+
 
 @app.post("/api/analyze")
 async def analyze_simple(request: Request):
-    """Simple non-interactive endpoint (backward compat)."""
+    """Non-interactive endpoint: full pipeline with real FNS data (no user pauses)."""
     # Rate limit: max 5 reports per hour per IP
     client_ip = get_client_ip(request)
     report_error = check_rate_limit_report(client_ip)
@@ -1335,39 +1431,46 @@ async def analyze_simple(request: Request):
     if not is_valid:
         return JSONResponse({"ok": False, "error": url_error}, status_code=400)
 
-    try:
-        from app.pipeline.steps.step1_scrape import run as scrape
-        scraped = scrape(url)
-    except Exception as e:
-        logger.exception("Scrape error for %s", url)
-        return {"ok": False, "error": f"Ошибка скрапинга: {sanitize_error(e, include_details=not IS_PRODUCTION)}", "step": 1}
+    # Create session and run full pipeline in background
+    sid = _new_session()
+    session = store.get(sid)
+    session["data"]["url"] = url
+    session["data"]["_auth_token"] = auth_token
 
-    try:
-        from app.pipeline.llm_analyzer import analyze_with_llm
-        report_data = analyze_with_llm(scraped)
-    except Exception as e:
-        logger.exception("LLM analysis error")
-        return {"ok": False, "error": f"Ошибка AI: {sanitize_error(e, include_details=not IS_PRODUCTION)}", "step": 2}
+    thread = threading.Thread(target=_run_full_pipeline_auto, args=(sid, url), daemon=True)
+    thread.start()
 
-    report_data = _sanitize_llm_output(report_data)
+    # Poll for completion (timeout 10 minutes)
+    timeout = 600
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        session = store.get(sid)
+        if session is None:
+            break
+        status = session.get("status", "")
+        if status == "done":
+            # Extract result from events
+            events = session.get("events", [])
+            done_event = next((e for e in reversed(events) if e.get("event") == "done"), None)
+            if done_event and done_event.get("data"):
+                result = done_event["data"]
+                return {
+                    "ok": True,
+                    "url": result.get("url", ""),
+                    "size_kb": result.get("size_kb", 0),
+                    "company": result.get("company", ""),
+                }
+            return {"ok": True, "url": "", "company": ""}
+        if status == "error":
+            err_events = session.get("events", [])
+            error_event = next((e for e in reversed(err_events) if e.get("event") == "error"), None)
+            error_msg = "Ошибка анализа"
+            if error_event and error_event.get("data"):
+                error_msg = error_event["data"].get("message", error_msg)
+            return {"ok": False, "error": error_msg}
+        time.sleep(3)
 
-    try:
-        from app.models import ReportData
-        from app.report.builder import save_report
-        rd = ReportData(**report_data)
-        filename = f"report_{uuid.uuid4().hex[:8]}.html"
-        path = save_report(rd, filename=filename)
-        size_kb = round(path.stat().st_size / 1024)
-    except Exception as e:
-        logger.exception("Report build error")
-        return {"ok": False, "error": f"Ошибка сборки: {sanitize_error(e, include_details=not IS_PRODUCTION)}", "step": 3}
-
-    # Auth: increment report count
-    if auth_token:
-        auth_manager.increment_report_count(auth_token, report_id=filename)
-
-    return {"ok": True, "url": f"/reports/{filename}", "size_kb": size_kb,
-            "company": report_data.get("company", {}).get("name", "")}
+    return {"ok": False, "error": "Таймаут анализа (10 минут). Попробуйте позже."}
 
 
 # ── LANDING_HTML imported from app/landing.py ──
