@@ -61,6 +61,117 @@ app.add_middleware(
 auth_manager = AuthManager()
 
 
+# ── Auth gate: require login ──
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+
+# Paths that don't require authentication
+PUBLIC_PATHS = {"/login", "/api/auth/login", "/api/auth/register", "/api/auth/google", "/api/health"}
+PUBLIC_PREFIXES = ("/reports/", "/static/", "/_next/")
+
+LOGIN_PAGE_HTML = """<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Вход — Росскор</title>
+<script src="https://accounts.google.com/gsi/client" async></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:flex;align-items:center;justify-content:center;
+background:#0D0B0E;color:#fff;font-family:-apple-system,BlinkMacSystemFont,sans-serif}
+.card{background:#1A1620;border-radius:16px;padding:48px;text-align:center;
+max-width:400px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.4)}
+h1{font-size:24px;margin-bottom:8px;color:#C9A44C}
+p{color:#888;font-size:14px;margin-bottom:32px}
+.logo{font-size:48px;margin-bottom:16px}
+#g_id_onload{display:flex;justify-content:center}
+.error{color:#D44040;font-size:13px;margin-top:16px;display:none}
+</style>
+</head>
+<body>
+<div class="card">
+<div class="logo">📊</div>
+<h1>Росскор</h1>
+<p>Анализ бизнеса 360°</p>
+<div id="g_id_onload"
+  data-client_id="__GOOGLE_CLIENT_ID__"
+  data-context="signin"
+  data-ux_mode="popup"
+  data-callback="onGoogleSignIn"
+  data-auto_prompt="false">
+</div>
+<div class="g_id_signin"
+  data-type="standard"
+  data-shape="rectangular"
+  data-theme="filled_black"
+  data-text="signin_with"
+  data-size="large"
+  data-locale="ru"
+  data-logo_alignment="left">
+</div>
+<div class="error" id="error"></div>
+</div>
+<script>
+function onGoogleSignIn(response) {
+  fetch('/api/auth/google', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({credential: response.credential})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      window.location.href = '/';
+    } else {
+      const el = document.getElementById('error');
+      el.textContent = data.error || 'Ошибка входа';
+      el.style.display = 'block';
+    }
+  })
+  .catch(() => {
+    const el = document.getElementById('error');
+    el.textContent = 'Ошибка сети';
+    el.style.display = 'block';
+  });
+}
+</script>
+</body>
+</html>"""
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page():
+    """Login page with Google Sign-In button."""
+    html = LOGIN_PAGE_HTML.replace("__GOOGLE_CLIENT_ID__", GOOGLE_CLIENT_ID)
+    return HTMLResponse(content=html)
+
+
+@app.middleware("http")
+async def auth_gate_middleware(request: Request, call_next):
+    """Require authentication for all pages except login and public paths."""
+    path = request.url.path
+
+    # Allow public paths
+    if path in PUBLIC_PATHS or any(path.startswith(p) for p in PUBLIC_PREFIXES):
+        return await call_next(request)
+
+    # Allow admin with token param
+    if path.startswith("/admin/") and request.query_params.get("token"):
+        return await call_next(request)
+
+    # Check auth cookie
+    token = request.cookies.get(COOKIE_NAME)
+    if token and auth_manager.check_token(token):
+        return await call_next(request)
+
+    # Not authenticated — redirect to login (for pages) or 401 (for API)
+    if path.startswith("/api/"):
+        return JSONResponse({"ok": False, "error": "Требуется авторизация"}, status_code=401)
+
+    from starlette.responses import RedirectResponse
+    return RedirectResponse(url="/login", status_code=302)
+
+
 # ── Rate Limiting Middleware ──
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
@@ -252,6 +363,35 @@ async def auth_me(request: Request):
         "reports_used": user["reports_used"],
         "reports_remaining": user["reports_remaining"],
     }
+
+
+@app.post("/api/auth/google")
+async def auth_google(request: Request):
+    """Login via Google Sign-In. Verifies ID token, checks whitelist."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Некорректный запрос"}, status_code=400)
+
+    credential = str(body.get("credential", ""))
+    if not credential:
+        return JSONResponse({"ok": False, "error": "Нет токена Google"}, status_code=400)
+
+    result = auth_manager.google_login(credential)
+    if not result:
+        return JSONResponse(
+            {"ok": False, "error": "Доступ запрещён. Ваш email не в списке разрешённых."},
+            status_code=403,
+        )
+
+    resp = JSONResponse({
+        "ok": True,
+        "email": result["email"],
+        "name": result.get("name", ""),
+        "reports_used": result["reports_used"],
+        "reports_remaining": result["reports_remaining"],
+    })
+    return _set_auth_cookie(resp, result["token"])
 
 
 @app.post("/api/auth/logout")

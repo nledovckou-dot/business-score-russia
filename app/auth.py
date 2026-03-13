@@ -1,6 +1,7 @@
 """Simple auth: cookie-based sessions, file-based user storage.
 
-No external dependencies — uses stdlib hashlib, secrets, json.
+Supports email/password login AND Google Sign-In.
+No external dependencies — uses stdlib hashlib, secrets, json, urllib.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import re
 import secrets
 import threading
 import time
+import urllib.request
 from pathlib import Path
 
 logger = logging.getLogger("bsr.auth")
@@ -22,6 +24,14 @@ TOKEN_INDEX_PATH = Path("data/users/_tokens.json")
 FREE_REPORTS_LIMIT = 5
 TOKEN_TTL_DAYS = 30
 MAX_TOKENS_PER_USER = 5
+
+# Google OAuth — whitelist of allowed emails (env: BSR_ALLOWED_EMAILS, comma-separated)
+ALLOWED_EMAILS = set(
+    e.strip().lower()
+    for e in os.getenv("BSR_ALLOWED_EMAILS", "").split(",")
+    if e.strip()
+)
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 
 # Simple email regex (not RFC 5322 compliant, but good enough for MVP)
 _EMAIL_RE = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
@@ -317,6 +327,99 @@ class AuthManager:
         if not user:
             return []
         return user.get("report_ids", [])
+
+    def google_login(self, id_token: str) -> dict | None:
+        """Verify Google ID token and login/register user.
+
+        Returns user public dict with token, or None on failure.
+        """
+        if not GOOGLE_CLIENT_ID:
+            logger.error("GOOGLE_CLIENT_ID not set")
+            return None
+
+        # Verify token with Google
+        try:
+            url = f"https://oauth2.googleapis.com/tokeninfo?id_token={id_token}"
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                payload = json.loads(resp.read().decode())
+        except Exception as e:
+            logger.warning("Google token verification failed: %s", str(e)[:200])
+            return None
+
+        # Check audience matches our client ID
+        if payload.get("aud") != GOOGLE_CLIENT_ID:
+            logger.warning("Google token aud mismatch: %s", payload.get("aud", ""))
+            return None
+
+        email = payload.get("email", "").lower().strip()
+        if not email or not payload.get("email_verified", False):
+            logger.warning("Google email not verified: %s", email)
+            return None
+
+        # Check whitelist (if set)
+        if ALLOWED_EMAILS and email not in ALLOWED_EMAILS:
+            logger.warning("Email not in whitelist: %s", email)
+            return None
+
+        # Login or auto-register
+        filename = _email_to_filename(email)
+        with _lock:
+            user = _load_user(filename)
+            token = secrets.token_urlsafe(32)
+            now = time.time()
+
+            if not user:
+                # Auto-register Google user (no password)
+                user = {
+                    "email": email,
+                    "google_sub": payload.get("sub", ""),
+                    "name": payload.get("name", ""),
+                    "picture": payload.get("picture", ""),
+                    "created_at": now,
+                    "reports_used": 0,
+                    "report_ids": [],
+                    "active_tokens": [],
+                }
+                logger.info("Auto-registered Google user: %s", email)
+
+            # Add token
+            tokens = user.get("active_tokens", [])
+            tokens = [
+                t for t in tokens
+                if now - t.get("created_at", 0) < TOKEN_TTL_DAYS * 86400
+            ]
+            if len(tokens) >= MAX_TOKENS_PER_USER:
+                tokens.sort(key=lambda t: t.get("last_used", 0))
+                removed = tokens[:len(tokens) - MAX_TOKENS_PER_USER + 1]
+                tokens = tokens[len(tokens) - MAX_TOKENS_PER_USER + 1:]
+                index = _load_token_index()
+                for rt in removed:
+                    index.pop(rt.get("token", ""), None)
+                _save_token_index(index)
+
+            tokens.append({"token": token, "created_at": now, "last_used": now})
+            user["active_tokens"] = tokens
+            # Update Google profile
+            user["google_sub"] = payload.get("sub", user.get("google_sub", ""))
+            user["name"] = payload.get("name", user.get("name", ""))
+            user["picture"] = payload.get("picture", user.get("picture", ""))
+            _save_user(filename, user)
+
+            index = _load_token_index()
+            index[token] = filename
+            _save_token_index(index)
+
+        reports_used = user.get("reports_used", 0)
+        logger.info("Google login: %s", email)
+        return {
+            "email": email,
+            "name": user.get("name", ""),
+            "picture": user.get("picture", ""),
+            "token": token,
+            "reports_used": reports_used,
+            "reports_remaining": max(0, FREE_REPORTS_LIMIT - reports_used),
+        }
 
     def logout(self, token: str):
         """Remove a specific token (logout)."""
