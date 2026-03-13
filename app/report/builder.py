@@ -51,7 +51,7 @@ def _render_placeholder(block_id: str) -> str:
         '<div class="block-placeholder">'
         '<div class="ph-icon">&#128203;</div>'
         f'<div class="ph-title">{name}</div>'
-        '<div class="ph-text">Данные по этой секции будут доступны после ручной проверки.</div>'
+        '<div class="ph-text">Недостаточно данных для автоматического заполнения этой секции.</div>'
         '</div>'
     )
 

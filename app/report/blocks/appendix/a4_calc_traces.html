@@ -47,9 +47,13 @@
                     </td>
                     <td class="ct-sources">
                         {% if ct.sources %}
+                        {% if ct.sources is string %}
+                        <div style="margin-bottom:2px;">&#8226; {{ ct.sources }}</div>
+                        {% else %}
                         {% for src in ct.sources %}
                         <div style="margin-bottom:2px;">&#8226; {{ src }}</div>
                         {% endfor %}
+                        {% endif %}
                         {% else %}
                         <span style="color:var(--text3);">&mdash;</span>
                         {% endif %}
@@ -97,7 +101,7 @@
         </div>
         {% if ct.sources %}
         <div style="color:var(--text3); font-size:0.88em;">
-            <span>Источники:</span> {{ ct.sources|join(', ') }}
+            <span>Источники:</span> {{ ct.sources|join(', ') if ct.sources is iterable and ct.sources is not string else ct.sources }}
         </div>
         {% endif %}
     </div>

@@ -20,7 +20,7 @@
 {# --- Info Tip (source attribution) --- #}
 {% macro info_tip(text, sources=None) %}
 <div class="info-tip">
-    <span>{{ text }}{% if sources %} <strong>Источники:</strong> {{ sources|join(', ') }}{% endif %}</span>
+    <span>{{ text }}{% if sources %} <strong>Источники:</strong> {{ sources|join(', ') if sources is iterable and sources is not string else sources }}{% endif %}</span>
 </div>
 {% endmacro %}
 
@@ -148,7 +148,7 @@
 {% endmacro %}
 
 {# --- Placeholder for empty/missing sections (T9/T14) --- #}
-{% macro placeholder(title, text="Данные по этой секции будут доступны после ручной проверки.") %}
+{% macro placeholder(title, text="Недостаточно данных для автоматического заполнения этой секции.") %}
 <div class="block-placeholder">
     <div class="ph-icon">&#128203;</div>
     <div class="ph-title">{{ title }}</div>
@@ -170,7 +170,7 @@
     <td>{% if fact.verified %}&#128274;{% else %}&#9888;{% endif %}</td>
     <td>{{ fact.fact }}{% if fact.correction %} <span class="neg" style="text-decoration:line-through;">ошибка</span> &rarr; <span class="pos">{{ fact.correction }}</span>{% endif %}</td>
     <td>{{ fact.sources_count }}</td>
-    <td style="font-size:0.82em; color:var(--text3);">{{ fact.sources|join(', ') }}</td>
+    <td style="font-size:0.82em; color:var(--text3);">{{ fact.sources|join(', ') if fact.sources is iterable and fact.sources is not string else fact.sources }}</td>
 </tr>
 {% endmacro %}
 
@@ -199,7 +199,7 @@
         <span class="st-popup-title">{{ ct.metric_name }}</span>
         {% if ct.formula %}<span class="st-popup-row"><span class="st-popup-label">Формула:</span> {{ ct.formula }}</span>{% endif %}
         {% if ct.inputs %}<span class="st-popup-row"><span class="st-popup-label">Данные:</span> {% for k, v in ct.inputs.items() %}{{ k }}={{ v }}{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}
-        {% if ct.sources %}<span class="st-popup-row"><span class="st-popup-label">Источники:</span> {{ ct.sources|join(', ') }}</span>{% endif %}
+        {% if ct.sources %}<span class="st-popup-row"><span class="st-popup-label">Источники:</span> {{ ct.sources|join(', ') if ct.sources is iterable and ct.sources is not string else ct.sources }}</span>{% endif %}
         <span class="st-popup-row"><span class="st-popup-label">Достоверность:</span> {% if conf_str == 'FACT' %}Факт (&#128274;){% elif conf_str == 'CALC' %}Расчёт (&#128290;){% else %}Оценка (&#9888;){% endif %}</span>
     </span>
 </span>
