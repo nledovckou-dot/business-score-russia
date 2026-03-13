@@ -160,10 +160,11 @@ def _html_to_text(html: str) -> str:
 
 
 def _run_board_review_on_text(report_text: str, company_name: str = "") -> dict:
-    """Run 5 AI experts (Board of Directors) on plain text report content."""
+    """Run 6 AI experts (Board of Directors) on plain text report content."""
     from app.pipeline.llm_client import call_board_llm, call_board_llm_parallel, refresh_models
     from app.pipeline.steps.step6_board import (
-        _EXPERT_CFO, _EXPERT_CMO, _EXPERT_INDUSTRY, _EXPERT_SKEPTIC, _EXPERT_CEO,
+        _EXPERT_CFO, _EXPERT_CMO, _EXPERT_INDUSTRY, _EXPERT_SKEPTIC,
+        _EXPERT_QA_DIRECTOR, _EXPERT_CEO,
         _parse_expert_response,
     )
 
@@ -179,9 +180,11 @@ def _run_board_review_on_text(report_text: str, company_name: str = "") -> dict:
     if company_name:
         context_suffix = f"\n\nКОНТЕКСТ: анализируемая компания — «{company_name}»."
 
-    parallel_experts = [_EXPERT_CFO, _EXPERT_CMO, _EXPERT_INDUSTRY, _EXPERT_SKEPTIC]
+    parallel_experts = [
+        _EXPERT_CFO, _EXPERT_CMO, _EXPERT_INDUSTRY, _EXPERT_SKEPTIC, _EXPERT_QA_DIRECTOR,
+    ]
 
-    # Step 1: 4 experts in parallel
+    # Step 1: 5 experts in parallel
     prompts = []
     for expert in parallel_experts:
         prompt = (
@@ -196,7 +199,7 @@ def _run_board_review_on_text(report_text: str, company_name: str = "") -> dict:
             "system": expert["system"] + context_suffix,
         })
 
-    logger.info("Board review: launching 4 parallel experts for '%s'", company_name)
+    logger.info("Board review: launching 5 parallel experts for '%s'", company_name)
     responses = call_board_llm_parallel(prompts)
 
     reviews = []
@@ -222,9 +225,9 @@ def _run_board_review_on_text(report_text: str, company_name: str = "") -> dict:
         })
 
     elapsed_parallel = round(time.monotonic() - t0, 2)
-    logger.info("Board review: 4 experts done in %.2fs", elapsed_parallel)
+    logger.info("Board review: 5 experts done in %.2fs", elapsed_parallel)
 
-    # Step 2: CEO with results of first 4
+    # Step 2: CEO with results of first 5
     expert_summaries = []
     for review in reviews:
         resp = review["response"]
@@ -245,7 +248,7 @@ def _run_board_review_on_text(report_text: str, company_name: str = "") -> dict:
     ceo = _EXPERT_CEO
     ceo_prompt = (
         f"Ты — {ceo['name']} ({ceo['role']}). "
-        "Перед тобой бизнес-аналитический отчёт и рецензии четырёх экспертов.\n\n"
+        "Перед тобой бизнес-аналитический отчёт и рецензии пяти экспертов.\n\n"
         f"=== ОТЧЁТ (сокращённо) ===\n{report_text[:30000]}\n"
         "=== КОНЕЦ ОТЧЁТА ===\n\n"
         "=== РЕЦЕНЗИИ ЭКСПЕРТОВ ===\n"
