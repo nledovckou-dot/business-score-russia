@@ -70,9 +70,11 @@ jobs:
             sudo -n systemctl daemon-reload
             sudo -n systemctl enable bsr
 
-            # Nginx config
-            sudo -n mkdir -p /etc/nginx/sites-enabled
-            sudo -n cp "$APP_DIR/scripts/nginx-bsr.conf" /etc/nginx/sites-enabled/bsr.conf
+            # Nginx config — only copy if certbot hasn't modified it (preserve SSL)
+            if ! grep -q "ssl_certificate" /etc/nginx/sites-enabled/bsr.conf 2>/dev/null; then
+              sudo -n mkdir -p /etc/nginx/sites-enabled
+              sudo -n cp "$APP_DIR/scripts/nginx-bsr.conf" /etc/nginx/sites-enabled/bsr.conf
+            fi
             sudo -n nginx -t && sudo -n systemctl reload nginx || echo "nginx reload failed, check config"
 
             # Restart service
