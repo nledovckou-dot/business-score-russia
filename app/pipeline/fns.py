@@ -1,17 +1,31 @@
-"""FNS API client: search companies, get financials, founders, affiliates."""
+"""FNS API client: search companies, get financials, founders, affiliates.
+
+Rate-limited: global lock ensures min 1.5s between API calls to avoid 403.
+Retries on 403 (rate limit) with exponential backoff.
+"""
 
 from __future__ import annotations
 
 import json
+import logging
+import threading
+import time
 import urllib.request
 import urllib.error
 import urllib.parse
 from typing import Any, Optional
 
+logger = logging.getLogger(__name__)
 
 FNS_SEARCH_URL = "https://api-fns.ru/api/search"
 FNS_EGRUL_URL = "https://api-fns.ru/api/egr"
 FNS_BO_URL = "https://api-fns.ru/api/bo"  # бухгалтерская отчётность
+
+# ── Rate limiting ──
+_fns_lock = threading.Lock()
+_fns_last_call: float = 0.0
+_FNS_MIN_INTERVAL = 1.5  # seconds between API calls
+_FNS_MAX_RETRIES = 3
 
 
 def _fns_key() -> str:
@@ -24,17 +38,43 @@ def _fns_key() -> str:
 
 
 def _get(url: str, params: dict) -> dict:
-    """HTTP GET with params."""
+    """HTTP GET with rate limiting and retry on 403.
+
+    Global lock ensures minimum interval between API calls across all threads.
+    Retries up to 3 times on 403 (rate limit exceeded) with exponential backoff.
+    """
+    global _fns_last_call
     params["key"] = _fns_key()
     qs = "&".join(f"{k}={urllib.parse.quote(str(v), safe='')}" for k, v in params.items())
     full_url = f"{url}?{qs}"
-    req = urllib.request.Request(full_url, headers={"Accept": "application/json"})
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        error_body = e.read().decode("utf-8") if e.fp else ""
-        raise RuntimeError(f"FNS API error {e.code}: {error_body[:300]}")
+
+    for attempt in range(_FNS_MAX_RETRIES):
+        # Rate limit: wait for minimum interval between calls
+        with _fns_lock:
+            now = time.monotonic()
+            wait = _FNS_MIN_INTERVAL - (now - _fns_last_call)
+            if wait > 0:
+                time.sleep(wait)
+            _fns_last_call = time.monotonic()
+
+        req = urllib.request.Request(full_url, headers={"Accept": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode("utf-8") if e.fp else ""
+            # Rate limit — retry with backoff
+            if e.code == 403 and attempt < _FNS_MAX_RETRIES - 1:
+                backoff = (attempt + 1) * 5  # 5s, 10s
+                logger.warning(
+                    "FNS API rate limit (403), attempt %d/%d, waiting %ds: %s",
+                    attempt + 1, _FNS_MAX_RETRIES, backoff, error_body[:100],
+                )
+                time.sleep(backoff)
+                continue
+            raise RuntimeError(f"FNS API error {e.code}: {error_body[:300]}")
+
+    raise RuntimeError("FNS API: все попытки исчерпаны")
 
 
 def search_company(query: str, limit: int = 5) -> list[dict]:

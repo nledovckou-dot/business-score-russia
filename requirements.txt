@@ -7,3 +7,4 @@ python-multipart==0.0.9
 requests>=2.31.0
 beautifulsoup4>=4.12.3
 lxml>=5.2.0
+scrapling>=0.2.0
