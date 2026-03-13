@@ -1143,8 +1143,29 @@ def _run_analysis_steps(sid: str):
         if mc:
             mc.start_timer("step7_build_report")
 
-        from app.models import ReportData
+        from app.models import ReportData, Competitor
         from app.report.builder import save_report
+
+        # v4.1: Validate competitors individually — drop invalid ones instead of crashing
+        raw_competitors = report_data.get("competitors", [])
+        if raw_competitors:
+            valid_competitors = []
+            for i, comp_dict in enumerate(raw_competitors):
+                try:
+                    Competitor(**comp_dict) if isinstance(comp_dict, dict) else None
+                    valid_competitors.append(comp_dict)
+                except Exception as comp_err:
+                    logger.warning(
+                        "Competitor %d (%s) failed validation, dropping: %s",
+                        i, comp_dict.get("name", "?") if isinstance(comp_dict, dict) else "?",
+                        str(comp_err)[:200],
+                    )
+            if len(valid_competitors) < len(raw_competitors):
+                logger.info(
+                    "Competitors: %d/%d passed validation",
+                    len(valid_competitors), len(raw_competitors),
+                )
+            report_data["competitors"] = valid_competitors
 
         rd = ReportData(**report_data)
         filename = f"report_{uuid.uuid4().hex[:8]}.html"
@@ -1278,13 +1299,43 @@ def _sanitize_llm_output(d: dict) -> dict:
                 clean_rs[k] = 5.0
         c["radar_scores"] = clean_rs
         tl = str(c.get("threat_level", "med")).lower()
-        c["threat_level"] = tl if tl in ("high", "med", "low") else "med"
+        c["threat_level"] = tl if tl in ("high", "med", "low", "self") else "med"
         # v2.1: verification fields — ensure defaults
         c.setdefault("verified", True)
         vc = str(c.get("verification_confidence", "unverified")).lower()
         c["verification_confidence"] = vc if vc in ("high", "medium", "low", "unverified") else "unverified"
         if not isinstance(c.get("verification_sources"), list):
             c["verification_sources"] = []
+        # v4.1: sanitize lifecycle stage — must match LifecycleStage enum
+        lifecycle = c.get("lifecycle")
+        if isinstance(lifecycle, dict):
+            stage = str(lifecycle.get("stage", "")).lower().strip()
+            valid_stages = {"startup", "growth", "investment", "mature"}
+            stage_aliases = {
+                "maturity": "mature", "established": "mature", "stable": "mature",
+                "decline": "mature", "seed": "startup", "pre-seed": "startup",
+                "expansion": "growth", "scaling": "growth", "scale": "growth",
+                "investing": "investment", "capex": "investment",
+            }
+            if stage not in valid_stages:
+                stage = stage_aliases.get(stage, "mature")
+            lifecycle["stage"] = stage
+            # Ensure evidence is a list
+            if not isinstance(lifecycle.get("evidence"), list):
+                lifecycle["evidence"] = []
+            c["lifecycle"] = lifecycle
+        elif lifecycle is not None:
+            # Invalid lifecycle type — remove it
+            c["lifecycle"] = None
+        # Ensure metrics is a dict
+        if not isinstance(c.get("metrics"), dict):
+            c["metrics"] = {}
+        # Ensure financials is a list if present
+        if "financials" in c and not isinstance(c["financials"], list):
+            c["financials"] = []
+        # Ensure sales_channels is a list if present
+        if "sales_channels" in c and not isinstance(c["sales_channels"], list):
+            c["sales_channels"] = []
 
     # --- financials: ensure numeric fields are float/int, not str ---
     clean_fin = []
@@ -1403,6 +1454,57 @@ def _sanitize_llm_output(d: dict) -> dict:
     # --- v2.0: methodology ---
     if not isinstance(d.get("methodology"), dict):
         d["methodology"] = {}
+
+    # --- v2.1: defensive string→list normalization for list-of-string fields ---
+    # Prevents char-by-char rendering when Jinja2 {% for %} iterates over a string
+    def _ensure_list_of_str(obj: Any, key: str) -> None:
+        val = obj.get(key)
+        if isinstance(val, str):
+            obj[key] = [val] if val else []
+
+    # Top-level list-of-string fields
+    _ensure_list_of_str(d, "tech_trends")
+    _ensure_list_of_str(d, "open_questions")
+
+    # Company badges
+    company = d.get("company")
+    if isinstance(company, dict):
+        _ensure_list_of_str(company, "badges")
+
+    # Market trends and sources
+    market = d.get("market")
+    if isinstance(market, dict):
+        _ensure_list_of_str(market, "trends")
+        _ensure_list_of_str(market, "sources")
+
+    # SWOT quadrants
+    swot = d.get("swot")
+    if isinstance(swot, dict):
+        for quad in ("strengths", "weaknesses", "opportunities", "threats"):
+            _ensure_list_of_str(swot, quad)
+
+    # HR data notes and sources
+    hr = d.get("hr_data")
+    if isinstance(hr, dict):
+        _ensure_list_of_str(hr, "notes")
+        _ensure_list_of_str(hr, "sources")
+
+    # Calc traces sources
+    for ct in d.get("calc_traces") or []:
+        if isinstance(ct, dict):
+            _ensure_list_of_str(ct, "sources")
+
+    # Product features
+    for prod in d.get("products") or []:
+        if isinstance(prod, dict):
+            _ensure_list_of_str(prod, "features")
+
+    # Competitor lifecycle evidence
+    for c in d.get("competitors") or []:
+        if isinstance(c, dict):
+            lc = c.get("lifecycle")
+            if isinstance(lc, dict):
+                _ensure_list_of_str(lc, "evidence")
 
     return d
 

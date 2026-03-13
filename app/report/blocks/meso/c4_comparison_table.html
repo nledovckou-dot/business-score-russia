@@ -27,7 +27,7 @@
             {% for comp in competitors %}
             <tr>
                 <td style="font-weight:600;">{{ comp.name }}</td>
-                <td><span class="threat-{{ comp.threat_level }}">{{ comp.threat_level|upper }}</span></td>
+                <td>{% if comp.threat_level == 'self' %}<span style="color:var(--gold);">Анализируемый</span>{% else %}<span class="threat-{{ comp.threat_level }}">{{ {'high': 'ВЫСОКАЯ', 'med': 'СРЕДНЯЯ', 'low': 'НИЗКАЯ'}.get(comp.threat_level, comp.threat_level|upper) }}</span>{% endif %}</td>
                 {% for dim in comparison_columns %}
                 <td class="r">{{ comp.metrics.get(dim, '—') }}</td>
                 {% endfor %}

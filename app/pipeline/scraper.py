@@ -42,8 +42,11 @@ def _fetch_via_proxy(url: str, timeout: int = _PROXY_TIMEOUT) -> tuple[str, int]
             timeout=timeout,
         )
         data = resp.json()
-        if data.get("ok") and data.get("status") and data["status"] < 400:
-            return data.get("html", ""), data["status"]
+        status = data.get("status", 0)
+        html = data.get("html") or data.get("text") or ""
+        # Support both proxy formats: {ok, status, text} and {status, html, text}
+        if status and status < 400 and html:
+            return html, status
         return None
     except Exception as e:
         logger.debug("[scrape] proxy failed for %s: %s", url, e)
@@ -206,7 +209,7 @@ def _fetch_html(url: str, timeout: int = TIMEOUT_REQUESTS) -> tuple[str, str, li
         )
         warnings.append(
             f"requests заблокирован ({block_reason}, {elapsed:.2f}s), "
-            f"переключаюсь на Playwright"
+            f"переключаюсь на Scrapling"
         )
         logger.info(
             "[scrape] BLOCKED url=%s method=requests reason=%s status=%d time=%.2fs",
@@ -215,7 +218,7 @@ def _fetch_html(url: str, timeout: int = TIMEOUT_REQUESTS) -> tuple[str, str, li
 
     except requests.exceptions.RequestException as exc:
         elapsed = time.monotonic() - t0
-        warnings.append(f"requests ошибка ({exc}, {elapsed:.2f}s), переключаюсь на Playwright")
+        warnings.append(f"requests ошибка ({exc}, {elapsed:.2f}s), переключаюсь на Scrapling")
         logger.info(
             "[scrape] FAIL url=%s method=requests error=%s time=%.2fs",
             url, exc, elapsed,
@@ -427,7 +430,7 @@ def scrape_website(url: str, timeout: int = TIMEOUT_REQUESTS) -> dict:
         )
         result["scrape_warnings"].append(
             f"SPA/JS-only сайт (текст {len(parsed['text'])} симв.), "
-            f"переключаюсь на Playwright"
+            f"переключаюсь на Scrapling"
         )
         try:
             pw_html = _fetch_playwright(url, timeout=TIMEOUT_SCRAPLING)

@@ -48,8 +48,11 @@ def _get_via_proxy(full_url: str) -> dict | None:
             timeout=20,
         )
         data = resp.json()
-        if data.get("ok") and data.get("status") == 200 and data.get("text"):
-            return json.loads(data["text"])
+        status = data.get("status", 0)
+        text = data.get("text") or data.get("html") or ""
+        # Support both proxy formats: {ok, status, text} and {status, html, text}
+        if status == 200 and text:
+            return json.loads(text)
     except Exception as e:
         logger.debug("[FNS] proxy fallback failed: %s", e)
     return None

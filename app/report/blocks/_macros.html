@@ -58,7 +58,8 @@
     <div class="meta">
         {% if comp.address %}{{ comp.address }}{% endif %}
         {% if comp.website %} | <a href="{{ comp.website }}" style="color:var(--blue);">{{ comp.website }}</a>{% endif %}
-        {% if comp.threat_level %} | <span class="threat-{{ comp.threat_level }}">{{ {'high': 'Высокая угроза', 'med': 'Средняя угроза', 'low': 'Низкая угроза'}[comp.threat_level] }}</span>{% endif %}
+        {% if comp.threat_level and comp.threat_level != 'self' %} | <span class="threat-{{ comp.threat_level }}">{{ {'high': 'Высокая угроза', 'med': 'Средняя угроза', 'low': 'Низкая угроза'}.get(comp.threat_level, '') }}</span>{% endif %}
+        {% if comp.threat_level == 'self' %} | <span style="color:var(--gold);">Анализируемая компания</span>{% endif %}
     </div>
     {% if comp.metrics %}
     <div class="stats">

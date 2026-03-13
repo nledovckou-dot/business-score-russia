@@ -381,9 +381,13 @@ def search_organization(
 ) -> list[dict]:
     """Search for organizations by name in 2GIS.
 
+    Note: 2GIS requires a geo context (region_id) for list searches.
+    If no city is provided, defaults to region_id=32 (Moscow).
+
     Args:
         name: Organization name or search query
-        city: Optional city name to narrow results (e.g., "Москва")
+        city: City name to scope results (e.g., "Москва", "Санкт-Петербург").
+              Defaults to Moscow if not specified.
         page_size: Max results to return (1-50, default 5)
 
     Returns:
@@ -400,11 +404,22 @@ def search_organization(
         "page_size": str(min(page_size, 50)),
     }
 
-    # Resolve city to region_id
+    # Resolve city to region_id; default to Moscow if not provided
     if city:
         region_id = resolve_region_id(city)
         if region_id:
             params["region_id"] = str(region_id)
+        else:
+            # City given but not resolved — use all of Russia (no region filter)
+            logger.warning(
+                "[2gis] Could not resolve region for '%s', "
+                "defaulting to region_id=32 (Moscow)",
+                city,
+            )
+            params["region_id"] = "32"
+    else:
+        # 2GIS requires geo context — default to Moscow
+        params["region_id"] = "32"
 
     try:
         data = _get(f"{_BASE_URL}/3.0/items", params)

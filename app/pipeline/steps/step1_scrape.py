@@ -103,7 +103,14 @@ def run(url: str) -> dict:
       4. Web search fallback (DuckDuckGo snippets)
       5. Domain-only fallback (just the domain name)
     """
-    scraped = scrape_website(url)
+    try:
+        scraped = scrape_website(url)
+    except Exception as e:
+        logger.warning("[step1] scrape_website raised: %s. Using fallback.", e)
+        scraped = {"error": str(e), "text": "", "title": "", "description": "",
+                   "headings": [], "contacts": {}, "social_links": [], "pages_text": {},
+                   "url": url, "domain": urlparse(url).netloc or url,
+                   "scrape_method": "error", "scrape_warnings": [str(e)]}
     scrape_error = scraped.get("error")
 
     method = scraped.get("scrape_method", "requests")

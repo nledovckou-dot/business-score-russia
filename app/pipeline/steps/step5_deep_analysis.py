@@ -64,7 +64,7 @@ _BASE_SYSTEM = """Ты — ведущий бизнес-аналитик (pipelin
 
 ВАЖНО:
 - Используй РЕАЛЬНЫЕ данные, не выдумывай
-- Если данных нет — верни null / пустой список, не фантазируй
+- Если данных ФНС нет — используй экспертные оценки на основе типа бизнеса, рынка и доступного контекста. Пометь как оценку
 - Все суммы в тысячах рублей если не указано иное
 - ВСЁ на русском языке
 - Ответ — ТОЛЬКО валидный JSON (без markdown, без ```)"""
@@ -649,7 +649,8 @@ def analyze_strategy(
     # Финансы для сценариев и KPI current values
     fin_json = "null"
     fns_current_hint = ""
-    if fns_data.get("financials"):
+    fns_available = bool(fns_data.get("financials"))
+    if fns_available:
         fin_json = json.dumps(fns_data["financials"], ensure_ascii=False)
         latest = fns_data["financials"][-1]
         rev = latest.get("revenue")
@@ -676,7 +677,7 @@ def analyze_strategy(
     fns_profit_k = None
     fns_margin = None
     fns_emp = None
-    if fns_data.get("financials"):
+    if fns_available:
         latest = fns_data["financials"][-1]
         fns_rev_k = latest.get("revenue")
         fns_profit_k = latest.get("net_profit")
@@ -701,6 +702,28 @@ def analyze_strategy(
     if fns_rev_k:
         base_floor_hint = f"\n⚠ Текущая выручка = {fns_rev_k} тыс. руб. Базовый сценарий ОБЯЗАН быть ≥ {fns_rev_k}. Оптимистичный > базового. Пессимистичный = -10..20% от текущей."
 
+    # T55: When FNS data is missing, instruct LLM to estimate
+    no_fns_estimation_hint = ""
+    if not fns_available:
+        no_fns_estimation_hint = f"""
+⚠ ДАННЫЕ ФНС НЕДОСТУПНЫ. Это НЕ означает что компания не существует.
+Ты ОБЯЗАН самостоятельно ОЦЕНИТЬ финансовые показатели компании на основе:
+- Типа бизнеса: {bt}
+- Описания компании и текста сайта
+- Рыночных бенчмарков для данной отрасли
+- Количества сотрудников (оцени по сайту/конкурентам)
+- Конкурентного окружения
+
+ПРАВИЛА ОЦЕНКИ:
+1. Сценарии (scenarios): ОБЯЗАТЕЛЬНО заполни metrics числами-оценками. НЕ ставь 0 или null.
+   - Оцени годовую выручку по типу бизнеса и масштабу компании
+   - Базовый = текущая оценка, Оптимистичный = +20-30%, Пессимистичный = -10-20%
+2. KPI (kpi_benchmarks): ОБЯЗАТЕЛЬНО заполни current числами-оценками. НЕ ставь null.
+   - Используй отраслевые бенчмарки для оценки текущих показателей
+   - Если KPI = рентабельность, оцени по отрасли (напр. общепит 5-15%, IT 15-30%, ритейл 3-8%)
+3. Пометь все оценки: добавь к assumptions.description текст "(⚠ экспертная оценка, данные ФНС недоступны)"
+"""
+
     # T29: Web search обогащение стратегии
     company_name = company_info.get('name', '')
     ws_queries = [
@@ -709,6 +732,28 @@ def analyze_strategy(
         f"{company_name} конкуренты рынок доля",
     ]
     web_context = _web_search_context(ws_queries, max_snippets=10)
+
+    # T55: Build KPI current instruction depending on FNS availability
+    if fns_available:
+        kpi_current_instruction = f"""5. КРИТИЧНО для kpi_benchmarks: поле "current" = РЕАЛЬНЫЕ данные из ФНС выше:
+   - Подставь значения из JSON "ТЕКУЩИЕ ПОКАЗАТЕЛИ" напрямую
+   - Выручка, прибыль, рентабельность, сотрудники — всё из ФНС
+   - current=null ТОЛЬКО если данных нет в ФНС. Не выдумывай"""
+        scenario_instruction = f"""6. Сценарии — 3, горизонт 12 мес, на базе РЕАЛЬНОЙ выручки {fns_rev_k or 'неизв.'} тыс. руб.
+7. АРИФМЕТИКА СЦЕНАРИЕВ: выручка = текущая × (1 + growth_pct/100). Проверь: базовый ≥ текущей, оптимистичный > базового"""
+    else:
+        kpi_current_instruction = """5. КРИТИЧНО для kpi_benchmarks: данные ФНС НЕДОСТУПНЫ. Ты ОБЯЗАН:
+   - Заполнить поле "current" ЭКСПЕРТНОЙ ОЦЕНКОЙ для каждого KPI (НЕ null, НЕ 0)
+   - Оценивай на основе типа бизнеса, масштаба компании, рыночных бенчмарков
+   - Примеры оценки: рентабельность общепита 5-15%, IT 15-30%, ритейл 3-8%
+   - ЗАПРЕЩЕНО возвращать current=null или current=0 — дай реалистичную оценку"""
+        scenario_instruction = """6. Сценарии — 3, горизонт 12 мес. Данные ФНС НЕДОСТУПНЫ — ты ОБЯЗАН ОЦЕНИТЬ текущую выручку:
+   - Оцени масштаб бизнеса по сайту, кол-ву сотрудников, конкурентам
+   - Базовый сценарий = твоя оценка текущей выручки × (1 + рост 5-15%)
+   - Оптимистичный = текущая × (1 + 20-35%), Пессимистичный = текущая × (1 - 10-20%)
+   - ЗАПРЕЩЕНО ставить 0 или 0.0 в metrics. Дай реалистичные числа
+   - Добавь к description: "(⚠ экспертная оценка, данные ФНС недоступны)"
+7. АРИФМЕТИКА СЦЕНАРИЕВ: оптимистичный > базового > пессимистичного"""
 
     prompt = f"""Разработай стратегию для компании.
 
@@ -728,6 +773,7 @@ def analyze_strategy(
 ## ТЕКУЩИЕ ПОКАЗАТЕЛИ (ФНС) — ОБЯЗАТЕЛЬНО используй как current в kpi_benchmarks
 {fns_kpi_json}
 {base_floor_hint}
+{no_fns_estimation_hint}
 
 ## Задание
 
@@ -747,7 +793,7 @@ def analyze_strategy(
     }}
   ],
   "kpi_benchmarks": [
-    {{"name": "KPI название", "current": число_из_ФНС_или_null, "benchmark": число, "unit": "ед."}}
+    {{"name": "KPI название", "current": число_или_оценка, "benchmark": число, "unit": "ед."}}
   ],
   "scenarios": [
     {{
@@ -777,16 +823,13 @@ def analyze_strategy(
 2. Для каждой рекомендации ОБЯЗАТЕЛЬНО: budget_estimate (диапазон стоимости), impact_rationale (откуда цифра), target_kpi
 3. Не более 2 high-priority рекомендаций на один квартал — распредели по Q1-Q4
 4. KPI — 6-8, релевантных типу бизнеса ({bt})
-5. КРИТИЧНО для kpi_benchmarks: поле "current" = РЕАЛЬНЫЕ данные из ФНС выше:
-   - Подставь значения из JSON "ТЕКУЩИЕ ПОКАЗАТЕЛИ" напрямую
-   - Выручка, прибыль, рентабельность, сотрудники — всё из ФНС
-   - current=null ТОЛЬКО если данных нет в ФНС. Не выдумывай
-6. Сценарии — 3, горизонт 12 мес, на базе РЕАЛЬНОЙ выручки {fns_rev_k or 'неизв.'} тыс. руб.
-7. АРИФМЕТИКА СЦЕНАРИЕВ: выручка = текущая × (1 + growth_pct/100). Проверь: базовый ≥ текущей, оптимистичный > базового
+{kpi_current_instruction}
+{scenario_instruction}
 8. Каждый сценарий: assumptions.growth_pct + assumptions.description (почему такой рост)
 9. Реальные финансы (все года): {fin_json}
 10. implementation_timeline — 4-6 шагов по кварталам
-11. Если тип HYBRID — метрики B2C и B2B РАЗДЕЛЬНО в kpi_benchmarks"""
+11. Если тип HYBRID — метрики B2C и B2B РАЗДЕЛЬНО в kpi_benchmarks
+12. ЗАПРЕТ: metrics со значениями 0 или 0.0 — это ломает отчёт. Всегда числа > 0"""
 
     result = _safe_llm_call(prompt, "strategy", max_tokens=6000)
 
@@ -802,98 +845,155 @@ def _postprocess_strategy(
     fns_margin: float | None,
     fns_emp: int | None,
 ) -> dict:
-    """T50+T52+T54: Fix scenarios arithmetic, fill KPI current, check recommendations."""
+    """T50+T52+T54+T55: Fix scenarios arithmetic, fill KPI current, check recommendations.
+
+    T55: When FNS data is missing, validate that LLM returned non-zero estimates
+    and log warnings for zero values.
+    """
     if not result:
         return result
 
-    # ── T50: Fix scenario arithmetic ──
+    # ── T50/T55: Fix scenario arithmetic ──
     scenarios = result.get("scenarios", [])
-    if fns_rev_k and scenarios:
-        for scenario in scenarios:
-            metrics = scenario.get("metrics", {})
-            assumptions = scenario.get("assumptions", {})
-            label = scenario.get("label", scenario.get("name", ""))
-
-            # Find revenue key
-            rev_key = None
-            for k in metrics:
-                if "выручка" in k.lower() or "revenue" in k.lower():
-                    rev_key = k
-                    break
-
-            if rev_key is None:
-                continue
-
-            scenario_rev = metrics.get(rev_key)
-            growth_pct = assumptions.get("growth_pct")
-
-            # Calculate expected revenue from growth_pct if available
-            if growth_pct is not None:
-                expected = round(fns_rev_k * (1 + growth_pct / 100))
-                if scenario_rev and abs(scenario_rev - expected) > expected * 0.3:
-                    logger.warning(
-                        "T50: Scenario '%s' revenue=%s but growth=%s%% from %s → corrected to %s",
-                        label, scenario_rev, growth_pct, fns_rev_k, expected,
-                    )
-                    metrics[rev_key] = expected
-                elif not scenario_rev:
-                    metrics[rev_key] = expected
-
-            # Check: base >= current, optimistic > base
-            if scenario_rev:
-                if "базов" in label.lower() or "base" in label.lower():
-                    if scenario_rev < fns_rev_k * 0.95:
-                        corrected = round(fns_rev_k * 1.1)
-                        logger.warning(
-                            "T50: Base scenario (%s) < current FNS revenue (%s) → corrected to %s",
-                            scenario_rev, fns_rev_k, corrected,
-                        )
-                        metrics[rev_key] = corrected
-                        if not assumptions.get("growth_pct"):
-                            assumptions["growth_pct"] = 10
-
-            # Recalculate profit from margin if available
-            profit_key = None
-            for k in metrics:
-                if "прибыль" in k.lower() or "profit" in k.lower():
-                    profit_key = k
-                    break
-            if profit_key and fns_margin and metrics.get(rev_key):
-                expected_profit = round(metrics[rev_key] * fns_margin / 100)
-                current_profit = metrics.get(profit_key)
-                if current_profit and metrics.get(rev_key):
-                    scenario_margin = abs(current_profit / metrics[rev_key] * 100) if metrics[rev_key] else 0
-                    # If margin differs wildly from FNS margin, recalculate
-                    if abs(scenario_margin - abs(fns_margin)) > 20:
-                        metrics[profit_key] = expected_profit
-
-            scenario["metrics"] = metrics
-            scenario["assumptions"] = assumptions
-
-    # ── T52: Fill KPI current values from ФНС ──
-    kpi_benchmarks = result.get("kpi_benchmarks", [])
-    fns_map = {}
-    if fns_rev_k is not None:
-        fns_map["выручка"] = fns_rev_k
-    if fns_profit_k is not None:
-        fns_map["прибыль"] = fns_profit_k
-    if fns_margin is not None:
-        fns_map["рентабельность"] = fns_margin
-    if fns_emp is not None:
-        fns_map["сотрудник"] = fns_emp
+    if scenarios:
         if fns_rev_k:
-            fns_map["выручка/сотрудник"] = round(fns_rev_k / fns_emp)
-            fns_map["выручка на сотрудник"] = round(fns_rev_k / fns_emp)
+            # FNS data available — use exact arithmetic
+            for scenario in scenarios:
+                metrics = scenario.get("metrics", {})
+                assumptions = scenario.get("assumptions", {})
+                label = scenario.get("label", scenario.get("name", ""))
 
-    for kpi in kpi_benchmarks:
-        if kpi.get("current") is not None:
-            continue
-        name_lower = kpi.get("name", "").lower()
-        for fns_key, fns_val in fns_map.items():
-            if fns_key in name_lower:
-                kpi["current"] = fns_val
-                logger.info("T52: Filled KPI '%s' current=%s from ФНС", kpi["name"], fns_val)
-                break
+                # Find revenue key
+                rev_key = None
+                for k in metrics:
+                    if "выручка" in k.lower() or "revenue" in k.lower():
+                        rev_key = k
+                        break
+
+                if rev_key is None:
+                    continue
+
+                scenario_rev = metrics.get(rev_key)
+                growth_pct = assumptions.get("growth_pct")
+
+                # Calculate expected revenue from growth_pct if available
+                if growth_pct is not None:
+                    expected = round(fns_rev_k * (1 + growth_pct / 100))
+                    if scenario_rev and abs(scenario_rev - expected) > expected * 0.3:
+                        logger.warning(
+                            "T50: Scenario '%s' revenue=%s but growth=%s%% from %s → corrected to %s",
+                            label, scenario_rev, growth_pct, fns_rev_k, expected,
+                        )
+                        metrics[rev_key] = expected
+                    elif not scenario_rev:
+                        metrics[rev_key] = expected
+
+                # Check: base >= current, optimistic > base
+                if scenario_rev:
+                    if "базов" in label.lower() or "base" in label.lower():
+                        if scenario_rev < fns_rev_k * 0.95:
+                            corrected = round(fns_rev_k * 1.1)
+                            logger.warning(
+                                "T50: Base scenario (%s) < current FNS revenue (%s) → corrected to %s",
+                                scenario_rev, fns_rev_k, corrected,
+                            )
+                            metrics[rev_key] = corrected
+                            if not assumptions.get("growth_pct"):
+                                assumptions["growth_pct"] = 10
+
+                # Recalculate profit from margin if available
+                profit_key = None
+                for k in metrics:
+                    if "прибыль" in k.lower() or "profit" in k.lower():
+                        profit_key = k
+                        break
+                if profit_key and fns_margin and metrics.get(rev_key):
+                    expected_profit = round(metrics[rev_key] * fns_margin / 100)
+                    current_profit = metrics.get(profit_key)
+                    if current_profit and metrics.get(rev_key):
+                        scenario_margin = abs(current_profit / metrics[rev_key] * 100) if metrics[rev_key] else 0
+                        # If margin differs wildly from FNS margin, recalculate
+                        if abs(scenario_margin - abs(fns_margin)) > 20:
+                            metrics[profit_key] = expected_profit
+
+                scenario["metrics"] = metrics
+                scenario["assumptions"] = assumptions
+        else:
+            # T55: No FNS data — validate LLM estimates are non-zero
+            for scenario in scenarios:
+                metrics = scenario.get("metrics", {})
+                assumptions = scenario.get("assumptions", {})
+                label = scenario.get("label", scenario.get("name", ""))
+                has_zeros = False
+
+                for k, v in list(metrics.items()):
+                    if v is None or v == 0 or v == 0.0:
+                        has_zeros = True
+                        logger.warning(
+                            "T55: Scenario '%s' metric '%s' is %s — LLM failed to estimate",
+                            label, k, v,
+                        )
+
+                if has_zeros:
+                    # Mark in description that estimation failed
+                    desc = assumptions.get("description", "")
+                    if desc and "⚠" not in desc:
+                        assumptions["description"] = f"{desc} (⚠ экспертная оценка, данные ФНС недоступны)"
+                    scenario["assumptions"] = assumptions
+
+    # ── T52/T55: Fill KPI current values ──
+    kpi_benchmarks = result.get("kpi_benchmarks", [])
+
+    if fns_rev_k is not None or fns_profit_k is not None or fns_margin is not None or fns_emp is not None:
+        # FNS data available — fill from FNS
+        fns_map = {}
+        if fns_rev_k is not None:
+            fns_map["выручка"] = fns_rev_k
+        if fns_profit_k is not None:
+            fns_map["прибыль"] = fns_profit_k
+        if fns_margin is not None:
+            fns_map["рентабельность"] = fns_margin
+        if fns_emp is not None:
+            fns_map["сотрудник"] = fns_emp
+            if fns_rev_k:
+                fns_map["выручка/сотрудник"] = round(fns_rev_k / fns_emp)
+                fns_map["выручка на сотрудник"] = round(fns_rev_k / fns_emp)
+
+        for kpi in kpi_benchmarks:
+            if kpi.get("current") is not None:
+                continue
+            name_lower = kpi.get("name", "").lower()
+            for fns_key, fns_val in fns_map.items():
+                if fns_key in name_lower:
+                    kpi["current"] = fns_val
+                    logger.info("T52: Filled KPI '%s' current=%s from ФНС", kpi["name"], fns_val)
+                    break
+    else:
+        # T55: No FNS data — validate LLM filled current values
+        null_count = 0
+        for kpi in kpi_benchmarks:
+            if kpi.get("current") is None:
+                null_count += 1
+                logger.warning(
+                    "T55: KPI '%s' current=null — LLM failed to estimate (no FNS data)",
+                    kpi.get("name", "?"),
+                )
+                # Use benchmark as fallback for current (slightly below benchmark)
+                benchmark = kpi.get("benchmark")
+                if benchmark is not None:
+                    try:
+                        bench_val = float(benchmark)
+                        # Estimate current as 70-85% of benchmark
+                        kpi["current"] = round(bench_val * 0.75, 1)
+                        logger.info(
+                            "T55: KPI '%s' current estimated as 75%% of benchmark (%s → %s)",
+                            kpi.get("name", "?"), benchmark, kpi["current"],
+                        )
+                    except (ValueError, TypeError):
+                        pass
+
+        if null_count > 0:
+            logger.warning("T55: %d/%d KPIs had null current values (no FNS data)", null_count, len(kpi_benchmarks))
 
     result["kpi_benchmarks"] = kpi_benchmarks
 
