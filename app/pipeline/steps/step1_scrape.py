@@ -43,11 +43,25 @@ def run(url: str) -> dict:
         )
         return scraped
 
-    # Full scrape: require meaningful text
+    # Full scrape: require meaningful text OR at least title/description
     if text_len < 50:
-        raise RuntimeError(
-            "Сайт вернул слишком мало текста "
-            f"({text_len} символов, метод: {method}). Проверьте URL."
-        )
+        title = scraped.get("title", "")
+        description = scraped.get("description", "")
+        if title or description:
+            logger.warning(
+                "[step1] SPA/JS site %s: text too short (%d chars, method=%s) "
+                "but title/description available. Allowing through.",
+                url, text_len, method,
+            )
+            scraped["scrape_warnings"] = scraped.get("scrape_warnings", [])
+            scraped["scrape_warnings"].append(
+                f"SPA/JS-сайт: текст {text_len} символов, "
+                f"но title и description доступны. Анализ может быть ограничен."
+            )
+        else:
+            raise RuntimeError(
+                "Сайт вернул слишком мало текста "
+                f"({text_len} символов, метод: {method}). Проверьте URL."
+            )
 
     return scraped

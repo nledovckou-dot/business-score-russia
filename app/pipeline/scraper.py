@@ -71,6 +71,7 @@ def _fetch_playwright(url: str, timeout: int = TIMEOUT_SCRAPLING) -> str:
     """Fetch HTML via Playwright headless Chromium (JS rendering).
 
     Uses timeout parameter (seconds) for page load wait.
+    Tries networkidle first, falls back to domcontentloaded + wait for SPA.
     """
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -84,7 +85,14 @@ def _fetch_playwright(url: str, timeout: int = TIMEOUT_SCRAPLING) -> str:
         )
         page = context.new_page()
         try:
-            page.goto(url, wait_until="networkidle", timeout=timeout * 1000)
+            try:
+                page.goto(url, wait_until="networkidle", timeout=timeout * 1000)
+            except Exception:
+                # networkidle may timeout on SPA with long-polling/websockets
+                logger.info("[playwright] networkidle timeout for %s, trying domcontentloaded", url)
+                page.goto(url, wait_until="domcontentloaded", timeout=timeout * 1000)
+                # Give SPA time to render
+                page.wait_for_timeout(3000)
             html = page.content()
         finally:
             browser.close()
