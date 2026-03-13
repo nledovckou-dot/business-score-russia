@@ -1,8 +1,8 @@
 """Step 6: Board of Directors — AI-экспертная панель рецензирует отчёт (T24).
 
-После генерации отчёта 5 AI-экспертов (CFO, CMO, Industry Expert, Skeptic, CEO)
-независимо рецензируют его. Первые 4 работают параллельно, затем CEO получает
-их результаты и формирует финальный вердикт.
+После генерации отчёта 6 AI-экспертов (CFO, CMO, Industry Expert, Skeptic,
+QA Director, CEO) независимо рецензируют его. Первые 5 работают параллельно,
+затем CEO получает их результаты и формирует финальный вердикт.
 
 Используется GPT-5.3 Codex через call_board_llm / call_board_llm_parallel (T28).
 """
@@ -169,16 +169,72 @@ _EXPERT_SKEPTIC = {
     ],
 }
 
+_EXPERT_QA_DIRECTOR = {
+    "role": "QA Director",
+    "name": "Директор по качеству",
+    "system": (
+        "Ты — директор по качеству данных (QA Director) с опытом в data governance, "
+        "контроле качества аналитических отчётов и аудите бизнес-документации. "
+        "Твоя задача — проверить отчёт по 4 критериям качества.\n\n"
+        "ФОКУС ПРОВЕРКИ — 4 КРИТЕРИЯ:\n\n"
+        "1. ЧЕЛОВЕКОЧИТАЕМОСТЬ (readability):\n"
+        "   - Числа форматированы с разделителями тысяч (1 234 567, не 1234567)\n"
+        "   - Нет JSON-дампов или технических артефактов в текстовых полях\n"
+        "   - Весь контент на русском языке (кроме названий брендов)\n"
+        "   - Нет placeholder'ов (TODO, FIXME, Lorem ipsum, undefined, {{шаблон}})\n"
+        "   - Нет обрезанных строк (заканчиваются на '...' или < 20 символов)\n\n"
+        "2. ОТСУТСТВИЕ ПУСТЫХ ПОЛЕЙ (empty_fields):\n"
+        "   - SWOT: все 4 квадранта (strengths, weaknesses, opportunities, threats) заполнены\n"
+        "   - У каждого конкурента есть description и ключевые metrics\n"
+        "   - KPI: и current, и benchmark заполнены (не пустые)\n"
+        "   - Финансы: нет строк где все значения null\n"
+        "   - Market: market_size заполнен\n"
+        "   - Рекомендации: каждая имеет description\n"
+        "   - Глоссарий: минимум 3 термина\n\n"
+        "3. ЕДИНООБРАЗИЕ ЕДИНИЦ (units):\n"
+        "   - Выручка во всех секциях в одних единицах (тыс. руб. или млн руб. — не mix)\n"
+        "   - Проценты — числовые значения (не '~10%' или 'около 15')\n"
+        "   - Radar scores все в диапазоне [0, 10]\n"
+        "   - При сравнении конкурентов — одинаковые периоды/года\n"
+        "   - Market share в сумме ~100% (допустимо 90-110%)\n\n"
+        "4. ВНУТРЕННЯЯ СОГЛАСОВАННОСТЬ (consistency):\n"
+        "   - Размер рынка одинаковый в market и в scenarios и в kpi\n"
+        "   - Выручка из financials совпадает (±5%) с выручкой в scenarios и kpi_benchmarks\n"
+        "   - Количество сотрудников: financials = hr_data\n"
+        "   - Названия конкурентов одинаковы в competitors[], market_share, factcheck\n"
+        "   - Нет противоречий между секциями\n\n"
+        "ФОРМАТ ОТВЕТА — строго JSON:\n"
+        "{\n"
+        '  "approved": true/false,\n'
+        '  "critiques": [\n'
+        '    {"section": "название секции", "issue": "описание проблемы", '
+        '"severity": "high/medium/low", "suggestion": "как исправить", '
+        '"criteria": "readability|empty_fields|units|consistency"}\n'
+        "  ],\n"
+        '  "summary": "краткий итог рецензии (2-3 предложения)"\n'
+        "}\n\n"
+        "ВАЖНО: в каждом critique ОБЯЗАТЕЛЬНО указывай поле 'criteria' — "
+        "одно из: readability, empty_fields, units, consistency.\n"
+        "Не одобряй отчёт (approved=false), если есть хотя бы одна ошибка severity=high.\n"
+        "Отвечай ТОЛЬКО валидным JSON. Без markdown, без пояснений вне JSON."
+    ),
+    "focus_areas": [
+        "readability", "empty_fields", "units", "consistency",
+        "formatting", "completeness",
+    ],
+}
+
 _EXPERT_CEO = {
     "role": "CEO",
     "name": "Генеральный директор",
     "system": (
         "Ты — генеральный директор (CEO), который принимает решения на основе данных. "
-        "Перед тобой бизнес-аналитический отчёт И рецензии четырёх других экспертов:\n"
+        "Перед тобой бизнес-аналитический отчёт И рецензии пяти других экспертов:\n"
         "- CFO (финансы)\n"
         "- CMO (маркетинг и конкуренты)\n"
         "- Отраслевой эксперт\n"
-        "- Скептик (фактчек)\n\n"
+        "- Скептик (фактчек)\n"
+        "- QA Director (качество: читаемость, пустые поля, единообразие, согласованность)\n\n"
         "Твоя задача — СИНТЕЗИРОВАТЬ их рецензии и принять решение:\n\n"
         "1. Какие замечания ПРИНЯТЬ (обоснованные, критичные)?\n"
         "2. Какие ОТКЛОНИТЬ (необоснованные, мелочные, субъективные)?\n"
@@ -313,6 +369,103 @@ def _parse_expert_response(raw: str, expert_role: str) -> dict:
 # ── Основные функции ──
 
 
+def _pre_scan_quality(report_data: dict) -> str:
+    """Лёгкая версия программатических проверок для QA Director.
+
+    Проверяет пустые поля и кросс-секционную согласованность.
+    Результат добавляется в промпт QA Director для усиления его фокуса.
+    """
+    issues: list[str] = []
+
+    # ── Пустые поля ──
+    swot = report_data.get("swot") or {}
+    for quad in ("strengths", "weaknesses", "opportunities", "threats"):
+        items = swot.get(quad) or []
+        if not items:
+            issues.append(f"SWOT: квадрант '{quad}' пуст")
+
+    competitors = report_data.get("competitors") or []
+    for i, c in enumerate(competitors):
+        if not isinstance(c, dict):
+            continue
+        if not c.get("description"):
+            issues.append(f"Конкурент #{i+1} ({c.get('name', '?')}): нет description")
+
+    kpi = report_data.get("kpi_benchmarks") or []
+    for k in kpi:
+        if not isinstance(k, dict):
+            continue
+        if k.get("current") is None and k.get("benchmark") is None:
+            issues.append(f"KPI '{k.get('name', '?')}': нет current и benchmark")
+
+    glossary = report_data.get("glossary") or []
+    if len(glossary) < 3:
+        issues.append(f"Глоссарий: {len(glossary)} терминов (минимум 3)")
+
+    market = report_data.get("market") or {}
+    if not market.get("market_size"):
+        issues.append("Market: market_size не заполнен")
+
+    recommendations = report_data.get("recommendations") or []
+    for i, rec in enumerate(recommendations):
+        if isinstance(rec, dict) and not rec.get("description"):
+            issues.append(f"Рекомендация #{i+1}: нет description")
+
+    # ── Кросс-секционная согласованность ──
+    financials = report_data.get("financials") or []
+    fns_revenue = None
+    for fy in reversed(financials):
+        if isinstance(fy, dict) and fy.get("revenue") is not None:
+            try:
+                fns_revenue = float(fy["revenue"])
+            except (ValueError, TypeError):
+                pass
+            break
+
+    # Проверка названий конкурентов в market_share
+    comp_names = {c.get("name", "").strip().lower() for c in competitors if isinstance(c, dict) and c.get("name")}
+    market_share = report_data.get("market_share") or {}
+    share_names = {n.strip().lower() for n in market_share.keys() if n}
+    if comp_names and share_names:
+        missing_in_share = comp_names - share_names
+        company_name = (report_data.get("company") or {}).get("name", "").strip().lower()
+        missing_in_share.discard(company_name)
+        if missing_in_share and len(missing_in_share) > len(comp_names) * 0.5:
+            issues.append(
+                f"Несогласованность: {len(missing_in_share)} конкурентов из competitors[] "
+                "отсутствуют в market_share"
+            )
+
+    # Radar scores вне [0, 10]
+    radar_dims = report_data.get("radar_dimensions") or []
+    if radar_dims:
+        for c in competitors:
+            if not isinstance(c, dict):
+                continue
+            scores = c.get("radar_scores") or {}
+            for dim, val in scores.items():
+                try:
+                    v = float(val)
+                    if v < 0 or v > 10:
+                        issues.append(
+                            f"Radar score вне [0,10]: {c.get('name','?')}.{dim}={v}"
+                        )
+                except (ValueError, TypeError):
+                    pass
+
+    if not issues:
+        return ""
+
+    lines = [f"- {iss}" for iss in issues[:15]]
+    return (
+        "\n\n=== ПРЕДВАРИТЕЛЬНОЕ СКАНИРОВАНИЕ (автоматика) ===\n"
+        f"Найдено проблем: {len(issues)}\n"
+        + "\n".join(lines) +
+        "\n=== КОНЕЦ СКАНИРОВАНИЯ ===\n"
+        "Проверь эти проблемы и найди то, что автоматика могла пропустить."
+    )
+
+
 def form_panel(report_data: dict, company_info: dict) -> list[dict]:
     """Формирует панель из 5 AI-экспертов для рецензирования отчёта.
 
@@ -335,7 +488,8 @@ def form_panel(report_data: dict, company_info: dict) -> list[dict]:
 
     panel = []
     for expert_template in [
-        _EXPERT_CFO, _EXPERT_CMO, _EXPERT_INDUSTRY, _EXPERT_SKEPTIC, _EXPERT_CEO,
+        _EXPERT_CFO, _EXPERT_CMO, _EXPERT_INDUSTRY, _EXPERT_SKEPTIC,
+        _EXPERT_QA_DIRECTOR, _EXPERT_CEO,
     ]:
         expert = dict(expert_template)
         expert["system"] = expert["system"] + context_suffix
@@ -386,16 +540,26 @@ def run_review(report_data: dict, panel: list[dict]) -> dict:
         logger.error("CEO не найден в панели экспертов!")
         raise ValueError("Панель экспертов должна содержать CEO")
 
-    # ── Шаг 1: параллельный запуск 4 экспертов ──
+    # ── Pre-scan для QA Director ──
+    pre_scan_text = _pre_scan_quality(report_data)
+    if pre_scan_text:
+        logger.info("Pre-scan нашёл проблемы для QA Director")
+
+    # ── Шаг 1: параллельный запуск 5 экспертов ──
     logger.info("Запуск параллельной рецензии: %d экспертов", len(parallel_experts))
 
     parallel_prompts = []
     for expert in parallel_experts:
+        # Для QA Director добавляем результат pre-scan
+        extra_context = ""
+        if expert["role"] == "QA Director" and pre_scan_text:
+            extra_context = pre_scan_text
+
         prompt = (
             f"Ты — {expert['name']} ({expert['role']}). "
             f"Рецензируй бизнес-аналитический отчёт.\n\n"
             f"Твои области фокуса: {', '.join(expert['focus_areas'])}\n\n"
-            f"=== ОТЧЁТ ===\n{report_json}\n=== КОНЕЦ ОТЧЁТА ===\n\n"
+            f"=== ОТЧЁТ ===\n{report_json}\n=== КОНЕЦ ОТЧЁТА ==={extra_context}\n\n"
             "Дай структурированную рецензию в формате JSON."
         )
         parallel_prompts.append({
@@ -405,7 +569,7 @@ def run_review(report_data: dict, panel: list[dict]) -> dict:
 
     parallel_responses = call_board_llm_parallel(parallel_prompts)
 
-    # Парсим ответы первых 4 экспертов
+    # Парсим ответы первых 5 экспертов
     reviews: list[dict] = []
     for expert, raw_response in zip(parallel_experts, parallel_responses):
         is_error = raw_response.startswith("[Board LLM Error]")
@@ -440,7 +604,7 @@ def run_review(report_data: dict, panel: list[dict]) -> dict:
         {r["role"]: r["response"].get("approved", "?") for r in reviews},
     )
 
-    # ── Шаг 2: CEO получает результаты первых 4 экспертов ──
+    # ── Шаг 2: CEO получает результаты первых 5 экспертов ──
     logger.info("Запуск рецензии CEO с результатами экспертов")
 
     expert_summaries = []
@@ -462,7 +626,7 @@ def run_review(report_data: dict, panel: list[dict]) -> dict:
 
     ceo_prompt = (
         f"Ты — {ceo_expert['name']} ({ceo_expert['role']}). "
-        "Перед тобой бизнес-аналитический отчёт и рецензии четырёх экспертов.\n\n"
+        "Перед тобой бизнес-аналитический отчёт и рецензии пяти экспертов.\n\n"
         f"=== ОТЧЁТ (сокращённо) ===\n{report_json[:40000]}\n"
         "=== КОНЕЦ ОТЧЁТА ===\n\n"
         "=== РЕЦЕНЗИИ ЭКСПЕРТОВ ===\n"

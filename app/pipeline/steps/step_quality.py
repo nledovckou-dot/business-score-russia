@@ -80,6 +80,10 @@ def check_report_quality(report_data: dict, company_info: dict) -> dict:
     _consistency_check(report_data, checks, critical_failures, warnings)
     _source_coverage(report_data, checks, critical_failures, warnings)
     _competitor_validation(report_data, company_info, checks, critical_failures, warnings)
+    _empty_field_detector(report_data, checks, critical_failures, warnings)
+    _unit_consistency_check(report_data, checks, critical_failures, warnings)
+    _cross_section_consistency_check(report_data, checks, critical_failures, warnings)
+    _readability_check(report_data, checks, critical_failures, warnings)
 
     # Calculate score
     total_checks = len(checks)
@@ -630,3 +634,421 @@ def _competitor_validation(
             warnings.append(msg)
         else:
             checks.append({"name": "competitor_radar", "status": "pass", "message": f"Radar scores заполнены ({len(radar_dims)} параметров)"})
+
+
+# ════════════════════════════════════════════════════════
+# 6. Empty Field Detector
+# ════════════════════════════════════════════════════════
+
+def _empty_field_detector(
+    report_data: dict,
+    checks: list[dict],
+    critical_failures: list[str],
+    warnings: list[str],
+) -> None:
+    """Check for empty/null fields in critical sections."""
+    issues: list[str] = []
+
+    # 6a. SWOT: all 4 quadrants have >= 1 item
+    swot = report_data.get("swot") or {}
+    swot_ok = True
+    for quad in ("strengths", "weaknesses", "opportunities", "threats"):
+        items = swot.get(quad) or []
+        if not items:
+            issues.append(f"SWOT.{quad} пуст")
+            swot_ok = False
+
+    if swot_ok and swot:
+        checks.append({"name": "empty_swot", "status": "pass", "message": "SWOT: все 4 квадранта заполнены"})
+    elif not swot:
+        checks.append({"name": "empty_swot", "status": "warn", "message": "SWOT отсутствует"})
+        warnings.append("SWOT отсутствует")
+    else:
+        msg = f"SWOT: пустые квадранты — {', '.join(issues)}"
+        checks.append({"name": "empty_swot", "status": "fail", "message": msg})
+        critical_failures.append(msg)
+
+    # 6b. Competitors: each has description and metrics
+    competitors = report_data.get("competitors") or []
+    empty_comp = []
+    for c in competitors:
+        if not isinstance(c, dict):
+            continue
+        name = c.get("name", "?")
+        if not c.get("description"):
+            empty_comp.append(f"{name}: нет description")
+
+    if empty_comp:
+        msg = f"Конкуренты с пустыми полями: {'; '.join(empty_comp[:5])}"
+        checks.append({"name": "empty_competitors", "status": "warn", "message": msg})
+        warnings.append(msg)
+    elif competitors:
+        checks.append({"name": "empty_competitors", "status": "pass", "message": "Все конкуренты имеют description"})
+
+    # 6c. KPI: current AND benchmark filled
+    kpi = report_data.get("kpi_benchmarks") or []
+    empty_kpi = []
+    for k in kpi:
+        if not isinstance(k, dict):
+            continue
+        kpi_name = k.get("name", "?")
+        if k.get("current") is None and k.get("benchmark") is None:
+            empty_kpi.append(kpi_name)
+
+    if empty_kpi:
+        msg = f"KPI без current и benchmark: {', '.join(empty_kpi[:5])}"
+        checks.append({"name": "empty_kpi", "status": "warn", "message": msg})
+        warnings.append(msg)
+    elif kpi:
+        checks.append({"name": "empty_kpi", "status": "pass", "message": f"KPI заполнены ({len(kpi)} шт)"})
+
+    # 6d. Financials: no rows where all fields are null
+    financials = report_data.get("financials") or []
+    empty_fin_rows = 0
+    for fy in financials:
+        if not isinstance(fy, dict):
+            continue
+        value_fields = [v for k, v in fy.items() if k not in ("year", "period")]
+        if all(v is None for v in value_fields):
+            empty_fin_rows += 1
+
+    if empty_fin_rows > 0:
+        msg = f"Финансы: {empty_fin_rows} строк с полностью пустыми данными"
+        checks.append({"name": "empty_financials", "status": "fail", "message": msg})
+        critical_failures.append(msg)
+    elif financials:
+        checks.append({"name": "empty_financials", "status": "pass", "message": "Финансы: нет пустых строк"})
+
+    # 6e. Market: market_size filled
+    market = report_data.get("market") or {}
+    if market.get("market_size"):
+        checks.append({"name": "empty_market_size", "status": "pass", "message": "Market size заполнен"})
+    elif market:
+        msg = "Market: market_size не заполнен"
+        checks.append({"name": "empty_market_size", "status": "warn", "message": msg})
+        warnings.append(msg)
+
+    # 6f. Recommendations: each has description
+    recommendations = report_data.get("recommendations") or []
+    empty_rec = sum(
+        1 for r in recommendations
+        if isinstance(r, dict) and not r.get("description")
+    )
+    if empty_rec > 0:
+        msg = f"Рекомендации: {empty_rec} из {len(recommendations)} без description"
+        checks.append({"name": "empty_recommendations", "status": "warn", "message": msg})
+        warnings.append(msg)
+    elif recommendations:
+        checks.append({"name": "empty_recommendations", "status": "pass", "message": f"Рекомендации: все {len(recommendations)} имеют description"})
+
+    # 6g. Glossary: >= 3 terms
+    glossary = report_data.get("glossary") or []
+    if len(glossary) >= 3:
+        checks.append({"name": "empty_glossary", "status": "pass", "message": f"Глоссарий: {len(glossary)} терминов"})
+    elif glossary:
+        msg = f"Глоссарий: {len(glossary)} терминов (рекомендуется >= 3)"
+        checks.append({"name": "empty_glossary", "status": "warn", "message": msg})
+        warnings.append(msg)
+    else:
+        msg = "Глоссарий отсутствует"
+        checks.append({"name": "empty_glossary", "status": "warn", "message": msg})
+        warnings.append(msg)
+
+
+# ════════════════════════════════════════════════════════
+# 7. Unit Consistency Check
+# ════════════════════════════════════════════════════════
+
+def _unit_consistency_check(
+    report_data: dict,
+    checks: list[dict],
+    critical_failures: list[str],
+    warnings: list[str],
+) -> None:
+    """Check unit consistency across sections."""
+
+    # 7a. Market share sums to ~100%
+    market_share = report_data.get("market_share") or {}
+    if market_share:
+        total_share = 0.0
+        parseable = True
+        for name, val in market_share.items():
+            try:
+                total_share += float(val)
+            except (ValueError, TypeError):
+                parseable = False
+                break
+
+        if parseable and total_share > 0:
+            if 90 <= total_share <= 110:
+                checks.append({"name": "units_market_share_sum", "status": "pass",
+                                "message": f"Market share в сумме {total_share:.1f}% (норма 90-110%)"})
+            elif 80 <= total_share <= 120:
+                msg = f"Market share в сумме {total_share:.1f}% (допустимо, но не идеально)"
+                checks.append({"name": "units_market_share_sum", "status": "warn", "message": msg})
+                warnings.append(msg)
+            else:
+                msg = f"Market share в сумме {total_share:.1f}% (вне 80-120% — ошибка)"
+                checks.append({"name": "units_market_share_sum", "status": "fail", "message": msg})
+                critical_failures.append(msg)
+        elif not parseable:
+            msg = "Market share содержит непарсируемые значения"
+            checks.append({"name": "units_market_share_sum", "status": "warn", "message": msg})
+            warnings.append(msg)
+
+    # 7b. Radar scores all in [0, 10]
+    radar_dims = report_data.get("radar_dimensions") or []
+    competitors = report_data.get("competitors") or []
+    if radar_dims and competitors:
+        out_of_range = []
+        for c in competitors:
+            if not isinstance(c, dict):
+                continue
+            scores = c.get("radar_scores") or {}
+            cname = c.get("name", "?")
+            for dim, val in scores.items():
+                try:
+                    v = float(val)
+                    if v < 0 or v > 10:
+                        out_of_range.append(f"{cname}.{dim}={v}")
+                except (ValueError, TypeError):
+                    out_of_range.append(f"{cname}.{dim}='{val}' (не число)")
+
+        if out_of_range:
+            msg = f"Radar scores вне [0,10]: {'; '.join(out_of_range[:5])}"
+            checks.append({"name": "units_radar_range", "status": "fail", "message": msg})
+            critical_failures.append(msg)
+        else:
+            checks.append({"name": "units_radar_range", "status": "pass",
+                            "message": "Все radar scores в [0, 10]"})
+
+    # 7c. Financial data — same years for comparison
+    financials = report_data.get("financials") or []
+    if len(financials) >= 2:
+        years = [fy.get("year") for fy in financials if isinstance(fy, dict) and fy.get("year")]
+        if years:
+            year_ints = []
+            for y in years:
+                try:
+                    year_ints.append(int(y))
+                except (ValueError, TypeError):
+                    pass
+            if year_ints and max(year_ints) - min(year_ints) > 10:
+                msg = f"Финансовые данные: диапазон {min(year_ints)}-{max(year_ints)} (>10 лет, подозрительно)"
+                checks.append({"name": "units_financial_years", "status": "warn", "message": msg})
+                warnings.append(msg)
+            elif year_ints:
+                checks.append({"name": "units_financial_years", "status": "pass",
+                                "message": f"Финансовые данные: {min(year_ints)}-{max(year_ints)}"})
+
+
+# ════════════════════════════════════════════════════════
+# 8. Cross-Section Consistency Check
+# ════════════════════════════════════════════════════════
+
+def _extract_number_from_text(text: str) -> float | None:
+    """Parse numbers like '123 млрд', '45.6 млн', '1 234 567' → float (thousands).
+
+    Returns value normalized to thousands of rubles where possible.
+    """
+    if not isinstance(text, str):
+        try:
+            return float(text)
+        except (ValueError, TypeError):
+            return None
+
+    text = text.strip().replace("\xa0", " ").replace(",", ".")
+
+    # Try multiplier patterns: "123 млрд" → 123_000_000
+    multiplier_patterns = [
+        (r"([\d\s.]+)\s*трлн", 1_000_000_000),
+        (r"([\d\s.]+)\s*млрд", 1_000_000),
+        (r"([\d\s.]+)\s*млн", 1_000),
+        (r"([\d\s.]+)\s*тыс", 1),
+    ]
+
+    for pattern, mult in multiplier_patterns:
+        m = re.search(pattern, text, re.IGNORECASE)
+        if m:
+            num_str = m.group(1).replace(" ", "")
+            try:
+                return float(num_str) * mult
+            except ValueError:
+                continue
+
+    # Try plain number
+    num_str = re.sub(r"[^\d.]", "", text.replace(" ", ""))
+    if num_str:
+        try:
+            return float(num_str)
+        except ValueError:
+            pass
+
+    return None
+
+
+def _cross_section_consistency_check(
+    report_data: dict,
+    checks: list[dict],
+    critical_failures: list[str],
+    warnings: list[str],
+) -> None:
+    """Validate consistency of data across different report sections."""
+
+    financials = report_data.get("financials") or []
+    fns_revenue = _extract_revenue_from_financials(financials)
+
+    # 8a. Revenue in financials vs scenarios
+    scenarios = report_data.get("scenarios") or []
+    if fns_revenue is not None and fns_revenue > 0 and scenarios:
+        for sc in scenarios:
+            if not isinstance(sc, dict):
+                continue
+            metrics = sc.get("metrics") or {}
+            for key, val in metrics.items():
+                if "выручка" in key.lower() or "revenue" in key.lower():
+                    try:
+                        sc_rev = float(val)
+                        if sc_rev > 0:
+                            ratio = sc_rev / fns_revenue
+                            if ratio < 0.3 or ratio > 5:
+                                sc_name = sc.get("name", "?")
+                                msg = (
+                                    f"Выручка в сценарии '{sc_name}' ({sc_rev:.0f}) "
+                                    f"отличается от ФНС ({fns_revenue:.0f}) в {ratio:.1f}x"
+                                )
+                                checks.append({"name": "xsection_revenue_scenarios", "status": "warn", "message": msg})
+                                warnings.append(msg)
+                    except (ValueError, TypeError):
+                        pass
+                    break
+
+    # 8b. Revenue in financials vs kpi_benchmarks
+    kpi = report_data.get("kpi_benchmarks") or []
+    if fns_revenue is not None and fns_revenue > 0 and kpi:
+        for k in kpi:
+            if not isinstance(k, dict):
+                continue
+            kpi_name = (k.get("name") or "").lower()
+            if "выручка" in kpi_name or "revenue" in kpi_name:
+                current = k.get("current")
+                if current is not None:
+                    parsed = _extract_number_from_text(str(current))
+                    if parsed is not None and parsed > 0:
+                        ratio = parsed / fns_revenue
+                        if ratio < 0.5 or ratio > 2:
+                            msg = (
+                                f"KPI '{k.get('name', '?')}' current={current} "
+                                f"отличается от ФНС выручки ({fns_revenue:.0f}) — ratio {ratio:.2f}"
+                            )
+                            checks.append({"name": "xsection_revenue_kpi", "status": "warn", "message": msg})
+                            warnings.append(msg)
+
+    # 8c. Competitor names consistency: competitors[] vs market_share vs factcheck
+    competitors = report_data.get("competitors") or []
+    comp_names = {
+        c.get("name", "").strip().lower()
+        for c in competitors
+        if isinstance(c, dict) and c.get("name")
+    }
+
+    market_share = report_data.get("market_share") or {}
+    share_names = {n.strip().lower() for n in market_share.keys() if n}
+
+    factcheck = report_data.get("factcheck") or []
+    fc_names = set()
+    for fc in factcheck:
+        if isinstance(fc, dict):
+            entity = (fc.get("entity") or fc.get("company") or "").strip().lower()
+            if entity:
+                fc_names.add(entity)
+
+    if comp_names and share_names:
+        # Remove company name from comparison
+        company_name = (report_data.get("company") or {}).get("name", "").strip().lower()
+        share_comp_only = share_names - {company_name}
+        missing = comp_names - share_comp_only - {company_name}
+        if missing and len(missing) > len(comp_names) * 0.5:
+            msg = (
+                f"Несогласованность конкурентов: {len(missing)} из competitors[] "
+                f"не найдены в market_share: {', '.join(sorted(missing)[:3])}"
+            )
+            checks.append({"name": "xsection_competitor_names", "status": "warn", "message": msg})
+            warnings.append(msg)
+        else:
+            checks.append({"name": "xsection_competitor_names", "status": "pass",
+                            "message": "Названия конкурентов согласованы между секциями"})
+    else:
+        checks.append({"name": "xsection_competitor_names", "status": "pass",
+                        "message": "Кросс-проверка названий конкурентов пропущена (нет данных)"})
+
+
+# ════════════════════════════════════════════════════════
+# 9. Readability Check
+# ════════════════════════════════════════════════════════
+
+_JSON_FRAGMENT_PATTERN = re.compile(r'\{"[a-zA-Z_]+"\s*:|^\[\s*\{', re.MULTILINE)
+_PLACEHOLDER_PATTERNS = [
+    re.compile(r"\bTODO\b", re.IGNORECASE),
+    re.compile(r"\bFIXME\b", re.IGNORECASE),
+    re.compile(r"\bLorem\s+ipsum\b", re.IGNORECASE),
+    re.compile(r"\bplaceholder\b", re.IGNORECASE),
+    re.compile(r"\bundefined\b", re.IGNORECASE),
+    re.compile(r"\bN/A\b"),
+]
+_TEMPLATE_VAR_PATTERN = re.compile(r"\{\{[^}]*\}\}")
+
+
+def _readability_check(
+    report_data: dict,
+    checks: list[dict],
+    critical_failures: list[str],
+    warnings: list[str],
+) -> None:
+    """Check for readability issues: JSON fragments, placeholders, template vars."""
+    all_texts = _collect_text_fields(report_data)
+    issues: list[str] = []
+
+    for text in all_texts:
+        if not isinstance(text, str) or len(text) < 5:
+            continue
+
+        # 9a. JSON fragments in text fields
+        if _JSON_FRAGMENT_PATTERN.search(text) and len(text) > 50:
+            snippet = text[:80].replace("\n", " ")
+            issues.append(f"JSON-фрагмент в тексте: '{snippet}...'")
+
+        # 9b. English placeholders
+        for pat in _PLACEHOLDER_PATTERNS:
+            if pat.search(text):
+                snippet = text[:60].replace("\n", " ")
+                issues.append(f"Placeholder найден: '{snippet}...'")
+                break
+
+        # 9c. Unclosed template variables
+        if _TEMPLATE_VAR_PATTERN.search(text):
+            snippet = text[:60].replace("\n", " ")
+            issues.append(f"Шаблонная переменная: '{snippet}...'")
+
+    # Deduplicate (keep first 10)
+    seen = set()
+    unique_issues: list[str] = []
+    for iss in issues:
+        key = iss[:40]
+        if key not in seen:
+            seen.add(key)
+            unique_issues.append(iss)
+        if len(unique_issues) >= 10:
+            break
+
+    if unique_issues:
+        msg = f"Проблемы читаемости ({len(unique_issues)}): {'; '.join(unique_issues[:3])}"
+        severity = "fail" if len(unique_issues) >= 5 else "warn"
+        checks.append({"name": "readability", "status": severity, "message": msg})
+        if severity == "fail":
+            critical_failures.append(msg)
+        else:
+            warnings.append(msg)
+    else:
+        checks.append({"name": "readability", "status": "pass",
+                        "message": "Текстовые поля читаемы: нет JSON-фрагментов, placeholder'ов, шаблонных переменных"})

@@ -433,7 +433,7 @@ def call_board_llm_parallel(prompts: list[dict]) -> list[str]:
             return idx, f"[Board LLM Error] Expert #{idx}: {str(exc)[:500]}"
 
     # Параллельно — Claude Opus не имеет TPM лимитов OpenAI
-    with ThreadPoolExecutor(max_workers=min(len(prompts), 4)) as pool:
+    with ThreadPoolExecutor(max_workers=min(len(prompts), 5)) as pool:
         futures = [pool.submit(_call_one, i, item) for i, item in enumerate(prompts)]
         for future in as_completed(futures):
             idx, response = future.result()
