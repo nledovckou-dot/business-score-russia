@@ -38,9 +38,17 @@ logger = logging.getLogger("bsr.app")
 
 IS_PRODUCTION = os.getenv("BSR_ENV", "production").lower() == "production"
 
+# ── Version ──
+_version_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "VERSION")
+try:
+    with open(_version_file) as _f:
+        APP_VERSION = _f.read().strip()
+except FileNotFoundError:
+    APP_VERSION = "0.0.0"
+
 app = FastAPI(
     title="Бизнес-анализ 360",
-    version="0.3.0",
+    version=APP_VERSION,
     # Don't expose docs in production
     docs_url=None if IS_PRODUCTION else "/docs",
     redoc_url=None if IS_PRODUCTION else "/redoc",
@@ -110,6 +118,7 @@ p{color:#888;font-size:14px;margin-bottom:32px}
   data-logo_alignment="left">
 </div>
 <div class="error" id="error"></div>
+<div style="color:#555;font-size:11px;margin-top:24px">v__APP_VERSION__</div>
 </div>
 <script>
 function onGoogleSignIn(response) {
@@ -142,7 +151,7 @@ function onGoogleSignIn(response) {
 @app.get("/login", response_class=HTMLResponse)
 async def login_page():
     """Login page with Google Sign-In button."""
-    html = LOGIN_PAGE_HTML.replace("__GOOGLE_CLIENT_ID__", GOOGLE_CLIENT_ID)
+    html = LOGIN_PAGE_HTML.replace("__GOOGLE_CLIENT_ID__", GOOGLE_CLIENT_ID).replace("__APP_VERSION__", APP_VERSION)
     return HTMLResponse(content=html)
 
 
@@ -278,6 +287,11 @@ def _set_auth_cookie(response: JSONResponse, token: str) -> JSONResponse:
 
 
 # ── Routes ──
+
+@app.get("/api/health")
+async def health():
+    return {"ok": True, "version": APP_VERSION}
+
 
 @app.get("/", response_class=HTMLResponse)
 async def index():

@@ -243,7 +243,8 @@ h1 b{font-weight:600}
     </div>
 </div>
 
-<footer class="footer">Business Score Russia</footer>
+<footer class="footer">Росскор <span id="app-ver"></span></footer>
+<script>fetch('/api/health').then(r=>r.json()).then(d=>{document.getElementById('app-ver').textContent='v'+(d.version||'?')})</script>
 
 <script>
 var authUser=null;
