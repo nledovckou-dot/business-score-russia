@@ -1,0 +1,86 @@
+name: Setup SSL (certbot)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ssl:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install certbot and get SSL cert
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          command_timeout: 5m
+          script: |
+            set -e
+
+            # Install certbot if not present
+            if ! command -v certbot &> /dev/null; then
+              echo "Installing certbot..."
+              sudo apt-get update -qq
+              sudo apt-get install -y -qq certbot python3-certbot-nginx
+            fi
+
+            # Create webroot dir
+            sudo mkdir -p /var/www/certbot
+
+            # Open port 80 for ACME challenge
+            sudo iptables -C INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || sudo iptables -I INPUT -p tcp --dport 80 -j ACCEPT
+            sudo ufw allow 80/tcp 2>/dev/null || true
+
+            # Reload nginx with new config (HTTP block for domains)
+            sudo nginx -t && sudo systemctl reload nginx
+
+            # Check if DNS is pointing to us
+            echo "=== Checking DNS ==="
+            MY_IP=$(curl -s ifconfig.me)
+            echo "Server IP: $MY_IP"
+
+            DOMAIN1_IP=$(dig +short xn----ttbkcgedb.xn--p1ai A 2>/dev/null | tail -1)
+            DOMAIN2_IP=$(dig +short xn--j1ahbfdda.xn--p1ai A 2>/dev/null | tail -1)
+            echo "рос-скор.рф → $DOMAIN1_IP"
+            echo "росскор.рф → $DOMAIN2_IP"
+
+            if [ "$DOMAIN1_IP" != "$MY_IP" ] && [ "$DOMAIN2_IP" != "$MY_IP" ]; then
+              echo "ERROR: DNS not yet pointing to this server. Set A-records first!"
+              exit 1
+            fi
+
+            # Get cert — use whichever domain points here
+            CERT_DOMAINS=""
+            if [ "$DOMAIN1_IP" = "$MY_IP" ]; then
+              CERT_DOMAINS="-d xn----ttbkcgedb.xn--p1ai -d www.xn----ttbkcgedb.xn--p1ai"
+            fi
+            if [ "$DOMAIN2_IP" = "$MY_IP" ]; then
+              CERT_DOMAINS="$CERT_DOMAINS -d xn--j1ahbfdda.xn--p1ai -d www.xn--j1ahbfdda.xn--p1ai"
+            fi
+
+            echo "Getting cert for: $CERT_DOMAINS"
+            sudo certbot certonly --nginx $CERT_DOMAINS --non-interactive --agree-tos --email n.a.ledovskoy@gmail.com
+
+            # Uncomment HTTPS block in nginx config
+            CONF=/etc/nginx/sites-enabled/bsr.conf
+            sudo sed -i 's/^# \(.*listen 443\)/\1/' "$CONF"
+            sudo sed -i 's/^# \(.*server_name.*xn--\)/\1/' "$CONF"
+            sudo sed -i 's/^# \(.*ssl_\)/\1/' "$CONF"
+            sudo sed -i 's/^# \(.*proxy_\)/\1/' "$CONF"
+            sudo sed -i 's/^# \(.*location\)/\1/' "$CONF"
+            sudo sed -i 's/^# \(.*}\)/\1/' "$CONF"
+            sudo sed -i 's/^# \(.*root\)/\1/' "$CONF"
+            sudo sed -i 's/^# \(.*return\)/\1/' "$CONF"
+
+            # Actually, let's just use certbot nginx plugin to auto-configure
+            sudo certbot install --nginx $CERT_DOMAINS --non-interactive --redirect
+
+            sudo nginx -t && sudo systemctl reload nginx
+
+            echo "=== Done! SSL active ==="
+            echo "https://рос-скор.рф"
+            echo "https://росскор.рф"
+
+            # Setup auto-renewal cron
+            echo "0 3 * * * certbot renew --quiet --post-hook 'systemctl reload nginx'" | sudo tee /etc/cron.d/certbot-renew
