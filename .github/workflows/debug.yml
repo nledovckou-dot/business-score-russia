@@ -6,7 +6,7 @@ jobs:
   debug:
     runs-on: ubuntu-latest
     steps:
-      - name: Debug via SSH
+      - name: Launch reports via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -15,23 +15,16 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 5m
           script: |
-            echo "=== Launch CDEK via localhost ==="
-            curl -s -X POST http://127.0.0.1:8083/api/analyze -H "Content-Type: application/json" -d '{"url":"https://cdek.ru"}' | head -c 500
+            echo "=== Launch DNS ==="
+            curl -s -X POST http://127.0.0.1:8083/api/analyze -H "Content-Type: application/json" -d '{"url":"https://dns-shop.ru"}'
             echo ""
-            echo "=== Active sessions ==="
-            curl -s http://127.0.0.1:8083/api/sessions 2>/dev/null | python3 -c "
-            import json, sys
-            data = json.load(sys.stdin)
-            sessions = data.get('sessions', [])
-            for s in sessions:
-                sid = s.get('session_id','')[:12]
-                status = s.get('status','')
-                step = s.get('current_step','')
-                company = s.get('company_name','') or s.get('url','')
-                print(f'{sid}  {status:12s}  {step:30s}  {company}')
-            print(f'Total: {len(sessions)}')
-            " 2>/dev/null || echo "sessions endpoint failed"
+            sleep 2
+            echo "=== Launch CDEK ==="
+            curl -s -X POST http://127.0.0.1:8083/api/analyze -H "Content-Type: application/json" -d '{"url":"https://cdek.ru"}'
+            echo ""
+            sleep 2
+            echo "=== Launch Kamaz ==="
+            curl -s -X POST http://127.0.0.1:8083/api/analyze -H "Content-Type: application/json" -d '{"url":"https://kamaz.ru"}'
+            echo ""
             echo "=== git log -1 ==="
             cd /opt/business-score-russia && git log -1 --oneline
-            echo "=== check rate limit source ==="
-            grep -n "10 в час\|Лимит отч\|reports_per_hour\|REPORTS_PER_HOUR" /opt/business-score-russia/app/security.py /opt/business-score-russia/app/main.py 2>/dev/null | head -20
