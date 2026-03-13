@@ -51,6 +51,7 @@ jobs:
               "REPORT_OUTPUT_DIR=app/storage/reports" \
               "STORE_BACKEND=file" \
               "BSR_ADMIN_TOKEN=bsr-admin-2026" \
+              "BSR_REPORTS_PER_HOUR=30" \
               "GEMINI_API_KEY=${GEMINI_API_KEY}" \
               "FNS_API_KEY=${FNS_API_KEY}" \
               "FALLBACK_LLM_API_KEY=${FALLBACK_LLM_API_KEY}" \
