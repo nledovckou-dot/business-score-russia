@@ -95,18 +95,17 @@ jobs:
             fi
             sudo -n nginx -t && sudo -n systemctl reload nginx || echo "nginx reload failed, check config"
 
-            # Kill any lingering uvicorn processes before restart
-            sudo -n pkill -f "uvicorn app.main" 2>/dev/null || true
+            # Stop service first, then start fresh
+            sudo -n systemctl stop bsr 2>/dev/null || true
             sleep 2
 
             # Restart service
-            sudo -n systemctl restart bsr
+            sudo -n systemctl start bsr
             sleep 5
 
             # Verify the code is correct
             echo "=== Verify deployed code ==="
             grep "REPORTS_PER_HOUR" "$APP_DIR/app/security.py"
-            head -3 "$APP_DIR/app/main.py" | head -1
 
             # Firewall
             sudo -n ufw allow 8090/tcp 2>/dev/null || true
