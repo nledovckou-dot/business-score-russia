@@ -1601,7 +1601,7 @@ def _assemble_report(
 
         # Секция 5: Приложения
         "open_questions": appendix_result.get("open_questions", []),
-        "glossary": appendix_result.get("glossary", {}),
+        "glossary": appendix_result.get("glossary") or _default_glossary(bt),
         "calc_traces": calc_traces,
         "methodology": methodology,
 
@@ -1623,6 +1623,37 @@ def _assemble_report(
     result = _validate_cross_sections(result, fns_data)
 
     return result
+
+
+# ── Fallback: glossary when LLM doesn't generate one ──
+
+def _default_glossary(business_type: str) -> dict:
+    """Universal business glossary fallback."""
+    base = {
+        "SWOT": "Метод стратегического анализа: Strengths (сильные стороны), Weaknesses (слабые), Opportunities (возможности), Threats (угрозы)",
+        "EBITDA": "Прибыль до вычета процентов, налогов, амортизации — показатель операционной эффективности",
+        "ROE": "Return on Equity — рентабельность собственного капитала (чистая прибыль / собственный капитал × 100%)",
+        "ИНН": "Идентификационный номер налогоплательщика — уникальный код юридического лица в ФНС",
+        "ОКВЭД": "Общероссийский классификатор видов экономической деятельности",
+        "ЕГРЮЛ": "Единый государственный реестр юридических лиц",
+        "ФНС": "Федеральная налоговая служба — источник официальных финансовых данных",
+    }
+    if "B2B" in business_type:
+        base.update({
+            "CAC": "Customer Acquisition Cost — стоимость привлечения одного клиента",
+            "LTV": "Lifetime Value — совокупная прибыль от клиента за всё время сотрудничества",
+            "NPS": "Net Promoter Score — индекс потребительской лояльности (от -100 до +100)",
+            "ARR": "Annual Recurring Revenue — годовая повторяющаяся выручка (для SaaS)",
+            "Churn": "Отток клиентов — доля клиентов, прекративших пользоваться продуктом за период",
+        })
+    if "B2C" in business_type:
+        base.update({
+            "Средний чек": "Средняя сумма одной покупки = выручка / количество заказов",
+            "LTV": "Lifetime Value — совокупная выручка от одного клиента за всё время",
+            "GMV": "Gross Merchandise Value — общий объём продаж через платформу",
+            "Конверсия": "Доля посетителей, совершивших целевое действие (покупку, регистрацию)",
+        })
+    return base
 
 
 # ── Fallback: calc traces из ФНС (без LLM) ──

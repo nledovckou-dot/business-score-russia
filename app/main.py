@@ -553,6 +553,18 @@ async def confirm_competitors(sid: str, request: Request):
                     comp[field] = sanitize_text(comp[field], max_length=500)
 
     session = store.get(sid)
+
+    # Filter out self-competitor (company analyzing itself)
+    company_info = session["data"].get("company_info", {})
+    target_name = (company_info.get("name") or "").lower().strip()
+    target_inn = (company_info.get("inn") or "").strip()
+    competitors = [
+        c for c in competitors
+        if isinstance(c, dict) and
+        (c.get("name", "").lower().strip() != target_name) and
+        (not target_inn or (c.get("inn") or "") != target_inn)
+    ]
+
     session["data"]["confirmed_competitors"] = competitors
     session["status"] = "analyzing"
 
@@ -599,7 +611,7 @@ def _run_initial_steps(sid: str, url: str):
         session["data"]["scraped"] = scraped
         scrape_method = scraped.get("scrape_method", "requests")
         if scrape_method in ("scrapling", "playwright"):
-            method_hint = " (Scrapling fallback)"
+            method_hint = " (Playwright fallback)"
         elif scrape_method == "minimal":
             method_hint = " (minimal fallback)"
         else:
