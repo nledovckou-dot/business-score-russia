@@ -46,8 +46,10 @@ jobs:
             # Clear ALL Python bytecode cache to ensure fresh imports
             find "$APP_DIR" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
             find "$APP_DIR" -name "*.pyc" -delete 2>/dev/null || true
-            find "$APP_DIR/.venv" -path "*/app/*.pyc" -delete 2>/dev/null || true
-            echo "Cleared all .pyc files"
+            # Remove any stale 'app' package from venv (might have been installed via pip install -e .)
+            rm -rf "$APP_DIR/.venv/lib/python*/site-packages/app" 2>/dev/null || true
+            rm -rf "$APP_DIR/.venv/lib/python*/site-packages/app.egg-link" 2>/dev/null || true
+            echo "Cleared all caches"
 
             # Setup .env
             printf '%s\n' \
