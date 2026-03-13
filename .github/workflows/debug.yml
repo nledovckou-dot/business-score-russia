@@ -15,17 +15,21 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 2m
           script: |
-            echo "=== Nginx bsr.conf ==="
-            cat /etc/nginx/sites-enabled/bsr.conf
-            echo "=== Nginx main config rate limiting ==="
-            grep -n 'limit_req' /etc/nginx/nginx.conf 2>/dev/null || echo "no limit_req in nginx.conf"
-            grep -rn 'limit_req' /etc/nginx/conf.d/ 2>/dev/null || echo "no limit_req in conf.d"
-            grep -rn 'limit_req' /etc/nginx/sites-enabled/ 2>/dev/null || echo "no limit_req in sites-enabled"
-            echo "=== Full nginx.conf ==="
-            cat /etc/nginx/nginx.conf
-            echo "=== git log -1 ==="
-            cd /opt/business-score-russia && git log -1 --oneline
-            echo "=== check_rate_limit_report ==="
-            grep -A3 'def check_rate_limit_report' /opt/business-score-russia/app/security.py
-            echo "=== Direct FastAPI test (bypass nginx) ==="
-            curl -s -X POST http://127.0.0.1:8083/api/analyze -H "Content-Type: application/json" -d '{"url":"https://dns-shop.ru"}' | head -c 500
+            echo "=== Launch CDEK ==="
+            curl -s -X POST http://127.0.0.1:8083/api/analyze -H "Content-Type: application/json" -d '{"url":"https://cdek.ru"}' | head -c 500
+            echo ""
+            echo "=== Active sessions ==="
+            curl -s http://127.0.0.1:8083/api/sessions | python3 -c "
+            import json, sys
+            data = json.load(sys.stdin)
+            sessions = data.get('sessions', [])
+            for s in sessions:
+                sid = s.get('session_id','')[:12]
+                status = s.get('status','')
+                step = s.get('current_step','')
+                company = s.get('company_name','') or s.get('url','')
+                print(f'{sid}  {status:12s}  {step:30s}  {company}')
+            print(f'Total: {len(sessions)}')
+            "
+            echo "=== Reports on disk ==="
+            ls -la /opt/business-score-russia/app/storage/reports/ | tail -20
