@@ -34,7 +34,15 @@ jobs:
             sudo systemctl reload nginx
 
             echo ""
-            echo "=== Test HTTPS ==="
-            curl -sk -o /dev/null -w "%{http_code}" https://localhost/ || echo "localhost https failed"
+            echo "=== All listening ports ==="
+            ss -tlnp | grep -E '80|443|8083|8090'
+
             echo ""
-            curl -s -o /dev/null -w "%{http_code}" http://localhost:8090/ || echo "8090 failed"
+            echo "=== Test HTTPS ==="
+            curl -sk -o /dev/null -w "HTTPS localhost: %{http_code}\n" https://localhost/ || echo "localhost https failed"
+            curl -sk -o /dev/null -w "HTTPS domain: %{http_code}\n" https://xn--j1ahbfdda.xn--p1ai/ --resolve "xn--j1ahbfdda.xn--p1ai:443:127.0.0.1" || echo "domain https failed"
+            curl -s -o /dev/null -w "HTTP 8090: %{http_code}\n" http://localhost:8090/ || echo "8090 failed"
+
+            echo ""
+            echo "=== iptables 443 ==="
+            sudo iptables -L INPUT -n | grep 443 || echo "no 443 rule"
