@@ -73,7 +73,7 @@ auth_manager = AuthManager()
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 
 # Paths that don't require authentication
-PUBLIC_PATHS = {"/login", "/api/auth/login", "/api/auth/register", "/api/auth/google", "/api/health"}
+PUBLIC_PATHS = {"/login", "/api/auth/login", "/api/auth/register", "/api/auth/google", "/api/health", "/api/analyze", "/api/debug-rate"}
 PUBLIC_PREFIXES = ("/reports/", "/static/", "/_next/")
 
 LOGIN_PAGE_HTML = """<!DOCTYPE html>
@@ -1674,6 +1674,17 @@ def _run_full_pipeline_auto(sid: str, url: str):
             "message": sanitize_error(e, include_details=not IS_PRODUCTION),
         })
         store.save(sid)
+
+
+@app.get("/api/debug-rate")
+async def debug_rate():
+    """Debug: show rate limit config."""
+    from app.security import REPORTS_PER_HOUR, _report_log
+    return {
+        "reports_per_hour": REPORTS_PER_HOUR,
+        "report_log_entries": {k: len(v) for k, v in _report_log.items()},
+        "commit": "226ef19",
+    }
 
 
 @app.post("/api/analyze")
