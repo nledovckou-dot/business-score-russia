@@ -1431,7 +1431,7 @@ async def analyze_simple(request: Request):
     if not is_valid:
         return JSONResponse({"ok": False, "error": url_error}, status_code=400)
 
-    # Create session and run full pipeline in background
+    # Create session and run full pipeline in background (non-blocking)
     sid = _new_session()
     session = store.get(sid)
     session["data"]["url"] = url
@@ -1440,37 +1440,58 @@ async def analyze_simple(request: Request):
     thread = threading.Thread(target=_run_full_pipeline_auto, args=(sid, url), daemon=True)
     thread.start()
 
-    # Poll for completion (timeout 10 minutes)
-    timeout = 600
-    t0 = time.time()
-    while time.time() - t0 < timeout:
-        session = store.get(sid)
-        if session is None:
-            break
-        status = session.get("status", "")
-        if status == "done":
-            # Extract result from events
-            events = session.get("events", [])
-            done_event = next((e for e in reversed(events) if e.get("event") == "done"), None)
-            if done_event and done_event.get("data"):
-                result = done_event["data"]
-                return {
-                    "ok": True,
-                    "url": result.get("url", ""),
-                    "size_kb": result.get("size_kb", 0),
-                    "company": result.get("company", ""),
-                }
-            return {"ok": True, "url": "", "company": ""}
-        if status == "error":
-            err_events = session.get("events", [])
-            error_event = next((e for e in reversed(err_events) if e.get("event") == "error"), None)
-            error_msg = "Ошибка анализа"
-            if error_event and error_event.get("data"):
-                error_msg = error_event["data"].get("message", error_msg)
-            return {"ok": False, "error": error_msg}
-        time.sleep(3)
+    return {
+        "ok": True,
+        "session_id": sid,
+        "message": "Анализ запущен (полный пайплайн с ФНС). Поллите статус.",
+        "poll_url": f"/api/analyze/{sid}",
+    }
 
-    return {"ok": False, "error": "Таймаут анализа (10 минут). Попробуйте позже."}
+
+@app.get("/api/analyze/{sid}")
+async def analyze_poll(sid: str):
+    """Poll analysis status. Returns result when done."""
+    session = store.get(sid)
+    if session is None:
+        return JSONResponse({"ok": False, "error": "Сессия не найдена"}, status_code=404)
+
+    status = session.get("status", "created")
+
+    if status == "done":
+        events = session.get("events", [])
+        done_event = next((e for e in reversed(events) if e.get("event") == "done"), None)
+        if done_event and done_event.get("data"):
+            result = done_event["data"]
+            return {
+                "ok": True,
+                "status": "done",
+                "url": result.get("url", ""),
+                "size_kb": result.get("size_kb", 0),
+                "company": result.get("company", ""),
+            }
+        return {"ok": True, "status": "done", "url": "", "company": ""}
+
+    if status == "error":
+        err_events = session.get("events", [])
+        error_event = next((e for e in reversed(err_events) if e.get("event") == "error"), None)
+        error_msg = "Ошибка анализа"
+        if error_event and error_event.get("data"):
+            error_msg = error_event["data"].get("message", error_msg)
+        return {"ok": False, "status": "error", "error": error_msg}
+
+    # Still running — return progress info
+    events = session.get("events", [])
+    last_step = None
+    for e in reversed(events):
+        if e.get("event") == "step":
+            last_step = e.get("data", {}).get("text", "")
+            break
+
+    return {
+        "ok": True,
+        "status": "running",
+        "current_step": last_step or "Инициализация...",
+    }
 
 
 # ── LANDING_HTML imported from app/landing.py ──
