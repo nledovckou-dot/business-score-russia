@@ -1,14 +1,17 @@
-"""Admin dashboard: view all sessions, reports, metrics.
+"""Admin dashboard: view all sessions, reports, metrics, board review.
 
 Simple admin panel with env-based auth (BSR_ADMIN_TOKEN).
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
+import re
 import time
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Request, Depends
@@ -142,6 +145,241 @@ async def admin_metrics(request: Request):
         return {"ok": True, **stats}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:300]}, status_code=500)
+
+
+# ── Board of Directors review ──
+
+
+def _html_to_text(html: str) -> str:
+    """Strip HTML tags, styles, scripts to get plain text."""
+    text = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL)
+    text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.DOTALL)
+    text = re.sub(r'<[^>]+>', ' ', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+
+def _run_board_review_on_text(report_text: str, company_name: str = "") -> dict:
+    """Run 5 AI experts (Board of Directors) on plain text report content."""
+    from app.pipeline.llm_client import call_board_llm, call_board_llm_parallel
+    from app.pipeline.steps.step6_board import (
+        _EXPERT_CFO, _EXPERT_CMO, _EXPERT_INDUSTRY, _EXPERT_SKEPTIC, _EXPERT_CEO,
+        _parse_expert_response,
+    )
+
+    t0 = time.monotonic()
+
+    context_suffix = ""
+    if company_name:
+        context_suffix = f"\n\nКОНТЕКСТ: анализируемая компания — «{company_name}»."
+
+    parallel_experts = [_EXPERT_CFO, _EXPERT_CMO, _EXPERT_INDUSTRY, _EXPERT_SKEPTIC]
+
+    # Step 1: 4 experts in parallel
+    prompts = []
+    for expert in parallel_experts:
+        prompt = (
+            f"Ты — {expert['name']} ({expert['role']}). "
+            f"Рецензируй бизнес-аналитический отчёт.\n\n"
+            f"Твои области фокуса: {', '.join(expert['focus_areas'])}\n\n"
+            f"=== ОТЧЁТ ===\n{report_text[:60000]}\n=== КОНЕЦ ОТЧЁТА ===\n\n"
+            "Дай структурированную рецензию в формате JSON."
+        )
+        prompts.append({
+            "prompt": prompt,
+            "system": expert["system"] + context_suffix,
+        })
+
+    logger.info("Board review: launching 4 parallel experts for '%s'", company_name)
+    responses = call_board_llm_parallel(prompts)
+
+    reviews = []
+    for expert, raw in zip(parallel_experts, responses):
+        if raw.startswith("[Board LLM Error]"):
+            parsed = {
+                "approved": False,
+                "critiques": [{
+                    "section": "llm_error",
+                    "issue": raw[:300],
+                    "severity": "low",
+                    "suggestion": "Повторить запрос позже",
+                }],
+                "summary": f"Эксперт {expert['role']} недоступен.",
+            }
+        else:
+            parsed = _parse_expert_response(raw, expert["role"])
+
+        reviews.append({
+            "role": expert["role"],
+            "name": expert["name"],
+            "response": parsed,
+        })
+
+    elapsed_parallel = round(time.monotonic() - t0, 2)
+    logger.info("Board review: 4 experts done in %.2fs", elapsed_parallel)
+
+    # Step 2: CEO with results of first 4
+    expert_summaries = []
+    for review in reviews:
+        resp = review["response"]
+        critiques_text = ""
+        for i, c in enumerate(resp.get("critiques", []), 1):
+            critiques_text += (
+                f"  {i}. [{c.get('severity', '?').upper()}] "
+                f"Секция: {c.get('section', '?')} — {c.get('issue', '?')}\n"
+                f"     Рекомендация: {c.get('suggestion', 'нет')}\n"
+            )
+        expert_summaries.append(
+            f"### {review['name']} ({review['role']})\n"
+            f"Вердикт: {'ОДОБРЕНО' if resp.get('approved') else 'НЕ ОДОБРЕНО'}\n"
+            f"Итог: {resp.get('summary', 'нет итога')}\n"
+            f"Замечания:\n{critiques_text or '  (нет замечаний)'}\n"
+        )
+
+    ceo = _EXPERT_CEO
+    ceo_prompt = (
+        f"Ты — {ceo['name']} ({ceo['role']}). "
+        "Перед тобой бизнес-аналитический отчёт и рецензии четырёх экспертов.\n\n"
+        f"=== ОТЧЁТ (сокращённо) ===\n{report_text[:30000]}\n"
+        "=== КОНЕЦ ОТЧЁТА ===\n\n"
+        "=== РЕЦЕНЗИИ ЭКСПЕРТОВ ===\n"
+        + "\n".join(expert_summaries)
+        + "\n=== КОНЕЦ РЕЦЕНЗИЙ ===\n\n"
+        "Синтезируй рецензии. Реши, какие замечания принять, "
+        "какие отклонить. Дай финальный вердикт в формате JSON."
+    )
+
+    t1 = time.monotonic()
+    logger.info("Board review: launching CEO")
+    ceo_raw = call_board_llm(prompt=ceo_prompt, system=ceo["system"] + context_suffix)
+    elapsed_ceo = round(time.monotonic() - t1, 2)
+
+    if ceo_raw.startswith("[Board LLM Error]"):
+        ceo_parsed = {
+            "approved": False,
+            "critiques": [],
+            "summary": f"CEO недоступен: {ceo_raw[:300]}",
+        }
+    else:
+        ceo_parsed = _parse_expert_response(ceo_raw, "CEO")
+
+    reviews.append({
+        "role": "CEO",
+        "name": ceo["name"],
+        "response": ceo_parsed,
+    })
+
+    logger.info("Board review: CEO done in %.2fs, verdict=%s", elapsed_ceo, ceo_parsed.get("approved"))
+
+    # Aggregate
+    all_critiques = []
+    for r in reviews:
+        for c in r["response"].get("critiques", []):
+            c["from_expert"] = r["role"]
+            all_critiques.append(c)
+
+    critical = sum(1 for c in all_critiques if c.get("severity") == "high")
+    elapsed_total = round(time.monotonic() - t0, 2)
+
+    logger.info(
+        "Board review complete: %.2fs, approved=%s, critical=%d, total=%d",
+        elapsed_total, ceo_parsed.get("approved", False) and critical == 0,
+        critical, len(all_critiques),
+    )
+
+    return {
+        "reviews": [
+            {
+                "role": r["role"],
+                "name": r["name"],
+                "approved": r["response"].get("approved", False),
+                "summary": r["response"].get("summary", ""),
+                "critiques": r["response"].get("critiques", []),
+            }
+            for r in reviews
+        ],
+        "consensus": {
+            "approved": ceo_parsed.get("approved", False) and critical == 0,
+            "critical_issues": critical,
+            "total_critiques": len(all_critiques),
+        },
+        "timing": {
+            "parallel_sec": elapsed_parallel,
+            "ceo_sec": elapsed_ceo,
+            "total_sec": elapsed_total,
+        },
+    }
+
+
+@router.post("/api/board-review")
+async def admin_board_review(request: Request):
+    """Run Board of Directors review on a report file.
+
+    Body: {"report_file": "report_XXX.html", "company_name": "..."}
+    """
+    if not _check_admin(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    report_file = body.get("report_file", "")
+    company_name = body.get("company_name", "")
+
+    if not report_file:
+        return JSONResponse({"error": "report_file required"}, status_code=400)
+
+    # Security: only allow filenames, no path traversal
+    if "/" in report_file or "\\" in report_file or ".." in report_file:
+        return JSONResponse({"error": "Invalid filename"}, status_code=400)
+
+    reports_dir = Path("app/storage/reports")
+    report_path = reports_dir / report_file
+    if not report_path.exists():
+        return JSONResponse({"error": f"Report not found: {report_file}"}, status_code=404)
+
+    html_content = report_path.read_text(encoding="utf-8")
+    report_text = _html_to_text(html_content)
+
+    logger.info(
+        "Board review requested: file=%s, company=%s, text_len=%d",
+        report_file, company_name, len(report_text),
+    )
+
+    try:
+        result = await asyncio.to_thread(
+            _run_board_review_on_text, report_text, company_name,
+        )
+        return {"ok": True, "report_file": report_file, **result}
+    except Exception as e:
+        logger.exception("Board review failed for %s", report_file)
+        return JSONResponse(
+            {"ok": False, "error": str(e)[:500]},
+            status_code=500,
+        )
+
+
+@router.get("/api/reports")
+async def admin_list_reports(request: Request):
+    """List all report files in storage."""
+    if not _check_admin(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    reports_dir = Path("app/storage/reports")
+    if not reports_dir.exists():
+        return {"ok": True, "reports": []}
+
+    reports = []
+    for f in sorted(reports_dir.glob("report_*.html"), key=lambda p: p.stat().st_mtime, reverse=True):
+        reports.append({
+            "filename": f.name,
+            "size_kb": round(f.stat().st_size / 1024, 1),
+            "modified": _format_time(f.stat().st_mtime),
+        })
+
+    return {"ok": True, "reports": reports}
 
 
 @router.get("", response_class=HTMLResponse)
