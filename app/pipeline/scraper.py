@@ -2,7 +2,7 @@
 
 Three-level cascade fetching:
   1. requests.get()               (fast, 15s timeout)
-  2. Scrapling StealthyFetcher    (headless browser, 30s timeout, Cloudflare bypass)
+  2. Playwright headless Chromium  (30s timeout, JS rendering)
   3. Minimal fallback             (title + meta description from whatever HTML we got)
 """
 
@@ -16,12 +16,12 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
-# Scrapling -- optional dependency
+# Playwright -- optional dependency (ARM64-compatible)
 try:
-    from scrapling.fetchers import StealthyFetcher
-    SCRAPLING_AVAILABLE = True
+    from playwright.sync_api import sync_playwright
+    PLAYWRIGHT_AVAILABLE = True
 except ImportError:
-    SCRAPLING_AVAILABLE = False
+    PLAYWRIGHT_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -67,22 +67,28 @@ def _fetch_requests(url: str, timeout: int = TIMEOUT_REQUESTS) -> tuple[str, int
     return resp.text, resp.status_code
 
 
-def _fetch_scrapling(url: str, timeout: int = TIMEOUT_SCRAPLING) -> str:
-    """Fetch HTML via Scrapling StealthyFetcher (headless browser).
+def _fetch_playwright(url: str, timeout: int = TIMEOUT_SCRAPLING) -> str:
+    """Fetch HTML via Playwright headless Chromium (JS rendering).
 
-    Uses timeout parameter for the page load wait.
+    Uses timeout parameter (seconds) for page load wait.
     """
-    page = StealthyFetcher.fetch(
-        url,
-        headless=True,
-        solve_cloudflare=True,
-        block_webrtc=True,
-        hide_canvas=True,
-        network_idle=True,
-        disable_resources=True,
-        waiting_time=timeout,
-    )
-    return page.html_content
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            locale="ru-RU",
+        )
+        page = context.new_page()
+        try:
+            page.goto(url, wait_until="networkidle", timeout=timeout * 1000)
+            html = page.content()
+        finally:
+            browser.close()
+    return html
 
 
 def _extract_minimal(html: str | None) -> dict:
@@ -123,7 +129,7 @@ def _fetch_html(url: str, timeout: int = TIMEOUT_REQUESTS) -> tuple[str, str, li
     """Three-level cascade fetch: requests -> Scrapling -> minimal.
 
     Returns (html, method, warnings) where method is
-    "requests", "scrapling", or "minimal".
+    "requests", "playwright", or "minimal".
     """
     warnings: list[str] = []
     last_html: str | None = None  # keep whatever HTML we got for minimal fallback
@@ -150,7 +156,7 @@ def _fetch_html(url: str, timeout: int = TIMEOUT_REQUESTS) -> tuple[str, str, li
         )
         warnings.append(
             f"requests заблокирован ({block_reason}, {elapsed:.2f}s), "
-            f"переключаюсь на Scrapling"
+            f"переключаюсь на Playwright"
         )
         logger.info(
             "[scrape] BLOCKED url=%s method=requests reason=%s status=%d time=%.2fs",
@@ -159,37 +165,37 @@ def _fetch_html(url: str, timeout: int = TIMEOUT_REQUESTS) -> tuple[str, str, li
 
     except requests.exceptions.RequestException as exc:
         elapsed = time.monotonic() - t0
-        warnings.append(f"requests ошибка ({exc}, {elapsed:.2f}s), переключаюсь на Scrapling")
+        warnings.append(f"requests ошибка ({exc}, {elapsed:.2f}s), переключаюсь на Playwright")
         logger.info(
             "[scrape] FAIL url=%s method=requests error=%s time=%.2fs",
             url, exc, elapsed,
         )
 
-    # --- Attempt 2: Scrapling ---
-    if not SCRAPLING_AVAILABLE:
+    # --- Attempt 2: Playwright headless browser ---
+    if not PLAYWRIGHT_AVAILABLE:
         logger.warning(
-            "[scrape] Scrapling not installed -- fallback unavailable for %s", url
+            "[scrape] Playwright not installed -- fallback unavailable for %s", url
         )
         warnings.append(
-            "Scrapling не установлен -- fallback недоступен "
-            "(pip install scrapling && scrapling install)"
+            "Playwright не установлен -- fallback недоступен "
+            "(pip install playwright && playwright install chromium)"
         )
     else:
         t1 = time.monotonic()
         try:
-            html = _fetch_scrapling(url, timeout=TIMEOUT_SCRAPLING)
+            html = _fetch_playwright(url, timeout=TIMEOUT_SCRAPLING)
             elapsed = time.monotonic() - t1
             logger.info(
-                "[scrape] OK url=%s method=scrapling time=%.2fs", url, elapsed,
+                "[scrape] OK url=%s method=playwright time=%.2fs", url, elapsed,
             )
-            warnings.append(f"Загружено через Scrapling StealthyFetcher ({elapsed:.2f}s)")
-            return html, "scrapling", warnings
+            warnings.append(f"Загружено через Playwright ({elapsed:.2f}s)")
+            return html, "playwright", warnings
 
         except Exception as exc:
             elapsed = time.monotonic() - t1
-            warnings.append(f"Scrapling тоже не смог загрузить ({exc}, {elapsed:.2f}s)")
+            warnings.append(f"Playwright тоже не смог загрузить ({exc}, {elapsed:.2f}s)")
             logger.warning(
-                "[scrape] FAIL url=%s method=scrapling error=%s time=%.2fs",
+                "[scrape] FAIL url=%s method=playwright error=%s time=%.2fs",
                 url, exc, elapsed,
             )
 

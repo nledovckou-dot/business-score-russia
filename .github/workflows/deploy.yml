@@ -70,8 +70,8 @@ jobs:
             fi
             "$APP_DIR/.venv/bin/pip" install -q -r "$APP_DIR/requirements.txt"
 
-            # Install Scrapling browser (camoufox = stealth Firefox for StealthyFetcher)
-            "$APP_DIR/.venv/bin/python3" -m camoufox fetch 2>&1 | tail -5 || echo "camoufox fetch skipped"
+            # Install Playwright Chromium for JS-heavy site scraping (supports ARM64)
+            "$APP_DIR/.venv/bin/python3" -m playwright install chromium --with-deps 2>&1 | tail -10 || echo "Playwright install skipped"
 
             # Create reports directory
             mkdir -p "$APP_DIR/app/storage/reports"

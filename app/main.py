@@ -598,7 +598,7 @@ def _run_initial_steps(sid: str, url: str):
         mc.stop_timer("step1_scrape")
         session["data"]["scraped"] = scraped
         scrape_method = scraped.get("scrape_method", "requests")
-        if scrape_method == "scrapling":
+        if scrape_method in ("scrapling", "playwright"):
             method_hint = " (Scrapling fallback)"
         elif scrape_method == "minimal":
             method_hint = " (minimal fallback)"
