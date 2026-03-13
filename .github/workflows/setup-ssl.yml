@@ -58,13 +58,14 @@ jobs:
               CERT_DOMAINS="-d xn----ttbkcgedb.xn--p1ai -d www.xn----ttbkcgedb.xn--p1ai"
             fi
             if [ "$DOMAIN2_IP" = "$MY_IP" ]; then
-              # Check if www AAAA is gone before including www
-              WWW_AAAA=$(dig +short AAAA www.xn--j1ahbfdda.xn--p1ai 2>/dev/null)
-              if [ -z "$WWW_AAAA" ]; then
-                CERT_DOMAINS="$CERT_DOMAINS -d xn--j1ahbfdda.xn--p1ai -d www.xn--j1ahbfdda.xn--p1ai"
+              CERT_DOMAINS="$CERT_DOMAINS -d xn--j1ahbfdda.xn--p1ai"
+              # Only include www if it also points here
+              WWW2_IP=$(dig +short A www.xn--j1ahbfdda.xn--p1ai 2>/dev/null | tail -1)
+              WWW2_AAAA=$(dig +short AAAA www.xn--j1ahbfdda.xn--p1ai 2>/dev/null | head -1)
+              if [ "$WWW2_IP" = "$MY_IP" ] && [ -z "$WWW2_AAAA" ]; then
+                CERT_DOMAINS="$CERT_DOMAINS -d www.xn--j1ahbfdda.xn--p1ai"
               else
-                echo "WARNING: www AAAA still exists ($WWW_AAAA), skipping www for now"
-                CERT_DOMAINS="$CERT_DOMAINS -d xn--j1ahbfdda.xn--p1ai"
+                echo "WARNING: www.росскор.рф not ready (A=$WWW2_IP, AAAA=$WWW2_AAAA), skipping www"
               fi
             fi
 
