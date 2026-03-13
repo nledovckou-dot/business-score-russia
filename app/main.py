@@ -164,9 +164,12 @@ async def auth_gate_middleware(request: Request, call_next):
     if path in PUBLIC_PATHS or any(path.startswith(p) for p in PUBLIC_PREFIXES):
         return await call_next(request)
 
-    # Allow admin with token param
-    if path.startswith("/admin/") and request.query_params.get("token"):
-        return await call_next(request)
+    # Allow admin with token param (admin panel + API)
+    admin_token = request.query_params.get("token")
+    if admin_token:
+        from app.admin import ADMIN_TOKEN
+        if admin_token == ADMIN_TOKEN:
+            return await call_next(request)
 
     # Check auth cookie
     token = request.cookies.get(COOKIE_NAME)
