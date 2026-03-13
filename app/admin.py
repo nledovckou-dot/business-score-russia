@@ -117,7 +117,11 @@ async def admin_sessions(request: Request):
             "report_url": report_url,
             "report_size_kb": report_size,
             "error": error_msg,
-            "steps_done": sum(1 for ev in events if ev.get("event") == "step" and ev.get("data", {}).get("status") == "done"),
+            "steps_done": len({
+                str(ev.get("data", {}).get("num"))
+                for ev in events
+                if ev.get("event") == "step" and ev.get("data", {}).get("status") == "done"
+            }),
             "steps_total": 14,
         })
 

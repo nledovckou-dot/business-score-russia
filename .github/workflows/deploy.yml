@@ -44,12 +44,17 @@ jobs:
             # Setup .env
             printf '%s\n' \
               "REPORT_OUTPUT_DIR=app/storage/reports" \
+              "STORE_BACKEND=file" \
+              "BSR_ADMIN_TOKEN=bsr-admin-2026" \
               "GEMINI_API_KEY=${GEMINI_API_KEY}" \
               "FNS_API_KEY=${FNS_API_KEY}" \
               "FALLBACK_LLM_API_KEY=${FALLBACK_LLM_API_KEY}" \
               "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" \
               "HH_APP_TOKEN=${HH_APP_TOKEN}" \
               > "$APP_DIR/.env"
+
+            # Persistent directories
+            mkdir -p "$APP_DIR/data/sessions"
 
             # Python venv
             if [ ! -d "$APP_DIR/.venv" ]; then
