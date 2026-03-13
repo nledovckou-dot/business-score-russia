@@ -110,17 +110,7 @@ jobs:
             grep "REPORTS_PER_HOUR" "$APP_DIR/app/security.py"
 
             # Debug: check where Python actually imports from
-            cd "$APP_DIR" && "$APP_DIR/.venv/bin/python3" -c "
-import sys
-print('sys.path:', sys.path[:5])
-import app.security
-print('security module file:', app.security.__file__)
-print('REPORTS_PER_HOUR:', app.security.REPORTS_PER_HOUR)
-# Check for duplicate app modules
-import importlib
-spec = importlib.util.find_spec('app.security')
-print('spec origin:', spec.origin if spec else 'NOT FOUND')
-"
+            cd "$APP_DIR" && "$APP_DIR/.venv/bin/python3" -c "import sys; print('sys.path:', sys.path[:5]); import app.security; print('file:', app.security.__file__); print('RPH:', app.security.REPORTS_PER_HOUR)"
 
             # Firewall
             sudo -n ufw allow 8090/tcp 2>/dev/null || true
