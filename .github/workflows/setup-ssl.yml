@@ -58,7 +58,14 @@ jobs:
               CERT_DOMAINS="-d xn----ttbkcgedb.xn--p1ai -d www.xn----ttbkcgedb.xn--p1ai"
             fi
             if [ "$DOMAIN2_IP" = "$MY_IP" ]; then
-              CERT_DOMAINS="$CERT_DOMAINS -d xn--j1ahbfdda.xn--p1ai -d www.xn--j1ahbfdda.xn--p1ai"
+              # Check if www AAAA is gone before including www
+              WWW_AAAA=$(dig +short AAAA www.xn--j1ahbfdda.xn--p1ai 2>/dev/null)
+              if [ -z "$WWW_AAAA" ]; then
+                CERT_DOMAINS="$CERT_DOMAINS -d xn--j1ahbfdda.xn--p1ai -d www.xn--j1ahbfdda.xn--p1ai"
+              else
+                echo "WARNING: www AAAA still exists ($WWW_AAAA), skipping www for now"
+                CERT_DOMAINS="$CERT_DOMAINS -d xn--j1ahbfdda.xn--p1ai"
+              fi
             fi
 
             echo "Getting cert for: $CERT_DOMAINS"
