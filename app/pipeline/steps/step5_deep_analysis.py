@@ -18,8 +18,44 @@ import concurrent.futures
 from typing import Any, Callable, Optional
 
 from app.pipeline.llm_client import call_llm_json
+from app.pipeline.web_search import _search_duckduckgo
 
 logger = logging.getLogger(__name__)
+
+
+# ── Web search обогащение (T29) ──
+
+def _web_search_context(queries: list[str], max_snippets: int = 10) -> str:
+    """Search DuckDuckGo and return concatenated snippets for LLM context.
+
+    Args:
+        queries: list of search queries to try
+        max_snippets: max total snippets to include
+
+    Returns:
+        Formatted text block with search results, or empty string.
+    """
+    all_snippets: list[str] = []
+    for query in queries:
+        if len(all_snippets) >= max_snippets:
+            break
+        try:
+            results = _search_duckduckgo(query)
+            for r in results[:5]:
+                snippet = r.get("snippet", "").strip()
+                title = r.get("title", "").strip()
+                if snippet and len(snippet) > 30:
+                    all_snippets.append(f"[{title}] {snippet}")
+                    if len(all_snippets) >= max_snippets:
+                        break
+        except Exception as e:
+            logger.debug("[T29] Web search failed for '%s': %s", query, str(e)[:100])
+
+    if not all_snippets:
+        return ""
+
+    text = "\n".join(f"- {s[:300]}" for s in all_snippets)
+    return f"\n## Дополнительный контекст (web search)\n{text}\n"
 
 
 # ── Общий системный контекст для всех секций ──
@@ -387,16 +423,26 @@ def analyze_competitors_deep(
             f"{json.dumps(marketplace_data, ensure_ascii=False, indent=2)[:3000]}\n"
         )
 
+    # T29: Web search обогащение конкурентов
+    company_name = company_info.get('name', '')
+    ws_queries = [f"{company_name} компания описание выручка"]
+    for c in competitors[:5]:  # Top 5 competitors
+        cname = c.get('name', '')
+        if cname:
+            ws_queries.append(f"{cname} компания выручка сотрудники")
+    web_context = _web_search_context(ws_queries, max_snippets=15)
+
     prompt = f"""Обогати данные конкурентов для бизнес-анализа.
 
 ## Компания-объект анализа
-Название: {company_info.get('name', '')}
+Название: {company_name}
 Тип бизнеса: {company_info.get('business_type_guess', '')}
 
 ## Подтверждённые конкуренты
 {comp_text}
 {deep_models_text}
 {marketplace_text}
+{web_context}
 
 ## Задание
 
@@ -495,6 +541,16 @@ def analyze_company(
     # Имена конкурентов для market_share
     comp_names = [c.get("name", f"Конкурент {i+1}") for i, c in enumerate(competitors)]
 
+    # T29: Web search обогащение компании
+    company_name = company_info.get('name', '')
+    city = company_info.get('city', '')
+    ws_queries = [
+        f"{company_name} {city} отзывы",
+        f"{company_name} компания описание",
+        f"{company_name} {city} цены меню услуги",
+    ]
+    web_context = _web_search_context(ws_queries, max_snippets=10)
+
     prompt = f"""Проведи анализ компании: SWOT, digital-аудит, описание.
 
 ## Компания
@@ -511,6 +567,7 @@ def analyze_company(
 
 ## Текст сайта (фрагмент)
 {scraped.get('text', '')[:4000]}
+{web_context}
 
 ## Задание
 
@@ -644,6 +701,15 @@ def analyze_strategy(
     if fns_rev_k:
         base_floor_hint = f"\n⚠ Текущая выручка = {fns_rev_k} тыс. руб. Базовый сценарий ОБЯЗАН быть ≥ {fns_rev_k}. Оптимистичный > базового. Пессимистичный = -10..20% от текущей."
 
+    # T29: Web search обогащение стратегии
+    company_name = company_info.get('name', '')
+    ws_queries = [
+        f"{company_name} стратегия развитие планы",
+        f"{company_info.get('business_type_guess', '')} рынок тренды Россия 2025 2026",
+        f"{company_name} конкуренты рынок доля",
+    ]
+    web_context = _web_search_context(ws_queries, max_snippets=10)
+
     prompt = f"""Разработай стратегию для компании.
 
 ## Компания
@@ -657,6 +723,7 @@ def analyze_strategy(
 
 ## Тип бизнеса
 {bt}
+{web_context}
 
 ## ТЕКУЩИЕ ПОКАЗАТЕЛИ (ФНС) — ОБЯЗАТЕЛЬНО используй как current в kpi_benchmarks
 {fns_kpi_json}
@@ -1013,6 +1080,16 @@ def analyze_products(
     ctx = _prepare_context(scraped, company_info, fns_data)
     bt = company_info.get("business_type_guess", "B2B_SERVICE")
 
+    # T29: Web search обогащение продуктов
+    company_name = company_info.get('name', '')
+    city = company_info.get('city', '')
+    ws_queries = [
+        f"{company_name} {city} меню цены прайс",
+        f"{company_name} услуги тарифы каталог",
+        f"{company_name} продукция ассортимент",
+    ]
+    web_context = _web_search_context(ws_queries, max_snippets=10)
+
     prompt = f"""Проанализируй продукты и услуги компании.
 
 ## Компания
@@ -1020,6 +1097,7 @@ def analyze_products(
 
 ## Текст сайта (фрагмент)
 {scraped.get('text', '')[:5000]}
+{web_context}
 
 ## Тип бизнеса
 {bt}
