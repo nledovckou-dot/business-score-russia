@@ -1,0 +1,40 @@
+name: Fix nginx SSL
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fix nginx and firewall
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          command_timeout: 2m
+          script: |
+            set -e
+
+            # Open port 443
+            sudo iptables -C INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || sudo iptables -I INPUT -p tcp --dport 443 -j ACCEPT
+            sudo ufw allow 443/tcp 2>/dev/null || true
+
+            echo "=== Current nginx config ==="
+            cat /etc/nginx/sites-enabled/bsr.conf
+
+            echo ""
+            echo "=== nginx test ==="
+            sudo nginx -t
+
+            echo ""
+            echo "=== Reload nginx ==="
+            sudo systemctl reload nginx
+
+            echo ""
+            echo "=== Test HTTPS ==="
+            curl -sk -o /dev/null -w "%{http_code}" https://localhost/ || echo "localhost https failed"
+            echo ""
+            curl -s -o /dev/null -w "%{http_code}" http://localhost:8090/ || echo "8090 failed"
