@@ -613,10 +613,14 @@ def _run_initial_steps(sid: str, url: str):
         mc.stop_timer("step1_scrape")
         session["data"]["scraped"] = scraped
         scrape_method = scraped.get("scrape_method", "requests")
-        if scrape_method in ("scrapling", "playwright"):
+        if scrape_method == "playwright":
             method_hint = " (Playwright fallback)"
         elif scrape_method == "minimal":
             method_hint = " (minimal fallback)"
+        elif scrape_method == "web_search":
+            method_hint = " (web search fallback)"
+        elif scrape_method == "domain_only":
+            method_hint = " (только домен)"
         else:
             method_hint = ""
         _push_event(sid, "step", {"num": 1, "status": "done", "text": f"Сайт загружен{method_hint}: {scraped.get('title', '')}"})

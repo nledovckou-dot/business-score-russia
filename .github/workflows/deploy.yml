@@ -43,6 +43,9 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
+            # Clear Python bytecode cache to ensure fresh imports
+            find "$APP_DIR" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
             # Setup .env
             printf '%s\n' \
               "REPORT_OUTPUT_DIR=app/storage/reports" \
