@@ -1691,6 +1691,7 @@ async def analyze_simple(request: Request):
         return JSONResponse({"ok": False, "error": url_error}, status_code=400)
 
     # Create session and run full pipeline in background (non-blocking)
+    auth_token = _get_auth_token(request)
     sid = _new_session()
     session = store.get(sid)
     session["data"]["url"] = url

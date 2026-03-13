@@ -27,3 +27,17 @@ jobs:
             sed -n '1679,1695p' /opt/business-score-russia/app/main.py
             echo "=== git log -1 ==="
             cd /opt/business-score-russia && git log -1 --oneline
+            echo "=== Python env check ==="
+            /opt/business-score-russia/.venv/bin/python3 -c "
+import os
+print('BSR_REPORTS_PER_HOUR from os.environ:', os.environ.get('BSR_REPORTS_PER_HOUR', 'NOT SET'))
+print('BSR_ADMIN_TOKEN from os.environ:', os.environ.get('BSR_ADMIN_TOKEN', 'NOT SET')[:8])
+# Check if security.py loads correctly
+import sys
+sys.path.insert(0, '/opt/business-score-russia')
+from app.security import REPORTS_PER_HOUR
+print('REPORTS_PER_HOUR after import:', REPORTS_PER_HOUR)
+"
+            echo "=== systemd env ==="
+            systemctl show bsr --property=Environment --no-pager | head -5
+            systemctl show bsr --property=EnvironmentFiles --no-pager
