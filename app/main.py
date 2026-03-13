@@ -1679,24 +1679,27 @@ def _run_full_pipeline_auto(sid: str, url: str):
 @app.post("/api/analyze")
 async def analyze_simple(request: Request):
     """Non-interactive endpoint: full pipeline with real FNS data (no user pauses)."""
-    # Rate limit: max 5 reports per hour per IP
-    client_ip = get_client_ip(request)
-    report_error = check_rate_limit_report(client_ip)
-    if report_error:
-        return JSONResponse(
-            {"ok": False, "error": report_error},
-            status_code=429,
-            headers={"Retry-After": "3600"},
-        )
+    # Rate limit: skip for admin token (testing)
+    admin_bypass = request.headers.get("x-admin-token") == os.environ.get("BSR_ADMIN_TOKEN", "")
+    if not admin_bypass:
+        client_ip = get_client_ip(request)
+        report_error = check_rate_limit_report(client_ip)
+        if report_error:
+            return JSONResponse(
+                {"ok": False, "error": report_error},
+                status_code=429,
+                headers={"Retry-After": "3600"},
+            )
 
-    # Auth: check freemium quota
-    auth_token = _get_auth_token(request)
-    can_gen, reason = auth_manager.can_generate_report(auth_token)
-    if not can_gen:
-        return JSONResponse(
-            {"ok": False, "error": reason, "quota_exceeded": True},
-            status_code=403,
-        )
+    # Auth: check freemium quota (skip for admin)
+    if not admin_bypass:
+        auth_token = _get_auth_token(request)
+        can_gen, reason = auth_manager.can_generate_report(auth_token)
+        if not can_gen:
+            return JSONResponse(
+                {"ok": False, "error": reason, "quota_exceeded": True},
+                status_code=403,
+            )
 
     body = await request.json()
     raw_url = (body.get("url") or "").strip()
