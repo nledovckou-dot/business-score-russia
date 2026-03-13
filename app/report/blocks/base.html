@@ -634,6 +634,13 @@ footer {
 </head>
 <body>
 
+<!-- T55: Draft mode banner -->
+{% if draft_mode %}
+<div style="background:rgba(224,128,64,0.15);border-bottom:2px solid var(--orange);padding:12px 24px;text-align:center;font-size:0.9em;">
+    <strong style="color:var(--orange);">&#9888; ЧЕРНОВИК</strong> — {{ failed_gates|length if failed_gates else '?' }} секций не прошли гейт качества. Данные требуют доработки.
+</div>
+{% endif %}
+
 <!-- ═══════ HERO ═══════ -->
 <div class="hero">
     <h1>{{ company.name }}</h1>

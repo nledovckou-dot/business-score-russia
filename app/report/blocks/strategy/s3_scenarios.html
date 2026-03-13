@@ -16,6 +16,9 @@
         {% for sc in scenarios %}
         <div style="background:var(--bg3); border:1px solid var(--border); border-radius:12px; padding:20px;">
             <h4 style="color:{{ {'optimistic':'var(--green)', 'base':'var(--gold)', 'pessimistic':'var(--red)'}[sc.name] }}; margin-bottom:12px;">{{ sc.label }}</h4>
+            {% if sc.assumptions and sc.assumptions.description %}
+            <p style="color:var(--text3); font-size:0.78em; margin-bottom:10px; font-style:italic;">{{ sc.assumptions.description }}</p>
+            {% endif %}
             <table style="margin:0;">
                 {% for metric, val in sc.metrics.items() %}
                 <tr>

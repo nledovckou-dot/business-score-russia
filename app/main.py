@@ -805,6 +805,26 @@ def _run_analysis_steps(sid: str):
             except Exception as e:
                 _push_event(sid, "step", {"num": "4h", "status": "warning", "text": f"HH.ru: {e}"})
 
+        # Step 4.5: Enrich competitors (T42) — real FNS data, scraping, social
+        _push_event(sid, "step", {"num": "4e", "status": "active", "text": "Обогащение данных конкурентов..."})
+        if mc:
+            mc.start_timer("step4_5_enrich")
+        try:
+            from app.pipeline.steps.step4_5_enrich_competitors import run as enrich_competitors
+            confirmed_competitors = enrich_competitors(
+                competitors=confirmed_competitors,
+                progress_callback=lambda text, status: _push_event(sid, "step", {
+                    "num": "4e", "status": "done" if status == "done" else "active", "text": text,
+                }),
+            )
+            with_fns = sum(1 for c in confirmed_competitors if c.get("fns_financials"))
+            _push_event(sid, "step", {"num": "4e", "status": "done",
+                "text": f"Обогащено: {with_fns}/{len(confirmed_competitors)} с данными ФНС"})
+        except Exception as e:
+            _push_event(sid, "step", {"num": "4e", "status": "warning", "text": f"Обогащение: {e}"})
+        if mc:
+            mc.stop_timer("step4_5_enrich")
+
         # Step 5: Deep analysis with GPT-5.2 Pro (7 секций параллельно)
         _push_event(sid, "step", {"num": 5, "status": "active", "text": "Глубокий анализ (7 секций параллельно)..."})
 

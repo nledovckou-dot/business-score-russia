@@ -90,6 +90,12 @@ def run(report_data: dict) -> dict:
             report_data["methodology"] = methodology
 
     report_data["section_gates"] = gates
+
+    # T55: Count failed gates and set draft_mode
+    failed_gates = [k for k, v in gates.items() if not v]
+    report_data["failed_gates"] = failed_gates
+    report_data["draft_mode"] = len(failed_gates) > 3
+
     return report_data
 
 

@@ -15,8 +15,17 @@
             {% if rec.timeline %}
             <p style="color:var(--text3); font-size:0.82em; margin-top:10px;">Срок: {{ rec.timeline }}</p>
             {% endif %}
+            {% if rec.budget_estimate %}
+            <p style="color:var(--blue); font-size:0.82em; margin-top:4px;">Бюджет: {{ rec.budget_estimate }}</p>
+            {% endif %}
             {% if rec.expected_impact %}
             <p style="color:var(--green); font-size:0.82em; margin-top:4px;">Ожидаемый эффект: {{ rec.expected_impact }}</p>
+            {% endif %}
+            {% if rec.impact_rationale %}
+            <p style="color:var(--text3); font-size:0.78em; margin-top:2px; font-style:italic;">Обоснование: {{ rec.impact_rationale }}</p>
+            {% endif %}
+            {% if rec.target_kpi %}
+            <p style="color:var(--text3); font-size:0.78em; margin-top:2px;">KPI: {{ rec.target_kpi }}</p>
             {% endif %}
         </div>
         {% endfor %}

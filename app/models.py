@@ -132,6 +132,9 @@ class MarketOverview(BaseModel):
     market_name: str
     market_size: Optional[str] = None
     growth_rate: Optional[str] = None
+    tam: Optional[str] = None  # Total Addressable Market
+    sam: Optional[str] = None  # Serviceable Addressable Market
+    som: Optional[str] = None  # Serviceable Obtainable Market
     data_points: List[MarketDataPoint] = Field(default_factory=list)
     trends: List[str] = Field(default_factory=list)
     sources: List[str] = Field(default_factory=list)
@@ -145,12 +148,16 @@ class Recommendation(BaseModel):
     priority: str = "medium"
     timeline: Optional[str] = None
     expected_impact: Optional[str] = None
+    budget_estimate: Optional[str] = None
+    impact_rationale: Optional[str] = None
+    target_kpi: Optional[str] = None
 
 
 class Scenario(BaseModel):
     name: str
     label: str
     metrics: Dict[str, float] = Field(default_factory=dict)
+    assumptions: Dict[str, Any] = Field(default_factory=dict)
 
 
 class KPIBenchmark(BaseModel):
@@ -256,6 +263,8 @@ class ReportData(BaseModel):
     calc_traces: List[CalcTrace] = Field(default_factory=list)
     methodology: Dict[str, str] = Field(default_factory=dict)
     section_gates: Dict[str, bool] = Field(default_factory=dict)
+    failed_gates: List[str] = Field(default_factory=list)
+    draft_mode: bool = False
     pipeline_version: str = "2.0"
 
     # v3.0 — Board of Directors review (T24-T27)

@@ -680,6 +680,10 @@ function renderSessions(sessions) {
         let reportCell = '—';
         if (s.report_url) {
             reportCell = `<a class="report-link" href="${s.report_url}" target="_blank">Отчёт (${s.report_size_kb || '?'} KB)</a>`;
+            // Board Review button
+            const reportFile = s.report_url.split('/').pop();
+            const companyName = (s.company || 'Компания').replace(/'/g, "\\'");
+            reportCell += ` <button class="btn-board" onclick="runBoardReview('${reportFile}', '${companyName}', this)" style="font-size:0.75em;padding:3px 10px;border:1px solid #1565c0;background:transparent;color:#1565c0;border-radius:4px;cursor:pointer;margin-left:6px;">Board Review</button>`;
         } else if (s.error) {
             reportCell = `<span class="error-hint" title="${s.error}">${s.error}</span>`;
         }
@@ -716,6 +720,77 @@ function renderSessions(sessions) {
             <tbody>${rows}</tbody>
         </table>
     `;
+}
+
+// Get admin token from cookie for API calls
+const TOKEN = (document.cookie.match(/bsr_admin=([^;]+)/) || [])[1] || '';
+
+async function runBoardReview(reportFile, companyName, btn) {
+    btn.disabled = true;
+    btn.textContent = 'Running...';
+    btn.style.opacity = '0.5';
+    try {
+        const resp = await fetch(`/admin/api/board-review?token=${TOKEN}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({report_file: reportFile, company_name: companyName})
+        });
+        const data = await resp.json();
+        if (!data.ok) { alert('Error: ' + (data.detail || data.error || 'Unknown')); btn.disabled = false; btn.textContent = 'Board Review'; btn.style.opacity = '1'; return; }
+        // Poll for result
+        const pollUrl = `/admin/api/board-review/${reportFile}?token=${TOKEN}`;
+        const poll = setInterval(async () => {
+            try {
+                const pr = await fetch(pollUrl);
+                const pd = await pr.json();
+                if (pd.status === 'done') {
+                    clearInterval(poll);
+                    btn.textContent = '\u2713 Done';
+                    btn.style.color = '#2e7d32';
+                    btn.style.borderColor = '#2e7d32';
+                    // Show results in modal
+                    showBoardResult(pd);
+                } else if (pd.status === 'error') {
+                    clearInterval(poll);
+                    btn.textContent = '\u2717 Error';
+                    btn.style.color = '#c62828';
+                    btn.style.borderColor = '#c62828';
+                    btn.disabled = false;
+                }
+            } catch(e) { /* keep polling */ }
+        }, 5000);
+    } catch(e) {
+        alert('Network error: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = 'Board Review';
+        btn.style.opacity = '1';
+    }
+}
+
+function showBoardResult(data) {
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;';
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+    let reviewsHtml = '';
+    for (const r of (data.reviews || [])) {
+        const badge = r.approved ? '<span style="color:#2e7d32;font-weight:600;">\u2713 \u041e\u0434\u043e\u0431\u0440\u0435\u043d\u043e</span>' : '<span style="color:#e65100;font-weight:600;">\u270e \u0417\u0430\u043c\u0435\u0447\u0430\u043d\u0438\u044f</span>';
+        let critiquesHtml = '';
+        for (const c of (r.critiques || [])) {
+            const sevColor = c.severity === 'high' ? '#c62828' : c.severity === 'medium' ? '#e65100' : '#1565c0';
+            critiquesHtml += `<div style="padding:6px 8px;margin:4px 0;background:#f5f5f5;border-radius:4px;font-size:0.85em;"><span style="color:${sevColor};font-weight:600;">[${c.severity.toUpperCase()}]</span> <span style="color:#888;">[${c.section}]</span> ${c.issue}${c.suggestion ? '<br><span style="color:#666;">\ud83d\udca1 ' + c.suggestion + '</span>' : ''}</div>`;
+        }
+        reviewsHtml += `<div style="border:1px solid #ddd;border-radius:8px;padding:14px;margin:8px 0;"><div style="display:flex;justify-content:space-between;margin-bottom:8px;"><strong>${r.name || r.role}</strong> ${badge}</div><p style="font-size:0.88em;color:#555;margin:6px 0;">${r.summary || ''}</p>${critiquesHtml}</div>`;
+    }
+
+    const consensusHtml = data.consensus ? `<div style="padding:10px 14px;background:${data.consensus.approved ? '#e8f5e9' : '#fff3e0'};border-radius:6px;margin-bottom:12px;"><strong>\u0418\u0442\u043e\u0433:</strong> ${data.consensus.approved ? '\u2713 \u041e\u0434\u043e\u0431\u0440\u0435\u043d' : '\u26a0 \u0422\u0440\u0435\u0431\u0443\u0435\u0442 \u0434\u043e\u0440\u0430\u0431\u043e\u0442\u043a\u0438'} | \u041a\u0440\u0438\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0445: ${data.consensus.critical_issues || 0} | \u0412\u0441\u0435\u0433\u043e \u0437\u0430\u043c\u0435\u0447\u0430\u043d\u0438\u0439: ${data.consensus.total_critiques || 0}</div>` : '';
+
+    const modal = document.createElement('div');
+    modal.style.cssText = 'background:white;border-radius:12px;padding:24px;max-width:700px;max-height:80vh;overflow-y:auto;width:90%;';
+    modal.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;"><h2 style="margin:0;font-size:1.2em;">Board Review: ${data.company_name || ''}</h2><button onclick="this.closest('[style*=fixed]').remove()" style="border:none;background:none;font-size:1.3em;cursor:pointer;">\u2715</button></div>${consensusHtml}${reviewsHtml}<div style="text-align:right;margin-top:12px;font-size:0.8em;color:#999;">\u0412\u0440\u0435\u043c\u044f: ${data.timing ? data.timing.total_sec + 's' : '?'}</div>`;
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
 }
 
 // Auto-refresh every 15 seconds

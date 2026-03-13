@@ -17,6 +17,22 @@
         {{ metric_card(market.data_points|length ~ " лет", "Горизонт данных", "blue") }}
         {% endif %}
     </div>
+    {% if market.tam or market.sam or market.som %}
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;">
+        <h4 style="color:var(--gold2);font-size:0.9em;margin-bottom:10px;">TAM / SAM / SOM</h4>
+        <div class="grid-3">
+            {% if market.tam %}
+            {{ metric_card(market.tam, "TAM — весь рынок", "orange") }}
+            {% endif %}
+            {% if market.sam %}
+            {{ metric_card(market.sam, "SAM — доступный", "blue") }}
+            {% endif %}
+            {% if market.som %}
+            {{ metric_card(market.som, "SOM — достижимый", "green") }}
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
     <div class="info-tip" style="margin-bottom:16px;">
         <span><strong>&#9888; Оценка AI:</strong> Объём и темп роста рынка сгенерированы языковой моделью на основе данных до 2024 года. Для точных данных используйте отраслевые отчёты (РБК Исследования, Infoline, Euromonitor).</span>
     </div>

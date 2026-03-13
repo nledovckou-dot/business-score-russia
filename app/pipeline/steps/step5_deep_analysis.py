@@ -164,6 +164,87 @@ def _safe_llm_call(
         return {}
 
 
+# ── Постпроцессинг рынка (T48) ──
+
+
+def _parse_numeric(s: str | int | float | None) -> float | None:
+    """Extract first numeric value from a string like '150 млрд руб.' -> 150.0."""
+    if s is None:
+        return None
+    if isinstance(s, (int, float)):
+        return float(s)
+    import re
+    m = re.search(r"[\d.,]+", str(s).replace(",", ".").replace(" ", ""))
+    return float(m.group()) if m else None
+
+
+def _postprocess_market(result: dict) -> dict:
+    """T48: Programmatic CAGR from data_points + TAM>SAM>SOM validation.
+
+    - Calculates CAGR from first/last data_points: (end/start)^(1/n) - 1
+    - If calculated CAGR differs from LLM growth_rate by >5pp, overwrites it
+    - Validates TAM > SAM > SOM ordering
+    """
+    import re
+
+    market = result.get("market")
+    if not market:
+        return result
+
+    # --- CAGR calculation ---
+    data_points = market.get("data_points")
+    if data_points and len(data_points) >= 2:
+        try:
+            start_val = float(data_points[0]["value"])
+            end_val = float(data_points[-1]["value"])
+            n_years = int(data_points[-1]["year"]) - int(data_points[0]["year"])
+            if start_val > 0 and end_val > 0 and n_years > 0:
+                cagr = (end_val / start_val) ** (1 / n_years) - 1
+                cagr_pct = round(cagr * 100, 1)
+
+                # Parse existing growth_rate from LLM
+                existing_str = market.get("growth_rate", "")
+                existing_match = re.search(r"[+-]?[\d.,]+", str(existing_str).replace(",", "."))
+                existing_pct = float(existing_match.group()) if existing_match else None
+
+                # If mismatch > 5pp, overwrite
+                if existing_pct is None or abs(cagr_pct - existing_pct) > 5:
+                    sign = "+" if cagr_pct >= 0 else ""
+                    market["growth_rate"] = f"{sign}{cagr_pct}% CAGR"
+                    logger.info(
+                        f"[step5:market] CAGR пересчитан: {existing_str} → {market['growth_rate']} "
+                        f"(из data_points: {start_val} → {end_val} за {n_years} лет)"
+                    )
+        except (ValueError, TypeError, KeyError, ZeroDivisionError) as e:
+            logger.warning(f"[step5:market] Не удалось посчитать CAGR: {e}")
+
+    # --- TAM > SAM > SOM validation ---
+    tam_val = _parse_numeric(market.get("tam"))
+    sam_val = _parse_numeric(market.get("sam"))
+    som_val = _parse_numeric(market.get("som"))
+
+    if tam_val is not None and sam_val is not None and som_val is not None:
+        if not (tam_val >= sam_val >= som_val):
+            logger.warning(
+                f"[step5:market] TAM/SAM/SOM нарушен порядок: "
+                f"TAM={tam_val}, SAM={sam_val}, SOM={som_val}. Корректирую."
+            )
+            # Sort descending and reassign
+            sorted_vals = sorted([tam_val, sam_val, som_val], reverse=True)
+            # Preserve original text format, just fix the numeric part
+            market["tam"] = re.sub(
+                r"[\d.,]+", str(sorted_vals[0]), str(market.get("tam", "")), count=1
+            )
+            market["sam"] = re.sub(
+                r"[\d.,]+", str(sorted_vals[1]), str(market.get("sam", "")), count=1
+            )
+            market["som"] = re.sub(
+                r"[\d.,]+", str(sorted_vals[2]), str(market.get("som", "")), count=1
+            )
+
+    return result
+
+
 # ════════════════════════════════════════════════════════
 # Секция 1: Рынок (market, regulatory_trends, tech_trends)
 # ════════════════════════════════════════════════════════
@@ -203,6 +284,9 @@ def analyze_market(
     "market_name": "{market_name}",
     "market_size": "XX млрд руб.",
     "growth_rate": "+X% CAGR",
+    "tam": "XX млрд руб. — Total Addressable Market (весь рынок)",
+    "sam": "XX млрд руб. — Serviceable Addressable Market (доступный)",
+    "som": "XX млрд руб. — Serviceable Obtainable Market (реально достижимый)",
     "data_points": [
       {{"year": 2021, "value": число, "label": "млрд руб."}},
       {{"year": 2022, "value": число, "label": "млрд руб."}},
@@ -225,9 +309,11 @@ def analyze_market(
 3. Тренды — 4 штуки, конкретные, актуальные
 4. Regulatory_trends — 2-4 законодательных/регуляторных изменения
 5. Tech_trends — 3-4 технологических тренда отрасли
-6. Если данных нет — используй отраслевые знания, но источники пометь как оценочные"""
+6. Если данных нет — используй отраслевые знания, но источники пометь как оценочные
+7. TAM > SAM > SOM. SAM = часть TAM доступная для данного типа бизнеса. SOM = реалистичная доля для компании за 3 года."""
 
     result = _safe_llm_call(prompt, "market", max_tokens=4000)
+    result = _postprocess_market(result)
     return result
 
 
@@ -250,13 +336,28 @@ def analyze_competitors_deep(
     axis_x = market_info.get("axis_x", "Цена")
     axis_y = market_info.get("axis_y", "Качество")
 
-    # Подготовка текста конкурентов
+    # Подготовка текста конкурентов (T42: включаем данные из step4.5)
     comp_text = ""
     for i, c in enumerate(competitors, 1):
         comp_text += f"\n{i}. {c.get('name', '')} — {c.get('description', '')}"
         if c.get("website"):
             comp_text += f" ({c['website']})"
         comp_text += f" [угроза: {c.get('threat_level', 'med')}]"
+        # T42: Real data from step4.5 enrichment
+        if c.get("inn"):
+            comp_text += f"\n   ИНН: {c['inn']}"
+        if c.get("legal_name"):
+            comp_text += f" | Юрлицо: {c['legal_name']}"
+        metrics = c.get("metrics", {})
+        if metrics.get("Выручка"):
+            comp_text += f"\n   Выручка: {metrics['Выручка']}"
+        if metrics.get("Сотрудники"):
+            comp_text += f" | Сотрудники: {metrics['Сотрудники']}"
+        if metrics.get("Год основания"):
+            comp_text += f" | Год основания: {metrics['Год основания']}"
+        if c.get("social_media"):
+            social_parts = [f"{k}: {v.get('handle', v.get('url', ''))}" for k, v in c["social_media"].items()]
+            comp_text += f"\n   Соцсети: {', '.join(social_parts)}"
 
     # Контекст deep_models (lifecycle, channels из step1c)
     deep_models_text = ""
@@ -299,10 +400,38 @@ def analyze_competitors_deep(
 
 ## Задание
 
+ВАЖНО: Первый элемент в competitors — САМА анализируемая компания ({company_info.get('name', '')}).
+Оцени её по тем же параметрам, что и конкурентов.
+
 Верни JSON:
 
 {{
   "competitors": [
+    {{
+      "name": "{company_info.get('name', '')}",
+      "description": "Краткое описание САМОЙ компании (2-3 предложения)",
+      "website": "https://...",
+      "address": "адрес или null",
+      "x": 0-100,
+      "y": 0-100,
+      "radar_scores": {{"Param1": 1-10, "Param2": 1-10, "Param3": 1-10, "Param4": 1-10, "Param5": 1-10, "Param6": 1-10}},
+      "metrics": {{"Выручка": "значение или null", "Сотрудники": "значение или null", "Год основания": "ГГГГ или null"}},
+      "threat_level": "self",
+      "lifecycle": {{
+        "stage": "startup/growth/investment/mature",
+        "evidence": ["причина 1", "причина 2"],
+        "year_founded": "ГГГГ или null"
+      }},
+      "sales_channels": [
+        {{"channel_name": "Сайт D2C", "exists": true/false/null, "source": "источник"}},
+        {{"channel_name": "WB", "exists": true/false/null, "source": "источник"}},
+        {{"channel_name": "Ozon", "exists": true/false/null, "source": "источник"}},
+        {{"channel_name": "Собственные точки", "exists": true/false/null, "source": "источник"}},
+        {{"channel_name": "B2B/опт", "exists": true/false/null, "source": "источник"}},
+        {{"channel_name": "HoReCa", "exists": true/false/null, "source": "источник"}},
+        {{"channel_name": "Lamoda", "exists": true/false/null, "source": "источник"}}
+      ]
+    }},
     {{
       "name": "Название конкурента",
       "description": "Краткое описание (2-3 предложения)",
@@ -339,7 +468,8 @@ def analyze_competitors_deep(
 4. radar_dimensions — те же 6 параметров (названия)
 5. lifecycle — стадия + обоснование. Если CAPEX/стройка — stage=investment
 6. sales_channels — 7 каналов минимум. exists=null если неизвестно
-7. Если есть предварительные данные lifecycle/channels — используй их, но можешь уточнить"""
+7. Если есть предварительные данные lifecycle/channels — используй их, но можешь уточнить
+8. Первый элемент competitors = сама компания. Остальные = конкуренты."""
 
     result = _safe_llm_call(prompt, "competitors", max_tokens=8000)
     return result
@@ -483,6 +613,37 @@ def analyze_strategy(
                 hints.append(f"Выручка/сотрудник: {round(rev / emp)} тыс. ₽")
         fns_current_hint = "\n".join(hints)
 
+    # T52: Prepare explicit KPI current values from ФНС
+    fns_kpi_json = "null"
+    fns_rev_k = None
+    fns_profit_k = None
+    fns_margin = None
+    fns_emp = None
+    if fns_data.get("financials"):
+        latest = fns_data["financials"][-1]
+        fns_rev_k = latest.get("revenue")
+        fns_profit_k = latest.get("net_profit")
+        fns_emp = latest.get("employees")
+        if fns_rev_k and fns_profit_k:
+            fns_margin = round(fns_profit_k / fns_rev_k * 100, 1) if fns_rev_k else None
+        fns_kpi = {}
+        if fns_rev_k is not None:
+            fns_kpi["Выручка, тыс. руб."] = fns_rev_k
+        if fns_profit_k is not None:
+            fns_kpi["Чистая прибыль, тыс. руб."] = fns_profit_k
+        if fns_margin is not None:
+            fns_kpi["Рентабельность, %"] = fns_margin
+        if fns_emp:
+            fns_kpi["Сотрудники"] = fns_emp
+            if fns_rev_k:
+                fns_kpi["Выручка/сотрудник, тыс. руб."] = round(fns_rev_k / fns_emp)
+        fns_kpi_json = json.dumps(fns_kpi, ensure_ascii=False, indent=2)
+
+    # T50: Base scenario floor = current FNS revenue
+    base_floor_hint = ""
+    if fns_rev_k:
+        base_floor_hint = f"\n⚠ Текущая выручка = {fns_rev_k} тыс. руб. Базовый сценарий ОБЯЗАН быть ≥ {fns_rev_k}. Оптимистичный > базового. Пессимистичный = -10..20% от текущей."
+
     prompt = f"""Разработай стратегию для компании.
 
 ## Компания
@@ -497,8 +658,9 @@ def analyze_strategy(
 ## Тип бизнеса
 {bt}
 
-## Текущие показатели (ФНС) — используй как current в KPI
-{fns_current_hint if fns_current_hint else "Нет данных ФНС"}
+## ТЕКУЩИЕ ПОКАЗАТЕЛИ (ФНС) — ОБЯЗАТЕЛЬНО используй как current в kpi_benchmarks
+{fns_kpi_json}
+{base_floor_hint}
 
 ## Задание
 
@@ -511,16 +673,31 @@ def analyze_strategy(
       "description": "Подробное описание (2-4 предложения)",
       "priority": "high/medium/low",
       "timeline": "Q1-Q2 2026",
-      "expected_impact": "+X% метрика"
+      "budget_estimate": "50-100 тыс. руб./мес",
+      "expected_impact": "+X% метрика",
+      "impact_rationale": "Обоснование: бенчмарк/расчёт/кейс",
+      "target_kpi": "Какой KPI улучшает"
     }}
   ],
   "kpi_benchmarks": [
-    {{"name": "KPI название", "current": число_или_null, "benchmark": число, "unit": "ед."}}
+    {{"name": "KPI название", "current": число_из_ФНС_или_null, "benchmark": число, "unit": "ед."}}
   ],
   "scenarios": [
-    {{"name": "optimistic", "label": "Оптимистичный", "metrics": {{"Выручка, тыс. руб.": число, "Прибыль, тыс. руб.": число, "Сотрудники": число}}}},
-    {{"name": "base", "label": "Базовый", "metrics": {{"Выручка, тыс. руб.": число, "Прибыль, тыс. руб.": число, "Сотрудники": число}}}},
-    {{"name": "pessimistic", "label": "Пессимистичный", "metrics": {{"Выручка, тыс. руб.": число, "Прибыль, тыс. руб.": число, "Сотрудники": число}}}}
+    {{
+      "name": "optimistic", "label": "Оптимистичный",
+      "assumptions": {{"growth_pct": 30, "description": "Описание допущений"}},
+      "metrics": {{"Выручка, тыс. руб.": число, "Прибыль, тыс. руб.": число, "Сотрудники": число}}
+    }},
+    {{
+      "name": "base", "label": "Базовый",
+      "assumptions": {{"growth_pct": 10, "description": "Описание допущений"}},
+      "metrics": {{"Выручка, тыс. руб.": число, "Прибыль, тыс. руб.": число, "Сотрудники": число}}
+    }},
+    {{
+      "name": "pessimistic", "label": "Пессимистичный",
+      "assumptions": {{"growth_pct": -10, "description": "Описание допущений"}},
+      "metrics": {{"Выручка, тыс. руб.": число, "Прибыль, тыс. руб.": число, "Сотрудники": число}}
+    }}
   ],
   "implementation_timeline": [
     {{"date": "Q1 2026", "title": "Шаг 1", "description": "Описание", "color": "gold"}},
@@ -530,18 +707,129 @@ def analyze_strategy(
 
 ## Правила
 1. Рекомендации — 5-6 штук, приоритизированные (минимум 2 high)
-2. KPI — 6-8, релевантных типу бизнеса ({bt})
-3. ВАЖНО для kpi_benchmarks: поле "current" заполняй РЕАЛЬНЫМИ данными из ФНС выше:
-   - Выручка = последний год из финансов
-   - Рентабельность = чистая_прибыль / выручка × 100
-   - Сотрудники = из данных ФНС
-   - Если данных нет — ставь null (не выдумывай)
-4. Сценарии — 3, с 3-5 метриками, основанных на реальной выручке из ФНС
-5. Реальные финансы: {fin_json}
-6. implementation_timeline — 4-6 шагов по кварталам
-7. Если тип HYBRID — метрики B2C и B2B РАЗДЕЛЬНО в kpi_benchmarks"""
+2. Для каждой рекомендации ОБЯЗАТЕЛЬНО: budget_estimate (диапазон стоимости), impact_rationale (откуда цифра), target_kpi
+3. Не более 2 high-priority рекомендаций на один квартал — распредели по Q1-Q4
+4. KPI — 6-8, релевантных типу бизнеса ({bt})
+5. КРИТИЧНО для kpi_benchmarks: поле "current" = РЕАЛЬНЫЕ данные из ФНС выше:
+   - Подставь значения из JSON "ТЕКУЩИЕ ПОКАЗАТЕЛИ" напрямую
+   - Выручка, прибыль, рентабельность, сотрудники — всё из ФНС
+   - current=null ТОЛЬКО если данных нет в ФНС. Не выдумывай
+6. Сценарии — 3, горизонт 12 мес, на базе РЕАЛЬНОЙ выручки {fns_rev_k or 'неизв.'} тыс. руб.
+7. АРИФМЕТИКА СЦЕНАРИЕВ: выручка = текущая × (1 + growth_pct/100). Проверь: базовый ≥ текущей, оптимистичный > базового
+8. Каждый сценарий: assumptions.growth_pct + assumptions.description (почему такой рост)
+9. Реальные финансы (все года): {fin_json}
+10. implementation_timeline — 4-6 шагов по кварталам
+11. Если тип HYBRID — метрики B2C и B2B РАЗДЕЛЬНО в kpi_benchmarks"""
 
-    result = _safe_llm_call(prompt, "strategy", max_tokens=5000)
+    result = _safe_llm_call(prompt, "strategy", max_tokens=6000)
+
+    # T50+T52: Post-processing — fix scenarios and KPI
+    result = _postprocess_strategy(result, fns_rev_k, fns_profit_k, fns_margin, fns_emp)
+    return result
+
+
+def _postprocess_strategy(
+    result: dict,
+    fns_rev_k: float | None,
+    fns_profit_k: float | None,
+    fns_margin: float | None,
+    fns_emp: int | None,
+) -> dict:
+    """T50+T52+T54: Fix scenarios arithmetic, fill KPI current, check recommendations."""
+    if not result:
+        return result
+
+    # ── T50: Fix scenario arithmetic ──
+    scenarios = result.get("scenarios", [])
+    if fns_rev_k and scenarios:
+        for scenario in scenarios:
+            metrics = scenario.get("metrics", {})
+            assumptions = scenario.get("assumptions", {})
+            label = scenario.get("label", scenario.get("name", ""))
+
+            # Find revenue key
+            rev_key = None
+            for k in metrics:
+                if "выручка" in k.lower() or "revenue" in k.lower():
+                    rev_key = k
+                    break
+
+            if rev_key is None:
+                continue
+
+            scenario_rev = metrics.get(rev_key)
+            growth_pct = assumptions.get("growth_pct")
+
+            # Calculate expected revenue from growth_pct if available
+            if growth_pct is not None:
+                expected = round(fns_rev_k * (1 + growth_pct / 100))
+                if scenario_rev and abs(scenario_rev - expected) > expected * 0.3:
+                    logger.warning(
+                        "T50: Scenario '%s' revenue=%s but growth=%s%% from %s → corrected to %s",
+                        label, scenario_rev, growth_pct, fns_rev_k, expected,
+                    )
+                    metrics[rev_key] = expected
+                elif not scenario_rev:
+                    metrics[rev_key] = expected
+
+            # Check: base >= current, optimistic > base
+            if scenario_rev:
+                if "базов" in label.lower() or "base" in label.lower():
+                    if scenario_rev < fns_rev_k * 0.95:
+                        corrected = round(fns_rev_k * 1.1)
+                        logger.warning(
+                            "T50: Base scenario (%s) < current FNS revenue (%s) → corrected to %s",
+                            scenario_rev, fns_rev_k, corrected,
+                        )
+                        metrics[rev_key] = corrected
+                        if not assumptions.get("growth_pct"):
+                            assumptions["growth_pct"] = 10
+
+            # Recalculate profit from margin if available
+            profit_key = None
+            for k in metrics:
+                if "прибыль" in k.lower() or "profit" in k.lower():
+                    profit_key = k
+                    break
+            if profit_key and fns_margin and metrics.get(rev_key):
+                expected_profit = round(metrics[rev_key] * fns_margin / 100)
+                current_profit = metrics.get(profit_key)
+                if current_profit and metrics.get(rev_key):
+                    scenario_margin = abs(current_profit / metrics[rev_key] * 100) if metrics[rev_key] else 0
+                    # If margin differs wildly from FNS margin, recalculate
+                    if abs(scenario_margin - abs(fns_margin)) > 20:
+                        metrics[profit_key] = expected_profit
+
+            scenario["metrics"] = metrics
+            scenario["assumptions"] = assumptions
+
+    # ── T52: Fill KPI current values from ФНС ──
+    kpi_benchmarks = result.get("kpi_benchmarks", [])
+    fns_map = {}
+    if fns_rev_k is not None:
+        fns_map["выручка"] = fns_rev_k
+    if fns_profit_k is not None:
+        fns_map["прибыль"] = fns_profit_k
+    if fns_margin is not None:
+        fns_map["рентабельность"] = fns_margin
+    if fns_emp is not None:
+        fns_map["сотрудник"] = fns_emp
+        if fns_rev_k:
+            fns_map["выручка/сотрудник"] = round(fns_rev_k / fns_emp)
+            fns_map["выручка на сотрудник"] = round(fns_rev_k / fns_emp)
+
+    for kpi in kpi_benchmarks:
+        if kpi.get("current") is not None:
+            continue
+        name_lower = kpi.get("name", "").lower()
+        for fns_key, fns_val in fns_map.items():
+            if fns_key in name_lower:
+                kpi["current"] = fns_val
+                logger.info("T52: Filled KPI '%s' current=%s from ФНС", kpi["name"], fns_val)
+                break
+
+    result["kpi_benchmarks"] = kpi_benchmarks
+
     return result
 
 
@@ -788,6 +1076,17 @@ def analyze_hr(
                 employees = f["employees"]
                 break
 
+    # Регион из данных компании
+    region = ""
+    if fns_data.get("egrul", {}).get("address"):
+        addr = fns_data["egrul"]["address"]
+        if "москв" in addr.lower():
+            region = "Москва"
+        elif "санкт-петербург" in addr.lower() or "петербург" in addr.lower():
+            region = "Санкт-Петербург"
+        else:
+            region = addr.split(",")[0] if "," in addr else ""
+
     prompt = f"""Проведи HR-анализ компании.
 
 ## Компания
@@ -799,6 +1098,9 @@ def analyze_hr(
 ## Тип бизнеса
 {bt}
 
+## Регион
+{region or 'Россия (уточнить)'}
+
 ## Задание
 
 Верни JSON:
@@ -806,21 +1108,34 @@ def analyze_hr(
 {{
   "hr_data": {{
     "employees_count": {employees if employees else 'null'},
-    "avg_salary_market": "средняя зарплата в отрасли (gross)",
+    "avg_salary_market": "средняя зарплата в отрасли (gross + KPI)",
     "key_positions": [
-      {{"title": "Должность", "salary_range": "от X до Y тыс. руб. gross", "demand": "высокий/средний/низкий"}}
+      {{
+        "title": "Должность",
+        "salary_range": "от X до Y тыс. руб. gross",
+        "salary_with_kpi": "от X до Y тыс. руб. (gross + KPI 15-20%)",
+        "demand": "высокий/средний/низкий"
+      }}
     ],
     "hiring_channels": ["HH.ru", "Telegram-каналы", "Рекомендации"],
     "turnover_estimate": "оценка текучести в отрасли",
-    "notes": "0 вакансий на HH != 0 найма — возможен найм через агентства, аффилированные юрлица, TG-каналы"
+    "notes": "0 вакансий на HH != 0 найма — возможен найм через агентства, аффилированные юрлица, TG-каналы",
+    "search_filters": {{
+      "region": "{region or 'Россия'}",
+      "period": "последние 12 месяцев",
+      "experience": "1-6 лет"
+    }}
   }}
 }}
 
 ## Правила
 1. key_positions — 4-6 ключевых должностей для типа бизнеса {bt}
-2. Зарплаты: gross + KPI 15-20% для позиций с переменной частью
-3. 0 вакансий на HH ≠ 0 найма — упомянуть это
-4. Если данных нет — оценка по отрасли, пометить как оценочные"""
+2. Зарплаты: salary_range = gross HH.ru, salary_with_kpi = gross + KPI 15-20% ОТ ОКЛАДА (НЕ от выручки!)
+3. Для позиций с переменной частью (менеджеры продаж, коммерческий директор) обязательно salary_with_kpi
+4. 0 вакансий на HH ≠ 0 найма — упомянуть. Проверять: агентства, аффилированные юрлица, TG-каналы, раздел «Карьера» на сайте
+5. Если данных нет — оценка по отрасли, пометить как оценочные
+6. search_filters — указать фильтры HH.ru (регион, период, опыт)
+7. Для технологов/R&D сверить с обзорами ANCOR/Antal (упомянуть как источник)"""
 
     result = _safe_llm_call(prompt, "hr", max_tokens=3000)
     return result

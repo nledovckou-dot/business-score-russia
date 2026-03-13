@@ -241,6 +241,8 @@ def _build_base_context(data: ReportData, charts: dict[str, str], theme: dict) -
         "calc_traces": data.calc_traces,
         "methodology": data.methodology,
         "section_gates": data.section_gates,
+        "failed_gates": data.failed_gates,
+        "draft_mode": data.draft_mode,
         "pipeline_version": data.pipeline_version,
         # Board of Directors (T27)
         "board_review": data.board_review,
@@ -291,8 +293,16 @@ def _render_all_charts(data: ReportData) -> dict[str, str]:
     # C3: Radar
     if data.radar_dimensions and data.competitors:
         datasets = []
-        # Company itself (values from first competitor's radar_scores as placeholder)
-        company_scores = [5.0] * len(data.radar_dimensions)  # default
+        # T51: Use actual company radar_scores from first competitor entry (which is the company itself)
+        company_scores = [5.0] * len(data.radar_dimensions)  # default fallback
+        if data.competitors:
+            first = data.competitors[0]
+            # Check if first competitor is actually the target company
+            if first.name and data.company and data.company.name:
+                first_lower = first.name.lower().strip()
+                company_lower = data.company.name.lower().strip()
+                if first_lower == company_lower or first_lower in company_lower or company_lower in first_lower:
+                    company_scores = [first.radar_scores.get(dim, 5.0) for dim in data.radar_dimensions]
         datasets.append({
             "label": data.company.name,
             "values": company_scores,
@@ -301,6 +311,12 @@ def _render_all_charts(data: ReportData) -> dict[str, str]:
         })
         colors = ["#4A8FE0", "#3DB86A", "#D44040", "#9060D0"]
         for i, c in enumerate(data.competitors[:4]):
+            # Skip the company itself in competitors list (it's already added above)
+            if c.name and data.company and data.company.name:
+                c_lower = c.name.lower().strip()
+                comp_lower = data.company.name.lower().strip()
+                if c_lower == comp_lower or c_lower in comp_lower or comp_lower in c_lower:
+                    continue
             vals = [c.radar_scores.get(dim, 5.0) for dim in data.radar_dimensions]
             datasets.append({
                 "label": c.name,
