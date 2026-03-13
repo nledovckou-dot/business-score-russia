@@ -1601,7 +1601,9 @@ def _assemble_report(
 
         # Секция 5: Приложения
         "open_questions": appendix_result.get("open_questions", []),
-        "glossary": appendix_result.get("glossary") or _default_glossary(bt),
+        "glossary": appendix_result.get("glossary") or _default_glossary(
+            company_info.get("business_type_guess", "B2B_SERVICE")
+        ),
         "calc_traces": calc_traces,
         "methodology": methodology,
 
