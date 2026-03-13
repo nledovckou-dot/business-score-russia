@@ -21,7 +21,9 @@ jobs:
             # Install certbot if not present
             if ! command -v certbot &> /dev/null; then
               echo "Installing certbot..."
-              sudo apt-get update -qq
+              # Disable broken third-party repos before apt update
+              sudo rm -f /etc/apt/sources.list.d/ookla_speedtest-cli.list 2>/dev/null || true
+              sudo apt-get update -qq 2>/dev/null || true
               sudo apt-get install -y -qq certbot python3-certbot-nginx
             fi
 
@@ -60,21 +62,7 @@ jobs:
             fi
 
             echo "Getting cert for: $CERT_DOMAINS"
-            sudo certbot certonly --nginx $CERT_DOMAINS --non-interactive --agree-tos --email n.a.ledovskoy@gmail.com
-
-            # Uncomment HTTPS block in nginx config
-            CONF=/etc/nginx/sites-enabled/bsr.conf
-            sudo sed -i 's/^# \(.*listen 443\)/\1/' "$CONF"
-            sudo sed -i 's/^# \(.*server_name.*xn--\)/\1/' "$CONF"
-            sudo sed -i 's/^# \(.*ssl_\)/\1/' "$CONF"
-            sudo sed -i 's/^# \(.*proxy_\)/\1/' "$CONF"
-            sudo sed -i 's/^# \(.*location\)/\1/' "$CONF"
-            sudo sed -i 's/^# \(.*}\)/\1/' "$CONF"
-            sudo sed -i 's/^# \(.*root\)/\1/' "$CONF"
-            sudo sed -i 's/^# \(.*return\)/\1/' "$CONF"
-
-            # Actually, let's just use certbot nginx plugin to auto-configure
-            sudo certbot install --nginx $CERT_DOMAINS --non-interactive --redirect
+            sudo certbot --nginx $CERT_DOMAINS --non-interactive --agree-tos --email n.a.ledovskoy@gmail.com --redirect
 
             sudo nginx -t && sudo systemctl reload nginx
 
