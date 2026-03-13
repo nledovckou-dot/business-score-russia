@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import subprocess
 from app.pipeline.llm_client import call_llm_json
 from app.pipeline.web_search import _search_duckduckgo
 
@@ -65,6 +66,56 @@ def _search_inn_web(domain: str, company_name: str) -> dict:
                 break
 
     return {"inn": found_inn, "legal_name": found_legal}
+
+
+def _whois_lookup(domain: str) -> dict:
+    """WHOIS lookup for .ru/.su/.рф domains via whois.tcinet.ru.
+
+    Returns dict with inn, org (or None for each).
+    """
+    result = {"inn": None, "org": None}
+
+    # Strip www.
+    domain = re.sub(r"^www\.", "", domain.lower().strip())
+
+    # Only .ru, .su, .рф (xn--p1ai)
+    tld = domain.rsplit(".", 1)[-1] if "." in domain else ""
+    is_rf = tld in ("ru", "su") or domain.endswith(".xn--p1ai") or tld == "рф"
+    if not is_rf:
+        return result
+
+    # Convert .рф to punycode
+    try:
+        parts = domain.split(".")
+        domain = ".".join(
+            part.encode("idna").decode("ascii") for part in parts
+        )
+    except Exception:
+        pass  # already ASCII
+
+    try:
+        proc = subprocess.run(
+            ["whois", "-h", "whois.tcinet.ru", domain],
+            capture_output=True, text=True, timeout=10,
+        )
+        text = proc.stdout
+
+        inn_match = re.search(r"^taxpayer-id:\s*(\d{10,12})", text, re.MULTILINE)
+        if inn_match:
+            result["inn"] = inn_match.group(1)
+
+        org_match = re.search(r"^org:\s*(.+)", text, re.MULTILINE)
+        if org_match:
+            result["org"] = org_match.group(1).strip()
+
+    except FileNotFoundError:
+        logger.warning("whois binary not found, skipping WHOIS lookup")
+    except subprocess.TimeoutExpired:
+        logger.warning("WHOIS timeout for %s", domain)
+    except Exception as e:
+        logger.warning("WHOIS failed for %s: %s", domain, str(e)[:200])
+
+    return result
 
 
 def run(scraped: dict) -> dict:
@@ -130,6 +181,18 @@ Description: {scraped.get('description', '')}
         if legal_match:
             result["legal_name"] = f"{legal_match.group(1)} «{legal_match.group(2)}»"
             logger.info("Found legal name '%s' via regex", result["legal_name"])
+
+    # ── WHOIS lookup for .ru/.su/.рф domains ──
+    if not result.get("inn"):
+        domain = scraped.get("domain", "")
+        whois_data = _whois_lookup(domain)
+        if whois_data["inn"]:
+            result["inn"] = whois_data["inn"]
+            result["inn_source"] = "whois"
+            logger.info("Found INN %s via WHOIS for %s", result["inn"], domain)
+        if whois_data["org"]:
+            result["whois_org"] = whois_data["org"]
+            logger.info("Found org '%s' via WHOIS for %s", whois_data["org"], domain)
 
     # ── Web search fallback: if no INN found, search DuckDuckGo ──
     if not result.get("inn"):

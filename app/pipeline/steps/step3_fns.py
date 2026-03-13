@@ -2,8 +2,63 @@
 
 from __future__ import annotations
 
+import logging
+import re
 from typing import Optional
 from app.pipeline.fns import search_company, get_egrul, get_financials, get_affiliates
+
+logger = logging.getLogger(__name__)
+
+
+def _normalize_name(name: str) -> set[str]:
+    """Normalize company name to a set of lowercase tokens for comparison."""
+    name = name.lower()
+    # Remove org forms
+    name = re.sub(r"\b(ооо|зао|ао|пао|ип|ooo|oao)\b", "", name)
+    # Remove quotes, punctuation
+    name = re.sub(r"[«»\"'.,\-\(\)]+", " ", name)
+    tokens = {t for t in name.split() if len(t) > 1}
+    return tokens
+
+
+def _detect_entity_mismatch(company_info: dict, fns_company: dict) -> dict | None:
+    """Compare brand name (from site) with FNS legal entity name.
+
+    Returns mismatch info if names diverge significantly, or None.
+    """
+    brand_name = company_info.get("name", "").strip()
+    legal_name = fns_company.get("name", "") or fns_company.get("full_name", "")
+    legal_name = legal_name.strip()
+
+    if not brand_name or not legal_name:
+        return None
+
+    brand_tokens = _normalize_name(brand_name)
+    legal_tokens = _normalize_name(legal_name)
+
+    if not brand_tokens or not legal_tokens:
+        return None
+
+    # Jaccard similarity
+    intersection = brand_tokens & legal_tokens
+    union = brand_tokens | legal_tokens
+    similarity = len(intersection) / len(union) if union else 0.0
+
+    # Also check if domain name appears in legal name
+    domain = company_info.get("domain", "").replace(".ru", "").replace(".рф", "").replace("www.", "")
+    domain_in_legal = domain.lower() in legal_name.lower() if domain else False
+
+    if similarity >= 0.3 or domain_in_legal:
+        return None  # Names match well enough
+
+    return {
+        "has_mismatch": True,
+        "brand_name": brand_name,
+        "legal_name": legal_name,
+        "similarity": round(similarity, 2),
+        "whois_org": company_info.get("whois_org", ""),
+        "note": "Торговое название сайта не совпадает с юрлицом в ФНС. Возможно холдинг/дочерняя компания. Финансы ФНС могут включать другие продукты/сервисы.",
+    }
 
 
 def run(company_info: dict, confirmed_inn: Optional[str] = None) -> dict:
@@ -61,6 +116,16 @@ def run(company_info: dict, confirmed_inn: Optional[str] = None) -> dict:
                         result["fns_company"] = candidates[0]
                 except Exception as e:
                     result["fns_error"] = str(e)
+
+    # Entity mismatch detection
+    if result["fns_company"]:
+        mismatch = _detect_entity_mismatch(company_info, result["fns_company"])
+        if mismatch:
+            result["entity_mismatch"] = mismatch
+            logger.warning(
+                "Entity mismatch: brand='%s' vs legal='%s' (similarity=%.2f)",
+                mismatch["brand_name"], mismatch["legal_name"], mismatch["similarity"],
+            )
 
     # If we found a company, get detailed data
     fns_inn = result["fns_company"].get("inn", "")

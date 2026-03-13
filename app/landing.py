@@ -334,6 +334,8 @@ function showCompanyPanel(d){
     var s=document.getElementById('fns-status');
     if(fc.inn){s.className='fns-info';s.innerHTML='\u2713 ФНС: '+(fc.name||'')+' | ИНН '+fc.inn+(fc.okved?' | ОКВЭД '+fc.okved:'')}
     else{s.className='fns-warning';s.textContent='\u26A0 Юрлицо не найдено. Введите ИНН вручную.'}
+    var mm=fns.entity_mismatch;
+    if(mm&&mm.has_mismatch){s.innerHTML+='<br><span style="color:#e65100">\u26A0 Несовпадение: сайт \u00AB'+mm.brand_name+'\u00BB \u2192 юрлицо \u00AB'+mm.legal_name+'\u00BB. Финансы ФНС могут включать другие продукты.</span>'}
     document.getElementById('panel-company').style.display='block';
 }
 
