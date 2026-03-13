@@ -28,7 +28,7 @@ ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 
 # Defaults — will be overridden by model_selector.get_models() at runtime
 MODEL_MAIN = os.environ.get("LLM_MODEL_MAIN", "gpt-5.4")            # основной мозг
-MODEL_FAST = os.environ.get("LLM_MODEL_FAST", "gemini-3-flash")     # быстрые задачи
+MODEL_FAST = os.environ.get("LLM_MODEL_FAST", "gemini-2.5-flash")    # быстрые задачи
 MODEL_REASON = os.environ.get("LLM_MODEL_REASON", "gpt-5.4-thinking")  # reasoning
 MODEL_OPUS = os.environ.get("LLM_MODEL_OPUS", "claude-opus-4-6")    # Claude Opus — board + fallback
 

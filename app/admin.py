@@ -161,11 +161,17 @@ def _html_to_text(html: str) -> str:
 
 def _run_board_review_on_text(report_text: str, company_name: str = "") -> dict:
     """Run 5 AI experts (Board of Directors) on plain text report content."""
-    from app.pipeline.llm_client import call_board_llm, call_board_llm_parallel
+    from app.pipeline.llm_client import call_board_llm, call_board_llm_parallel, refresh_models
     from app.pipeline.steps.step6_board import (
         _EXPERT_CFO, _EXPERT_CMO, _EXPERT_INDUSTRY, _EXPERT_SKEPTIC, _EXPERT_CEO,
         _parse_expert_response,
     )
+
+    # Ensure model defaults are fresh (probes APIs)
+    try:
+        refresh_models()
+    except Exception as e:
+        logger.warning("Model refresh failed: %s", str(e)[:200])
 
     t0 = time.monotonic()
 
