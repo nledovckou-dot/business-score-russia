@@ -323,8 +323,8 @@ def scrape_website(url: str, timeout: int = TIMEOUT_REQUESTS) -> dict:
     """Scrape a website and return structured content.
 
     Three-level cascade:
-      1. requests (fast, 15s)
-      2. Scrapling StealthyFetcher (headless, 30s, Cloudflare bypass)
+      1. requests (fast, 15s) — also retries via Playwright if SPA/JS-only
+      2. Playwright headless Chromium (30s, JS rendering)
       3. Minimal fallback (title + meta description only)
 
     Returns dict with keys: url, domain, title, description, headings, text,
@@ -368,6 +368,39 @@ def scrape_website(url: str, timeout: int = TIMEOUT_REQUESTS) -> dict:
         "contacts": parsed["contacts"],
         "social_links": parsed["social_links"],
     })
+
+    # --- JS-rendered SPA fallback: if requests got <50 chars, retry with Playwright ---
+    if method == "requests" and len(parsed["text"]) < 50 and PLAYWRIGHT_AVAILABLE:
+        logger.info(
+            "[scrape] SPA detected (text_len=%d), retrying with Playwright: %s",
+            len(parsed["text"]), url,
+        )
+        result["scrape_warnings"].append(
+            f"SPA/JS-only сайт (текст {len(parsed['text'])} симв.), "
+            f"переключаюсь на Playwright"
+        )
+        try:
+            pw_html = _fetch_playwright(url, timeout=TIMEOUT_SCRAPLING)
+            pw_parsed = _parse_html(pw_html, url)
+            if len(pw_parsed["text"]) > len(parsed["text"]):
+                parsed = pw_parsed
+                result.update({
+                    "title": parsed["title"] or result["title"],
+                    "description": parsed["description"] or result["description"],
+                    "headings": parsed["headings"] or result["headings"],
+                    "text": parsed["text"],
+                    "contacts": parsed["contacts"] or result["contacts"],
+                    "social_links": parsed["social_links"] or result["social_links"],
+                })
+                result["scrape_method"] = "playwright"
+                result["scrape_warnings"].append(
+                    f"Playwright загрузил {len(parsed['text'])} символов"
+                )
+                html = pw_html  # use Playwright HTML for subpages too
+                method = "playwright"
+        except Exception as exc:
+            logger.warning("[scrape] Playwright SPA retry failed: %s", exc)
+            result["scrape_warnings"].append(f"Playwright retry не помог: {exc}")
 
     # --- Subpages (only if main method is not "minimal") ---
     if result["scrape_method"] != "minimal":
