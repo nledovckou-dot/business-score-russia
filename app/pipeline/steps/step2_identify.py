@@ -75,8 +75,13 @@ def _whois_lookup(domain: str) -> dict:
     """
     result = {"inn": None, "org": None}
 
-    # Strip www.
-    domain = re.sub(r"^www\.", "", domain.lower().strip())
+    # Strip to root domain (business.auto.ru → auto.ru)
+    domain = domain.lower().strip()
+    parts = domain.split(".")
+    # Find root: keep last 2 parts for .ru/.su, last 2 for .xn--p1ai/.рф
+    if len(parts) > 2:
+        # e.g. business.auto.ru → auto.ru, www.shop.example.ru → example.ru
+        domain = ".".join(parts[-2:])
 
     # Only .ru, .su, .рф (xn--p1ai)
     tld = domain.rsplit(".", 1)[-1] if "." in domain else ""
