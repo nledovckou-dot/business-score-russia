@@ -15,29 +15,17 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 2m
           script: |
-            echo "=== Processes ==="
-            ps aux | grep uvicorn | grep -v grep
-            echo "=== Port 8083 ==="
-            ss -tlnp | grep 8083
-            echo "=== .env (first 6 lines) ==="
-            head -6 /opt/business-score-russia/.env
-            echo "=== security.py REPORTS_PER_HOUR ==="
-            grep REPORTS_PER_HOUR /opt/business-score-russia/app/security.py
-            echo "=== main.py rate limit section ==="
-            sed -n '1679,1695p' /opt/business-score-russia/app/main.py
+            echo "=== Nginx bsr.conf ==="
+            cat /etc/nginx/sites-enabled/bsr.conf
+            echo "=== Nginx main config rate limiting ==="
+            grep -n 'limit_req' /etc/nginx/nginx.conf 2>/dev/null || echo "no limit_req in nginx.conf"
+            grep -rn 'limit_req' /etc/nginx/conf.d/ 2>/dev/null || echo "no limit_req in conf.d"
+            grep -rn 'limit_req' /etc/nginx/sites-enabled/ 2>/dev/null || echo "no limit_req in sites-enabled"
+            echo "=== Full nginx.conf ==="
+            cat /etc/nginx/nginx.conf
             echo "=== git log -1 ==="
             cd /opt/business-score-russia && git log -1 --oneline
-            echo "=== Python env check ==="
-            /opt/business-score-russia/.venv/bin/python3 -c "
-import os
-print('BSR_REPORTS_PER_HOUR from os.environ:', os.environ.get('BSR_REPORTS_PER_HOUR', 'NOT SET'))
-print('BSR_ADMIN_TOKEN from os.environ:', os.environ.get('BSR_ADMIN_TOKEN', 'NOT SET')[:8])
-# Check if security.py loads correctly
-import sys
-sys.path.insert(0, '/opt/business-score-russia')
-from app.security import REPORTS_PER_HOUR
-print('REPORTS_PER_HOUR after import:', REPORTS_PER_HOUR)
-"
-            echo "=== systemd env ==="
-            systemctl show bsr --property=Environment --no-pager | head -5
-            systemctl show bsr --property=EnvironmentFiles --no-pager
+            echo "=== check_rate_limit_report ==="
+            grep -A3 'def check_rate_limit_report' /opt/business-score-russia/app/security.py
+            echo "=== Direct FastAPI test (bypass nginx) ==="
+            curl -s -X POST http://127.0.0.1:8083/api/analyze -H "Content-Type: application/json" -d '{"url":"https://dns-shop.ru"}' | head -c 500
