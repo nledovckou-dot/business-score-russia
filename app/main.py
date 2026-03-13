@@ -1146,20 +1146,42 @@ def _run_analysis_steps(sid: str):
         from app.models import ReportData, Competitor
         from app.report.builder import save_report
 
-        # v4.1: Validate competitors individually — drop invalid ones instead of crashing
+        # v4.2: Validate competitors individually — fix invalid fields instead of dropping
         raw_competitors = report_data.get("competitors", [])
         if raw_competitors:
             valid_competitors = []
             for i, comp_dict in enumerate(raw_competitors):
+                if not isinstance(comp_dict, dict) or not comp_dict.get("name"):
+                    continue
                 try:
-                    Competitor(**comp_dict) if isinstance(comp_dict, dict) else None
+                    Competitor(**comp_dict)
                     valid_competitors.append(comp_dict)
                 except Exception as comp_err:
+                    # Try to salvage: strip problematic nested fields
                     logger.warning(
-                        "Competitor %d (%s) failed validation, dropping: %s",
-                        i, comp_dict.get("name", "?") if isinstance(comp_dict, dict) else "?",
-                        str(comp_err)[:200],
+                        "Competitor %d (%s) failed validation, attempting fix: %s",
+                        i, comp_dict.get("name", "?"), str(comp_err)[:200],
                     )
+                    salvaged = {
+                        "name": comp_dict.get("name", "Неизвестный"),
+                        "description": comp_dict.get("description"),
+                        "legal_name": comp_dict.get("legal_name"),
+                        "inn": comp_dict.get("inn"),
+                        "website": comp_dict.get("website"),
+                        "address": comp_dict.get("address"),
+                        "x": float(comp_dict.get("x", 50)),
+                        "y": float(comp_dict.get("y", 50)),
+                        "threat_level": comp_dict.get("threat_level", "med"),
+                        "radar_scores": comp_dict.get("radar_scores", {}),
+                        "metrics": comp_dict.get("metrics") if isinstance(comp_dict.get("metrics"), dict) else {},
+                        "verified": True,
+                    }
+                    try:
+                        Competitor(**salvaged)
+                        valid_competitors.append(salvaged)
+                        logger.info("Competitor %d (%s) salvaged with stripped fields", i, salvaged["name"])
+                    except Exception:
+                        logger.warning("Competitor %d (%s) unsalvageable, dropping", i, comp_dict.get("name", "?"))
             if len(valid_competitors) < len(raw_competitors):
                 logger.info(
                     "Competitors: %d/%d passed validation",
@@ -1330,12 +1352,27 @@ def _sanitize_llm_output(d: dict) -> dict:
         # Ensure metrics is a dict
         if not isinstance(c.get("metrics"), dict):
             c["metrics"] = {}
-        # Ensure financials is a list if present
+        # Ensure financials is a list with valid year fields
         if "financials" in c and not isinstance(c["financials"], list):
             c["financials"] = []
-        # Ensure sales_channels is a list if present
+        if c.get("financials"):
+            clean_comp_fin = []
+            for cf in c["financials"]:
+                if isinstance(cf, dict) and cf.get("year"):
+                    try:
+                        cf["year"] = int(cf["year"])
+                        clean_comp_fin.append(cf)
+                    except (ValueError, TypeError):
+                        pass
+            c["financials"] = clean_comp_fin
+        # Ensure sales_channels is a list with valid channel_name
         if "sales_channels" in c and not isinstance(c["sales_channels"], list):
             c["sales_channels"] = []
+        if c.get("sales_channels"):
+            c["sales_channels"] = [
+                sc for sc in c["sales_channels"]
+                if isinstance(sc, dict) and sc.get("channel_name")
+            ]
 
     # --- financials: ensure numeric fields are float/int, not str ---
     clean_fin = []
