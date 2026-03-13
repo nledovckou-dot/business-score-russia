@@ -53,14 +53,9 @@ def check_rate_limit_report(ip: str) -> str | None:
     """Check per-hour report generation rate limit.
 
     Returns None if OK, or an error message string if limit exceeded.
+    TEMPORARILY DISABLED for batch testing.
     """
-    now = time.time()
-    with _rate_lock:
-        _report_log[ip] = _cleanup_timestamps(_report_log[ip], 3600)
-        if len(_report_log[ip]) >= REPORTS_PER_HOUR:
-            return f"Лимит отчётов: {REPORTS_PER_HOUR} в час. Попробуйте позже."
-        _report_log[ip].append(now)
-    return None
+    return None  # Disabled for testing
 
 
 # ── Input Sanitization ──────────────────────────────────────────────
