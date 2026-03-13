@@ -1162,6 +1162,7 @@ def _run_analysis_steps(sid: str):
                         "Competitor %d (%s) failed validation, attempting fix: %s",
                         i, comp_dict.get("name", "?"), str(comp_err)[:200],
                     )
+                    # Start with minimal valid competitor, then add optional fields
                     salvaged = {
                         "name": comp_dict.get("name", "Неизвестный"),
                         "description": comp_dict.get("description"),
@@ -1176,6 +1177,16 @@ def _run_analysis_steps(sid: str):
                         "metrics": comp_dict.get("metrics") if isinstance(comp_dict.get("metrics"), dict) else {},
                         "verified": True,
                     }
+                    # Try adding optional nested fields one by one
+                    for opt_field in ("lifecycle", "financials", "sales_channels"):
+                        if opt_field in comp_dict:
+                            test = dict(salvaged)
+                            test[opt_field] = comp_dict[opt_field]
+                            try:
+                                Competitor(**test)
+                                salvaged[opt_field] = comp_dict[opt_field]
+                            except Exception:
+                                pass  # skip this field
                     try:
                         Competitor(**salvaged)
                         valid_competitors.append(salvaged)
