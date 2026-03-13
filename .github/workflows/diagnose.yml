@@ -1,0 +1,33 @@
+name: Diagnose BSR
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check service via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          command_timeout: 2m
+          script: |
+            echo "=== systemctl status bsr ==="
+            sudo systemctl status bsr --no-pager -l 2>&1 | tail -30
+            echo ""
+            echo "=== journalctl bsr (last 50 lines) ==="
+            sudo journalctl -u bsr --no-pager -n 50 2>&1
+            echo ""
+            echo "=== port check ==="
+            ss -tlnp | grep -E '8083|8090' || echo "ports not listening"
+            echo ""
+            echo "=== curl localhost ==="
+            curl -s -o /dev/null -w "%{http_code}" http://localhost:8083/ 2>&1 || echo "failed"
+            echo ""
+            echo "=== python import test ==="
+            cd /opt/business-score-russia
+            .venv/bin/python3 -c "from app.main import app; print('import OK')" 2>&1 || echo "import failed"
