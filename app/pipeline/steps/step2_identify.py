@@ -108,21 +108,28 @@ Description: {scraped.get('description', '')}
 
     result = call_llm_json(prompt, provider="gemini", temperature=0.2, max_tokens=2000)
 
-    # Also check sub-pages for INN/legal info
-    for page_name, page_text in scraped.get("pages_text", {}).items():
-        if result.get("inn"):
-            break
-        inn_match = re.search(r"ИНН\s*:?\s*(\d{10,12})", page_text)
+    # ── Regex extraction from FULL text (not truncated) ──
+    # INN is often in the footer which gets cut by the 4000-char limit for LLM.
+    # Search the complete main text + all sub-pages for INN and legal name.
+    all_texts = [scraped.get("text", "")]
+    for page_text in scraped.get("pages_text", {}).values():
+        all_texts.append(page_text)
+    full_text = "\n".join(all_texts)
+
+    if not result.get("inn"):
+        inn_match = re.search(r"ИНН\s*:?\s*(\d{10,12})", full_text)
         if inn_match:
             result["inn"] = inn_match.group(1)
+            logger.info("Found INN %s via regex in scraped text", result["inn"])
 
-        if not result.get("legal_name"):
-            legal_match = re.search(
-                r"(ООО|ЗАО|АО|ПАО|ИП)\s*[«\"](.*?)[»\"]",
-                page_text
-            )
-            if legal_match:
-                result["legal_name"] = f"{legal_match.group(1)} «{legal_match.group(2)}»"
+    if not result.get("legal_name"):
+        legal_match = re.search(
+            r"(ООО|ЗАО|АО|ПАО|ИП)\s*[«\"](.*?)[»\"]",
+            full_text,
+        )
+        if legal_match:
+            result["legal_name"] = f"{legal_match.group(1)} «{legal_match.group(2)}»"
+            logger.info("Found legal name '%s' via regex", result["legal_name"])
 
     # ── Web search fallback: if no INN found, search DuckDuckGo ──
     if not result.get("inn"):
