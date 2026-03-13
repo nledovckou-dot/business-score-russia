@@ -43,8 +43,11 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            # Clear Python bytecode cache to ensure fresh imports
+            # Clear ALL Python bytecode cache to ensure fresh imports
             find "$APP_DIR" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+            find "$APP_DIR" -name "*.pyc" -delete 2>/dev/null || true
+            find "$APP_DIR/.venv" -path "*/app/*.pyc" -delete 2>/dev/null || true
+            echo "Cleared all .pyc files"
 
             # Setup .env
             printf '%s\n' \
@@ -92,9 +95,18 @@ jobs:
             fi
             sudo -n nginx -t && sudo -n systemctl reload nginx || echo "nginx reload failed, check config"
 
+            # Kill any lingering uvicorn processes before restart
+            sudo -n pkill -f "uvicorn app.main" 2>/dev/null || true
+            sleep 2
+
             # Restart service
             sudo -n systemctl restart bsr
-            sleep 3
+            sleep 5
+
+            # Verify the code is correct
+            echo "=== Verify deployed code ==="
+            grep "REPORTS_PER_HOUR" "$APP_DIR/app/security.py"
+            head -3 "$APP_DIR/app/main.py" | head -1
 
             # Firewall
             sudo -n ufw allow 8090/tcp 2>/dev/null || true
