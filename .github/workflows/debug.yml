@@ -1,0 +1,29 @@
+name: Debug VPS
+
+on: workflow_dispatch
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Debug via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          command_timeout: 2m
+          script: |
+            echo "=== Processes ==="
+            ps aux | grep uvicorn | grep -v grep
+            echo "=== Port 8083 ==="
+            ss -tlnp | grep 8083
+            echo "=== .env (first 6 lines) ==="
+            head -6 /opt/business-score-russia/.env
+            echo "=== security.py REPORTS_PER_HOUR ==="
+            grep REPORTS_PER_HOUR /opt/business-score-russia/app/security.py
+            echo "=== main.py rate limit section ==="
+            sed -n '1679,1695p' /opt/business-score-russia/app/main.py
+            echo "=== git log -1 ==="
+            cd /opt/business-score-russia && git log -1 --oneline
