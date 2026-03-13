@@ -34,19 +34,19 @@
 <div class="swot-grid">
     <div class="swot-box swot-s">
         <h4>Сильные стороны (S)</h4>
-        <ul>{% for item in swot.strengths %}<li>{{ item }}</li>{% endfor %}</ul>
+        <ul>{% if swot.strengths is string %}<li>{{ swot.strengths }}</li>{% else %}{% for item in swot.strengths %}<li>{{ item }}</li>{% endfor %}{% endif %}</ul>
     </div>
     <div class="swot-box swot-w">
         <h4>Слабые стороны (W)</h4>
-        <ul>{% for item in swot.weaknesses %}<li>{{ item }}</li>{% endfor %}</ul>
+        <ul>{% if swot.weaknesses is string %}<li>{{ swot.weaknesses }}</li>{% else %}{% for item in swot.weaknesses %}<li>{{ item }}</li>{% endfor %}{% endif %}</ul>
     </div>
     <div class="swot-box swot-o">
         <h4>Возможности (O)</h4>
-        <ul>{% for item in swot.opportunities %}<li>{{ item }}</li>{% endfor %}</ul>
+        <ul>{% if swot.opportunities is string %}<li>{{ swot.opportunities }}</li>{% else %}{% for item in swot.opportunities %}<li>{{ item }}</li>{% endfor %}{% endif %}</ul>
     </div>
     <div class="swot-box swot-t">
         <h4>Угрозы (T)</h4>
-        <ul>{% for item in swot.threats %}<li>{{ item }}</li>{% endfor %}</ul>
+        <ul>{% if swot.threats is string %}<li>{{ swot.threats }}</li>{% else %}{% for item in swot.threats %}<li>{{ item }}</li>{% endfor %}{% endif %}</ul>
     </div>
 </div>
 {% endmacro %}

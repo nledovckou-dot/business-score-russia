@@ -19,9 +19,13 @@
 
     {% if hr_data.notes %}
     <div style="margin-top:16px;">
+        {% if hr_data.notes is string %}
+        <p style="color:var(--text2); font-size:0.88em; padding:4px 0;">{{ hr_data.notes }}</p>
+        {% else %}
         {% for note in hr_data.notes %}
         <p style="color:var(--text2); font-size:0.88em; padding:4px 0;">{{ note }}</p>
         {% endfor %}
+        {% endif %}
     </div>
     {% endif %}
 

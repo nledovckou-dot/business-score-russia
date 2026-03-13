@@ -37,11 +37,30 @@ def _fns_key() -> str:
     return key
 
 
+def _get_via_proxy(full_url: str) -> dict | None:
+    """Try FNS request via Russian proxy (Yandex VPS) to bypass geo-blocks."""
+    import requests as _req
+    try:
+        resp = _req.post(
+            "http://158.160.158.164:8888/scrape",
+            json={"url": full_url},
+            headers={"X-Proxy-Token": "bsr-proxy-2026", "Content-Type": "application/json"},
+            timeout=20,
+        )
+        data = resp.json()
+        if data.get("ok") and data.get("status") == 200 and data.get("text"):
+            return json.loads(data["text"])
+    except Exception as e:
+        logger.debug("[FNS] proxy fallback failed: %s", e)
+    return None
+
+
 def _get(url: str, params: dict) -> dict:
-    """HTTP GET with rate limiting and retry on 403.
+    """HTTP GET with rate limiting, retry on 403, and Russian proxy fallback.
 
     Global lock ensures minimum interval between API calls across all threads.
     Retries up to 3 times on 403 (rate limit exceeded) with exponential backoff.
+    If direct access fails — falls back to Russian proxy (Yandex VPS).
     """
     global _fns_last_call
     params["key"] = _fns_key()
@@ -72,7 +91,26 @@ def _get(url: str, params: dict) -> dict:
                 )
                 time.sleep(backoff)
                 continue
+            # Last attempt failed — try via Russian proxy
+            if attempt == _FNS_MAX_RETRIES - 1:
+                logger.info("[FNS] Direct access failed, trying Russian proxy...")
+                proxy_result = _get_via_proxy(full_url)
+                if proxy_result is not None:
+                    logger.info("[FNS] OK via proxy for %s", url)
+                    return proxy_result
             raise RuntimeError(f"FNS API error {e.code}: {error_body[:300]}")
+        except Exception as e:
+            # Network error — try proxy on last attempt
+            if attempt == _FNS_MAX_RETRIES - 1:
+                logger.info("[FNS] Network error, trying Russian proxy: %s", e)
+                proxy_result = _get_via_proxy(full_url)
+                if proxy_result is not None:
+                    logger.info("[FNS] OK via proxy for %s", url)
+                    return proxy_result
+            if attempt < _FNS_MAX_RETRIES - 1:
+                time.sleep((attempt + 1) * 3)
+                continue
+            raise
 
     raise RuntimeError("FNS API: все попытки исчерпаны")
 

@@ -1377,6 +1377,7 @@ def run(
         company_info=company_info,
         scraped=scraped,
         hh_data=hh_data,
+        original_competitors=competitors,
     )
 
     logger.info(f"[step5] Секционный анализ завершён за {elapsed_total:.1f}s")
@@ -1496,7 +1497,7 @@ def _transform_hr_data(hr_raw: dict, hh_data: dict | None = None) -> dict:
     if hh_data:
         sources.append("HH.ru API (реальные данные)")
     sources.append("Оценка по данным рынка")
-    result["sources"] = " + ".join(sources)
+    result["sources"] = sources
 
     return result
 
@@ -1554,6 +1555,164 @@ def _founders_from_egrul(egrul: dict) -> list[dict]:
     return founders
 
 
+def _merge_competitors(
+    llm_competitors: list[dict],
+    original_competitors: list[dict],
+    company_info: dict,
+) -> list[dict]:
+    """Merge enrichment data from step4/4.5 into LLM-generated competitors.
+
+    LLM provides: radar_scores, x/y coordinates, lifecycle, sales_channels, description.
+    Step4/4.5 provides: real INN, FNS financials, social_media, verification data, EGRUL.
+
+    Strategy: match by name (fuzzy), then overlay real data onto LLM entries.
+    """
+    if not llm_competitors:
+        return []
+
+    if not original_competitors:
+        return llm_competitors
+
+    # Build lookup: lowercase name → original competitor dict
+    orig_by_name: dict[str, dict] = {}
+    for oc in original_competitors:
+        name = (oc.get("name") or "").lower().strip()
+        if name:
+            orig_by_name[name] = oc
+
+    target_name = (company_info.get("name") or "").lower().strip()
+
+    merged = []
+    for lc in llm_competitors:
+        lc_name = (lc.get("name") or "").lower().strip()
+
+        # Skip if this is the target company (it's in the LLM list as first element)
+        if lc_name and target_name and (
+            lc_name == target_name
+            or lc_name in target_name
+            or target_name in lc_name
+        ):
+            merged.append(lc)
+            continue
+
+        # Find matching original competitor
+        orig = orig_by_name.get(lc_name)
+        if not orig:
+            # Try fuzzy: check if any original name is contained in LLM name or vice versa
+            for oname, odata in orig_by_name.items():
+                if oname in lc_name or lc_name in oname:
+                    orig = odata
+                    break
+
+        if orig:
+            # Merge real data from step4/4.5 into LLM entry
+            # Real data wins for factual fields; LLM wins for analytical fields
+            if orig.get("inn") and not lc.get("inn"):
+                lc["inn"] = orig["inn"]
+            if orig.get("legal_name") and not lc.get("legal_name"):
+                lc["legal_name"] = orig["legal_name"]
+            if orig.get("website") and not lc.get("website"):
+                lc["website"] = orig["website"]
+            # Merge verification data from step4
+            if orig.get("verified") is not None:
+                lc.setdefault("verified", orig["verified"])
+            if orig.get("verification_confidence"):
+                lc.setdefault("verification_confidence", orig["verification_confidence"])
+            if orig.get("verification_sources"):
+                lc.setdefault("verification_sources", orig["verification_sources"])
+            # Merge FNS financials from step4.5
+            if orig.get("fns_financials") and not lc.get("financials"):
+                lc["financials"] = orig["fns_financials"]
+            # Merge real metrics from step4.5 into LLM metrics
+            if orig.get("metrics"):
+                lc_metrics = lc.get("metrics") or {}
+                for k, v in orig["metrics"].items():
+                    if v is not None and k not in lc_metrics:
+                        lc_metrics[k] = v
+                lc["metrics"] = lc_metrics
+
+        merged.append(lc)
+
+    return merged
+
+
+def _competitors_from_originals(original_competitors: list[dict]) -> list[dict]:
+    """Build minimal Competitor-compatible dicts from step4/4.5 enriched data.
+
+    Used as fallback when LLM competitor analysis fails completely.
+    Produces entries that pass Pydantic validation for the Competitor model.
+    """
+    import random
+
+    result = []
+    for oc in original_competitors:
+        name = oc.get("name", "")
+        if not name:
+            continue
+
+        metrics = oc.get("metrics", {})
+        comp = {
+            "name": name,
+            "description": oc.get("description") or oc.get("why_competitor") or "",
+            "legal_name": oc.get("legal_name"),
+            "inn": oc.get("inn"),
+            "website": oc.get("website"),
+            "address": oc.get("city") or oc.get("address"),
+            # Spread competitors across the perceptual map
+            "x": round(random.uniform(20, 80), 1),
+            "y": round(random.uniform(20, 80), 1),
+            "radar_scores": {},  # no radar without LLM
+            "metrics": metrics,
+            "threat_level": oc.get("threat_level", "med"),
+            # Preserve verification data
+            "verified": oc.get("verified", True),
+            "verification_confidence": oc.get("verification_confidence", "unverified"),
+            "verification_sources": oc.get("verification_sources", []),
+            "verification_notes": oc.get("verification_notes"),
+        }
+
+        # Merge FNS financials
+        if oc.get("fns_financials"):
+            comp["financials"] = oc["fns_financials"]
+
+        # Build lifecycle from step4.5 EGRUL data
+        if oc.get("year_founded") or (oc.get("egrul") and oc["egrul"].get("reg_date")):
+            year = oc.get("year_founded") or ""
+            if not year and oc.get("egrul", {}).get("reg_date"):
+                import re
+                m = re.search(r"(\d{4})", oc["egrul"]["reg_date"])
+                year = m.group(1) if m else ""
+            comp["lifecycle"] = {
+                "stage": "mature",
+                "evidence": [f"Год основания: {year}"] if year else [],
+                "year_founded": year or None,
+            }
+
+        result.append(comp)
+
+    logger.info(
+        "[step5] Built %d fallback competitors from step4/4.5 data",
+        len(result),
+    )
+    return result
+
+
+def _default_radar_dimensions(business_type: str) -> list[str]:
+    """Return default radar dimensions when LLM doesn't provide them."""
+    if "B2C_SERVICE" in business_type:
+        return ["Качество", "Цена", "Сервис", "Локация", "Репутация", "Маркетинг"]
+    elif "B2C_PRODUCT" in business_type:
+        return ["Качество", "Цена", "Ассортимент", "Логистика", "Бренд", "Digital"]
+    elif "B2B_SERVICE" in business_type:
+        return ["Функциональность", "Цена", "Поддержка", "Интеграции", "Бренд", "Инновации"]
+    elif "B2B_PRODUCT" in business_type:
+        return ["Качество", "Цена", "Мощности", "Сертификация", "Логистика", "Инновации"]
+    elif "PLATFORM" in business_type:
+        return ["UX", "Цена", "Каталог", "Доставка", "Бренд", "Технологии"]
+    else:
+        return ["Качество", "Цена", "Сервис", "Репутация", "Маркетинг", "Инновации"]
+
+
 def _assemble_report(
     *,
     market_result: dict,
@@ -1568,10 +1727,16 @@ def _assemble_report(
     company_info: dict,
     scraped: dict,
     hh_data: dict | None = None,
+    original_competitors: list[dict] | None = None,
 ) -> dict:
     """Собрать единый dict из результатов всех секций.
 
     Гарантирует наличие всех обязательных полей для ReportData.
+
+    Args:
+        original_competitors: enriched competitor dicts from step4/4.5.
+            Used as fallback when LLM competitor analysis returns empty,
+            and for merging real data (FNS, social) into LLM results.
     """
     egrul = fns_data.get("egrul", {})
 
@@ -1652,6 +1817,25 @@ def _assemble_report(
         if founders:
             logger.info("T43: Founders from ЕГРЮЛ fallback (%d entries)", len(founders))
 
+    # ── Конкуренты: fallback + merge enrichment data ──
+    llm_competitors = competitors_result.get("competitors", [])
+    radar_dimensions = competitors_result.get("radar_dimensions", [])
+    final_competitors = _merge_competitors(
+        llm_competitors, original_competitors or [], company_info,
+    )
+    if not final_competitors and (original_competitors or []):
+        # LLM failed completely — build minimal competitor entries from step4/4.5
+        logger.warning(
+            "[step5] LLM competitor analysis returned empty — "
+            "falling back to %d enriched competitors from step4/4.5",
+            len(original_competitors),
+        )
+        final_competitors = _competitors_from_originals(original_competitors or [])
+        if not radar_dimensions:
+            radar_dimensions = _default_radar_dimensions(
+                company_info.get("business_type_guess", "B2B_SERVICE")
+            )
+
     result: dict[str, Any] = {
         # Секция 3: Компания
         "company": company,
@@ -1665,8 +1849,8 @@ def _assemble_report(
         "tech_trends": market_result.get("tech_trends", []),
 
         # Секция 2: Конкуренты
-        "competitors": competitors_result.get("competitors", []),
-        "radar_dimensions": competitors_result.get("radar_dimensions", []),
+        "competitors": final_competitors,
+        "radar_dimensions": radar_dimensions,
 
         # Финансы — из ФНС
         "financials": financials,

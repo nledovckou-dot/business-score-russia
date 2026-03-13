@@ -1,6 +1,7 @@
 """Website scraper: fetch URL -> extract structured text content.
 
-Three-level cascade fetching:
+Four-level cascade fetching:
+  0. Russian proxy (Yandex VPS)    (bypasses geo-blocks, 20s timeout)
   1. requests.get()               (fast, 15s timeout)
   2. Playwright headless Chromium  (30s timeout, JS rendering)
   3. Minimal fallback             (title + meta description from whatever HTML we got)
@@ -24,6 +25,30 @@ except ImportError:
     PLAYWRIGHT_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
+# ── Russian proxy (Yandex VPS) for geo-blocked sites ──
+_PROXY_URL = "http://158.160.158.164:8888"
+_PROXY_TOKEN = "bsr-proxy-2026"
+_PROXY_TIMEOUT = 20
+
+
+def _fetch_via_proxy(url: str, timeout: int = _PROXY_TIMEOUT) -> tuple[str, int] | None:
+    """Fetch URL via Russian proxy (Yandex VPS). Returns (html, status) or None."""
+    try:
+        resp = requests.post(
+            f"{_PROXY_URL}/scrape",
+            json={"url": url},
+            headers={"X-Proxy-Token": _PROXY_TOKEN, "Content-Type": "application/json"},
+            timeout=timeout,
+        )
+        data = resp.json()
+        if data.get("ok") and data.get("status") and data["status"] < 400:
+            return data.get("html", ""), data["status"]
+        return None
+    except Exception as e:
+        logger.debug("[scrape] proxy failed for %s: %s", url, e)
+        return None
+
 
 _BLOCK_SIGNATURES = (
     "just a moment",
@@ -141,6 +166,23 @@ def _fetch_html(url: str, timeout: int = TIMEOUT_REQUESTS) -> tuple[str, str, li
     """
     warnings: list[str] = []
     last_html: str | None = None  # keep whatever HTML we got for minimal fallback
+
+    # --- Attempt 0: Russian proxy (Yandex VPS) ---
+    t_proxy = time.monotonic()
+    proxy_result = _fetch_via_proxy(url)
+    if proxy_result is not None:
+        html, status = proxy_result
+        if html and len(html) > 500 and not _is_blocked(status, html):
+            elapsed = time.monotonic() - t_proxy
+            logger.info(
+                "[scrape] OK url=%s method=proxy status=%d time=%.2fs len=%d",
+                url, status, elapsed, len(html),
+            )
+            return html, "proxy", warnings
+        last_html = html
+    proxy_elapsed = time.monotonic() - t_proxy
+    if proxy_elapsed > 1:
+        warnings.append(f"Proxy не помог ({proxy_elapsed:.1f}s), пробую напрямую")
 
     # --- Attempt 1: requests ---
     t0 = time.monotonic()

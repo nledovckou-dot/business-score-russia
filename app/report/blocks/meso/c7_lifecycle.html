@@ -26,9 +26,13 @@
                 <td style="font-weight:600;">{{ c.name }}</td>
                 <td>{{ lifecycle_badge(c.lifecycle.stage) }}</td>
                 <td style="font-size:0.85em; color:var(--text2);">
+                    {% if c.lifecycle.evidence is string %}
+                    {{ c.lifecycle.evidence }}
+                    {% else %}
                     {% for ev in c.lifecycle.evidence %}
                     {{ ev }}{% if not loop.last %}; {% endif %}
                     {% endfor %}
+                    {% endif %}
                 </td>
                 <td>{{ c.lifecycle.year_founded or '—' }}</td>
             </tr>

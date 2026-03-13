@@ -652,9 +652,13 @@ footer {
     </div>
     {% if company.badges %}
     <div class="badges">
+        {% if company.badges is string %}
+        <span class="hbadge">{{ company.badges }}</span>
+        {% else %}
         {% for badge in company.badges %}
         <span class="hbadge">{{ badge }}</span>
         {% endfor %}
+        {% endif %}
     </div>
     {% endif %}
 </div>

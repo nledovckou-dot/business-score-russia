@@ -7,12 +7,19 @@
         Вопросы, которые не удалось закрыть из открытых источников. Рекомендуем уточнить внутри компании.
     </p>
     <ul style="list-style:none; padding:0;">
+        {% if open_questions is string %}
+        <li style="padding:10px 0; border-bottom:1px solid var(--border); display:flex; align-items:flex-start; gap:10px;">
+            <span style="color:var(--gold); font-weight:700; flex-shrink:0;">&#9744;</span>
+            <span style="color:var(--text2); font-size:0.92em;">{{ open_questions }}</span>
+        </li>
+        {% else %}
         {% for q in open_questions %}
         <li style="padding:10px 0; border-bottom:1px solid var(--border); display:flex; align-items:flex-start; gap:10px;">
             <span style="color:var(--gold); font-weight:700; flex-shrink:0;">&#9744;</span>
             <span style="color:var(--text2); font-size:0.92em;">{{ q }}</span>
         </li>
         {% endfor %}
+        {% endif %}
     </ul>
 </div>
 {% endif %}

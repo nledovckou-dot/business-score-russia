@@ -46,11 +46,17 @@
     <div style="margin-top:20px;">
         <h4 style="color:var(--gold2); font-size:0.95em; margin-bottom:12px;">Ключевые тренды</h4>
         <ul style="list-style:none; padding:0;">
+        {% if market.trends is string %}
+            <li style="padding:6px 0; color:var(--text2); font-size:0.9em; padding-left:18px; position:relative;">
+                <span style="position:absolute; left:0; color:var(--gold);">&rarr;</span>{{ market.trends }}
+            </li>
+        {% else %}
         {% for trend in market.trends %}
             <li style="padding:6px 0; color:var(--text2); font-size:0.9em; padding-left:18px; position:relative;">
                 <span style="position:absolute; left:0; color:var(--gold);">&rarr;</span>{{ trend }}
             </li>
         {% endfor %}
+        {% endif %}
         </ul>
     </div>
     {% endif %}
