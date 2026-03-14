@@ -616,20 +616,18 @@ def _run_initial_steps(sid: str, url: str):
     set_metrics_collector(mc)
 
     try:
-        # Step 0: Auto-select best available models from all providers
-        _push_event(sid, "step", {"num": 0, "status": "active", "text": "Выбираю лучшие AI-модели..."})
+        # Step 0: Prepare the research route
+        _push_event(sid, "step", {"num": 0, "status": "active", "text": "Собираем исходный контур..."})
         try:
             probe_results = refresh_models()
-            from app.pipeline.llm_client import MODEL_MAIN, MODEL_OPUS, MODEL_FAST
-            models_text = f"AI: {MODEL_MAIN} + {MODEL_OPUS} + {MODEL_FAST}"
-            _push_event(sid, "step", {"num": 0, "status": "done", "text": models_text})
             session["data"]["selected_models"] = probe_results
+            _push_event(sid, "step", {"num": 0, "status": "done", "text": "Маршрут исследования готов"})
         except Exception as e:
             logger.warning("Model probe failed, using defaults: %s", str(e)[:200])
-            _push_event(sid, "step", {"num": 0, "status": "warning", "text": "AI-модели: defaults"})
+            _push_event(sid, "step", {"num": 0, "status": "warning", "text": "Базовый маршрут исследования готов"})
 
         # Step 1: Scrape
-        _push_event(sid, "step", {"num": 1, "status": "active", "text": "Загрузка и скрапинг сайта..."})
+        _push_event(sid, "step", {"num": 1, "status": "active", "text": "Изучаем сайт и продукт..."})
         mc.start_timer("step1_scrape")
         from app.pipeline.steps.step1_scrape import run as scrape
         scraped = scrape(url)
@@ -646,19 +644,20 @@ def _run_initial_steps(sid: str, url: str):
             method_hint = " (только домен)"
         else:
             method_hint = ""
-        _push_event(sid, "step", {"num": 1, "status": "done", "text": f"Сайт загружен{method_hint}: {scraped.get('title', '')}"})
+        site_title = scraped.get("title", "") or "основные материалы собраны"
+        _push_event(sid, "step", {"num": 1, "status": "done", "text": f"Сайт изучен{method_hint}: {site_title}"})
 
         # Step 2: Identify company
-        _push_event(sid, "step", {"num": 2, "status": "active", "text": "Определяю компанию..."})
+        _push_event(sid, "step", {"num": 2, "status": "active", "text": "Уточняем профиль компании..."})
         mc.start_timer("step2_identify")
         from app.pipeline.steps.step2_identify import run as identify
         company_info = identify(scraped)
         mc.stop_timer("step2_identify")
         session["data"]["company_info"] = company_info
-        _push_event(sid, "step", {"num": 2, "status": "done", "text": f"Компания: {company_info.get('name', '?')}"})
+        _push_event(sid, "step", {"num": 2, "status": "done", "text": f"Контур компании: {company_info.get('name', '?')}"})
 
         # Step 3: FNS lookup
-        _push_event(sid, "step", {"num": 3, "status": "active", "text": "Поиск в ФНС..."})
+        _push_event(sid, "step", {"num": 3, "status": "active", "text": "Собираем официальные сведения..."})
         mc.start_timer("step3_fns")
         fns_ok = False
         try:
@@ -673,10 +672,10 @@ def _run_initial_steps(sid: str, url: str):
         if fns_ok:
             fc = fns_data["fns_company"]
             _push_event(sid, "step", {"num": 3, "status": "done",
-                "text": f"ФНС: {fc.get('name', '')} | ИНН {fc.get('inn', '')}"})
+                "text": f"Подтверждено юрлицо: {fc.get('name', '')} | ИНН {fc.get('inn', '')}"})
         else:
             _push_event(sid, "step", {"num": 3, "status": "warning",
-                "text": "ФНС: юрлицо не найдено автоматически"})
+                "text": "Официальный контур не определился автоматически"})
 
         # PAUSE: send data to frontend for user verification
         session["status"] = "waiting_company"
@@ -719,14 +718,14 @@ def _run_competitor_steps(sid: str):
 
         # If user provided INN, re-fetch FNS
         if confirmed.get("inn") and confirmed["inn"] != data.get("fns_data", {}).get("fns_company", {}).get("inn"):
-            _push_event(sid, "step", {"num": 3, "status": "active", "text": f"Обновляю данные ФНС по ИНН {confirmed['inn']}..."})
+            _push_event(sid, "step", {"num": 3, "status": "active", "text": f"Уточняем официальный контур по ИНН {confirmed['inn']}..."})
             if mc:
                 mc.start_timer("step3_fns_refetch")
             try:
                 from app.pipeline.steps.step3_fns import run as fns_lookup
                 fns_data = fns_lookup(data.get("company_info", {}), confirmed_inn=confirmed["inn"])
                 data["fns_data"] = fns_data
-                _push_event(sid, "step", {"num": 3, "status": "done", "text": "Данные ФНС обновлены"})
+                _push_event(sid, "step", {"num": 3, "status": "done", "text": "Официальный контур обновлён"})
             except Exception:
                 pass
             if mc:
@@ -744,7 +743,7 @@ def _run_competitor_steps(sid: str):
         if inn:
             try:
                 from app.pipeline.enrichment.checko import get_company as checko_company, get_finances as checko_finances
-                _push_event(sid, "step", {"num": "3c", "status": "active", "text": "Checko.ru — данные компании..."})
+                _push_event(sid, "step", {"num": "3c", "status": "active", "text": "Дополняем официальный контур..."})
 
                 checko_data = checko_company(inn)
                 if checko_data:
@@ -787,19 +786,20 @@ def _run_competitor_steps(sid: str):
 
                 details = []
                 if checko_data:
-                    details.append(f"сотр: {checko_data.get('employees', '?')}")
-                    details.append(f"риски: {checko_data.get('risk_count', 0)}")
+                    details.append(f"сотрудники: {checko_data.get('employees', '?')}")
+                    details.append(f"факторы риска: {checko_data.get('risk_count', 0)}")
                 if checko_fin:
                     details.append(f"финансы: {len(checko_fin)} лет")
+                detail_text = ", ".join(details) if details else "ключевые сведения собраны"
                 _push_event(sid, "step", {"num": "3c", "status": "done",
-                    "text": f"Checko: {', '.join(details)}"})
+                    "text": f"Официальный контур дополнен: {detail_text}"})
                 logger.info("Checko OK for company INN %s: %s", inn, ", ".join(details))
             except Exception as e:
                 logger.warning("Checko failed for company INN %s: %s", inn, str(e)[:200])
-                _push_event(sid, "step", {"num": "3c", "status": "warning", "text": f"Checko: {e}"})
+                _push_event(sid, "step", {"num": "3c", "status": "warning", "text": f"Официальный контур: {e}"})
 
         # Step 4: Find competitors + verify via web search
-        _push_event(sid, "step", {"num": 4, "status": "active", "text": "Ищу конкурентов (GPT-5.2 Pro)..."})
+        _push_event(sid, "step", {"num": 4, "status": "active", "text": "Формируем конкурентное поле..."})
         if mc:
             mc.start_timer("step4_competitors")
         from app.pipeline.steps.step4_competitors import run as find_competitors
@@ -818,12 +818,12 @@ def _run_competitor_steps(sid: str):
         total_count = len(comps)
         if total_count > 0 and verified_count < total_count:
             step4_text = (
-                f"Найдено {total_count} конкурентов "
+                f"Собрали поле из {total_count} игроков "
                 f"({verified_count} подтверждены, "
-                f"{total_count - verified_count} не подтверждены)"
+                f"{total_count - verified_count} требуют проверки)"
             )
         else:
-            step4_text = f"Найдено {total_count} конкурентов"
+            step4_text = f"Собрали конкурентное поле: {total_count} игроков"
             if verified_count == total_count and total_count > 0:
                 step4_text += " (все подтверждены)"
         _push_event(sid, "step", {"num": 4, "status": "done", "text": step4_text})
@@ -1005,7 +1005,7 @@ def _run_analysis_steps(sid: str):
         # Step 1b: Marketplace analysis (conditional)
         marketplace_data = None
         if bt in ("B2C_PRODUCT", "PLATFORM", "B2B_B2C_HYBRID"):
-            _push_event(sid, "step", {"num": "1b", "status": "active", "text": "Анализ маркетплейсов..."})
+            _push_event(sid, "step", {"num": "1b", "status": "active", "text": "Проверяем площадки продаж..."})
             if mc:
                 mc.start_timer("step1b_marketplace")
             try:
@@ -1015,15 +1015,15 @@ def _run_analysis_steps(sid: str):
                     scraped=data.get("scraped", {}),
                     competitors=confirmed_competitors,
                 )
-                _push_event(sid, "step", {"num": "1b", "status": "done", "text": "Маркетплейсы проанализированы"})
+                _push_event(sid, "step", {"num": "1b", "status": "done", "text": "Площадки продаж собраны"})
             except Exception as e:
-                _push_event(sid, "step", {"num": "1b", "status": "warning", "text": f"Маркетплейсы: {e}"})
+                _push_event(sid, "step", {"num": "1b", "status": "warning", "text": f"Площадки продаж: {e}"})
             if mc:
                 mc.stop_timer("step1b_marketplace")
 
         # Step 1c: Deep models (lifecycle + channels)
         deep_models = None
-        _push_event(sid, "step", {"num": "1c", "status": "active", "text": "Жизненный цикл и каналы продаж..."})
+        _push_event(sid, "step", {"num": "1c", "status": "active", "text": "Разбираем каналы продаж..."})
         if mc:
             mc.start_timer("step1c_deep_models")
         try:
@@ -1037,9 +1037,9 @@ def _run_analysis_steps(sid: str):
             lc_count = len(deep_models.get("lifecycles", {}))
             ch_count = len(deep_models.get("channels", {}))
             _push_event(sid, "step", {"num": "1c", "status": "done",
-                "text": f"Lifecycle: {lc_count} компаний, каналы: {ch_count}"})
+                "text": f"Каналы и роли игроков: {lc_count} профилей, {ch_count} каналов"})
         except Exception as e:
-            _push_event(sid, "step", {"num": "1c", "status": "warning", "text": f"Deep models: {e}"})
+            _push_event(sid, "step", {"num": "1c", "status": "warning", "text": f"Каналы продаж: {e}"})
         if mc:
             mc.stop_timer("step1c_deep_models")
 
@@ -1047,7 +1047,7 @@ def _run_analysis_steps(sid: str):
         hh_data = None
         company_name = company_info.get("name", "")
         if company_name:
-            _push_event(sid, "step", {"num": "4h", "status": "active", "text": "HH.ru API — вакансии и зарплаты..."})
+            _push_event(sid, "step", {"num": "4h", "status": "active", "text": "Смотрим кадровые сигналы..."})
             try:
                 from app.pipeline.sources.hh_api import get_hr_data_for_company
                 hh_data = get_hr_data_for_company(
@@ -1056,9 +1056,9 @@ def _run_analysis_steps(sid: str):
                 )
                 vcount = (hh_data or {}).get("vacancies_count", 0)
                 _push_event(sid, "step", {"num": "4h", "status": "done",
-                    "text": f"HH.ru: {vcount} вакансий найдено"})
+                    "text": f"Кадровые сигналы: {vcount} вакансий"})
             except Exception as e:
-                _push_event(sid, "step", {"num": "4h", "status": "warning", "text": f"HH.ru: {e}"})
+                _push_event(sid, "step", {"num": "4h", "status": "warning", "text": f"Кадровые сигналы: {e}"})
 
         # Step 4.5k: Keys.so SEO analytics (company — full suite)
         keyso_data = None
@@ -1070,7 +1070,7 @@ def _run_analysis_steps(sid: str):
                 company_domain = urlparse(raw_url).hostname or ""
                 if company_domain:
                     data["_company_domain"] = company_domain
-                    _push_event(sid, "step", {"num": "4k", "status": "active", "text": f"SEO-аналитика: {company_domain}..."})
+                    _push_event(sid, "step", {"num": "4k", "status": "active", "text": "Смотрим поисковую видимость..."})
                     from app.pipeline.enrichment.keyso import (
                         get_domain_dashboard, get_organic_competitors,
                         get_organic_keywords, get_context_ads,
@@ -1106,47 +1106,70 @@ def _run_analysis_steps(sid: str):
                             company_domain, dr, vis, n_comps, n_keys, n_ads,
                         )
                         _push_event(sid, "step", {"num": "4k", "status": "done",
-                            "text": f"Keys.so: DR={dr}, видимость={vis}, {n_comps} конкурентов, {n_keys} запросов, {n_ads} объявлений"})
+                            "text": f"Поиск: DR={dr}, видимость={vis}, {n_comps} игроков, {n_keys} запросов, {n_ads} объявлений"})
                     else:
                         logger.warning("Keys.so returned None for domain=%s", company_domain)
                         _push_event(sid, "step", {"num": "4k", "status": "warning",
-                            "text": "Keys.so: домен не найден"})
+                            "text": "Поисковая видимость: домен не найден"})
         except Exception as e:
             import traceback
             logger.error("Keys.so failed for domain=%s: %s\n%s", company_domain, str(e)[:300], traceback.format_exc()[-500:])
-            _push_event(sid, "step", {"num": "4k", "status": "warning", "text": f"Keys.so: {e}"})
+            _push_event(sid, "step", {"num": "4k", "status": "warning", "text": f"Поисковая видимость: {e}"})
 
         # Step 4.5: Enrich competitors (T42) — real FNS data, scraping, social
-        _push_event(sid, "step", {"num": "4e", "status": "active", "text": "Обогащение данных конкурентов..."})
+        _push_event(sid, "step", {"num": "4e", "status": "active", "text": "Обогащаем профили игроков..."})
         if mc:
             mc.start_timer("step4_5_enrich")
         try:
             from app.pipeline.steps.step4_5_enrich_competitors import run as enrich_competitors
+            def _enrichment_progress(text: str, status: str):
+                if status == "done":
+                    event_status = "done"
+                    event_text = "Профили игроков собраны"
+                else:
+                    event_status = "active"
+                    event_text = "Собираем данные по игрокам"
+                _push_event(sid, "step", {"num": "4e", "status": event_status, "text": event_text})
+
             confirmed_competitors = enrich_competitors(
                 competitors=confirmed_competitors,
-                progress_callback=lambda text, status: _push_event(sid, "step", {
-                    "num": "4e", "status": "done" if status == "done" else "active", "text": text,
-                }),
+                progress_callback=_enrichment_progress,
             )
             with_fns = sum(1 for c in confirmed_competitors if c.get("fns_financials"))
             _push_event(sid, "step", {"num": "4e", "status": "done",
-                "text": f"Обогащено: {with_fns}/{len(confirmed_competitors)} с данными ФНС"})
+                "text": f"Профили игроков собраны: {with_fns}/{len(confirmed_competitors)} с финансовым контуром"})
         except Exception as e:
-            _push_event(sid, "step", {"num": "4e", "status": "warning", "text": f"Обогащение: {e}"})
+            _push_event(sid, "step", {"num": "4e", "status": "warning", "text": f"Профили игроков: {e}"})
         if mc:
             mc.stop_timer("step4_5_enrich")
 
-        # Step 5: Deep analysis with GPT-5.2 Pro (7 секций параллельно)
-        _push_event(sid, "step", {"num": 5, "status": "active", "text": "Глубокий анализ (7 секций параллельно)..."})
+        # Step 5: Build the management picture
+        _push_event(sid, "step", {"num": 5, "status": "active", "text": "Собираем управленческую картину..."})
 
         # Progress callback: транслирует статусы секций в SSE-события
         def _step5_progress(section_name: str, status: str):
             status_map = {"started": "active", "done": "done", "error": "warning"}
             sse_status = status_map.get(status, "active")
+            section_labels = {
+                "Анализ рынка": "рынок",
+                "Глубокий анализ конкурентов": "конкурентное поле",
+                "Анализ компании": "компания",
+                "Стратегический анализ": "стратегия",
+                "Приложения": "прозрачность",
+                "Фаундеры и мнения": "мнения и сигналы",
+                "HR-анализ": "команда и найм",
+                "Продукты и услуги": "продукты и офферы",
+            }
+            section_label = section_labels.get(section_name, section_name.lower())
+            status_text_map = {
+                "started": f"Собираем блок: {section_label}",
+                "done": f"Готов блок: {section_label}",
+                "error": f"Требует внимания блок: {section_label}",
+            }
             _push_event(sid, "step", {
                 "num": "5",
                 "status": sse_status,
-                "text": f"{section_name}: {status}",
+                "text": status_text_map.get(status, f"Собираем блок: {section_label}"),
                 "sub_section": section_name,
             })
 
@@ -1166,7 +1189,7 @@ def _run_analysis_steps(sid: str):
         )
         if mc:
             mc.stop_timer("step5_deep_analysis")
-        _push_event(sid, "step", {"num": 5, "status": "done", "text": "Анализ завершён"})
+        _push_event(sid, "step", {"num": 5, "status": "done", "text": "Управленческая картина собрана"})
 
         # Sanitize LLM output first
         report_data = _sanitize_llm_output(report_data)
@@ -1227,25 +1250,52 @@ def _run_analysis_steps(sid: str):
         report_data["digital"] = digital
 
         # Executive Summary — generated AFTER all analysis, uses SWOT + recommendations
+        _push_event(sid, "step", {"num": "es", "status": "active", "text": "Executive Summary..."})
         try:
             from app.pipeline.steps.step5_deep_analysis import analyze_executive_summary
+
+            # Convert Pydantic models to dicts if needed
+            swot_data = report_data.get("swot")
+            if swot_data and hasattr(swot_data, "model_dump"):
+                swot_data = swot_data.model_dump()
+            elif swot_data and hasattr(swot_data, "dict"):
+                swot_data = swot_data.dict()
+
+            recs_data = report_data.get("recommendations")
+            if recs_data and isinstance(recs_data, list):
+                clean_recs = []
+                for r in recs_data:
+                    if hasattr(r, "model_dump"):
+                        clean_recs.append(r.model_dump())
+                    elif hasattr(r, "dict"):
+                        clean_recs.append(r.dict())
+                    elif isinstance(r, dict):
+                        clean_recs.append(r)
+                recs_data = clean_recs
+
             exec_summary = analyze_executive_summary(
                 scraped=data.get("scraped", {}),
                 company_info=company_info,
                 fns_data=data.get("fns_data", {}),
                 competitors=confirmed_competitors,
                 market_info=data.get("market_info", {}),
-                swot=report_data.get("swot"),
-                recommendations=report_data.get("recommendations"),
+                swot=swot_data,
+                recommendations=recs_data,
             )
             if exec_summary and exec_summary.get("executive_summary"):
                 report_data["executive_summary"] = exec_summary["executive_summary"]
-                logger.info("Executive summary generated")
+                logger.info("Executive summary generated OK")
+                _push_event(sid, "step", {"num": "es", "status": "done", "text": "Executive Summary готов"})
+            else:
+                logger.warning("Executive summary empty: %s", str(exec_summary)[:200])
+                _push_event(sid, "step", {"num": "es", "status": "warning", "text": "Executive Summary: пустой"})
         except Exception as e:
-            logger.warning("Executive summary failed: %s", str(e)[:200])
+            import traceback
+            logger.error("Executive summary error: %s\n%s", str(e)[:300], traceback.format_exc()[-500:])
+            _push_event(sid, "step", {"num": "es", "status": "warning", "text": f"Exec Summary: {str(e)[:60]}"})
 
         # Step 2a: Verification (pure Python)
-        _push_event(sid, "step", {"num": "2a", "status": "active", "text": "Верификация расчётов..."})
+        _push_event(sid, "step", {"num": "2a", "status": "active", "text": "Сверяем факты и расчёты..."})
         if mc:
             mc.start_timer("step2a_verify")
         try:
@@ -1254,9 +1304,9 @@ def _run_analysis_steps(sid: str):
             corrections = sum(1 for f in report_data.get("factcheck", [])
                             if isinstance(f, dict) and f.get("correction"))
             _push_event(sid, "step", {"num": "2a", "status": "done",
-                "text": f"Верификация: {corrections} корректировок"})
+                "text": f"Проверено: {corrections} корректировок"})
         except Exception as e:
-            _push_event(sid, "step", {"num": "2a", "status": "warning", "text": f"Верификация: {e}"})
+            _push_event(sid, "step", {"num": "2a", "status": "warning", "text": f"Проверка фактов: {e}"})
         if mc:
             mc.stop_timer("step2a_verify")
 
@@ -1265,7 +1315,7 @@ def _run_analysis_steps(sid: str):
         report_data = _generate_digital_verification(report_data, company_info, confirmed_competitors)
 
         # Step 2b: Relevance gate (pure Python)
-        _push_event(sid, "step", {"num": "2b", "status": "active", "text": "Section Relevance Gate..."})
+        _push_event(sid, "step", {"num": "2b", "status": "active", "text": "Убираем лишний шум..."})
         if mc:
             mc.start_timer("step2b_relevance_gate")
         try:
@@ -1274,9 +1324,9 @@ def _run_analysis_steps(sid: str):
             gates = report_data.get("section_gates", {})
             disabled = sum(1 for v in gates.values() if not v)
             _push_event(sid, "step", {"num": "2b", "status": "done",
-                "text": f"Gate: {disabled} секций отключено"})
+                "text": f"Фокус отчёта: {disabled} второстепенных секций скрыто"})
         except Exception as e:
-            _push_event(sid, "step", {"num": "2b", "status": "warning", "text": f"Gate: {e}"})
+            _push_event(sid, "step", {"num": "2b", "status": "warning", "text": f"Фокус отчёта: {e}"})
         if mc:
             mc.stop_timer("step2b_relevance_gate")
 
@@ -1284,7 +1334,7 @@ def _run_analysis_steps(sid: str):
         quality_result: dict[str, Any] | None = None
 
         # Step 6: Board of Directors review (T25/T26)
-        _push_event(sid, "step", {"num": "6a", "status": "active", "text": "Совет директоров — 5 AI-экспертов..."})
+        _push_event(sid, "step", {"num": "6a", "status": "active", "text": "Формируем финальный вердикт..."})
         if mc:
             mc.start_timer("step6_board")
         try:
@@ -1296,39 +1346,39 @@ def _run_analysis_steps(sid: str):
             consensus = review_result.get("consensus", {})
             approved = consensus.get("approved", False)
             critiques = consensus.get("total_critiques", 0)
-            status_text = "Одобрен" if approved else f"Замечания: {critiques}"
+            status_text = "согласован" if approved else f"{critiques} спорных мест"
             _push_event(sid, "step", {"num": "6a", "status": "done",
-                "text": f"Совет директоров: {status_text}"})
+                "text": f"Финальный вердикт: {status_text}"})
         except Exception as e:
             logger.warning("Board review failed: %s", e)
             add_blocking_issue(report_data, f"Board review failed: {e}")
             set_report_status(report_data, "draft")
             _push_event(sid, "step", {"num": "6a", "status": "warning",
-                "text": f"Совет директоров: {e}"})
+                "text": f"Финальный вердикт: {e}"})
         if mc:
             mc.stop_timer("step6_board")
 
         # Step 6b: Revision — apply board critiques to fix report data
         if board_review_data and board_review_data.get("consensus", {}).get("total_critiques", 0) > 0:
-            _push_event(sid, "step", {"num": "6b", "status": "active", "text": "Исправление данных по замечаниям борда..."})
+            _push_event(sid, "step", {"num": "6b", "status": "active", "text": "Уточняем спорные места..."})
             if mc:
                 mc.start_timer("step6b_revise")
             try:
                 from app.pipeline.steps.step7_revise import revise_report
                 report_data = revise_report(report_data, board_review_data, company_info)
                 _push_event(sid, "step", {"num": "6b", "status": "done",
-                    "text": "Данные очищены и загейтены по замечаниям совета директоров"})
+                    "text": "Спорные места доработаны"})
             except Exception as e:
                 logger.warning("Revision step failed: %s", e)
                 add_blocking_issue(report_data, f"Revision step failed: {e}")
                 set_report_status(report_data, "draft")
                 _push_event(sid, "step", {"num": "6b", "status": "warning",
-                    "text": f"Ревизия: {e}"})
+                    "text": f"Уточнение выводов: {e}"})
             if mc:
                 mc.stop_timer("step6b_revise")
 
         # Step Quality: Auto quality check (T10)
-        _push_event(sid, "step", {"num": "qa", "status": "active", "text": "Проверка качества отчёта..."})
+        _push_event(sid, "step", {"num": "qa", "status": "active", "text": "Проверяем силу отчёта..."})
         if mc:
             mc.start_timer("step_quality")
         try:
@@ -1346,7 +1396,7 @@ def _run_analysis_steps(sid: str):
                     existing_questions.append(f"[QA] {cf}")
                 report_data["open_questions"] = existing_questions
 
-            status_text = f"Качество: {q_score}/100"
+            status_text = f"Сила отчёта: {q_score}/100"
             if q_critical > 0:
                 status_text += f" ({q_critical} критических)"
             if q_warnings > 0:
@@ -1372,7 +1422,7 @@ def _run_analysis_steps(sid: str):
             add_blocking_issue(report_data, f"Quality check failed: {e}")
             set_report_status(report_data, "draft")
             _push_event(sid, "step", {"num": "qa", "status": "warning",
-                "text": f"Проверка качества: {e}"})
+                "text": f"Проверка силы отчёта: {e}"})
         if mc:
             mc.stop_timer("step_quality")
 
@@ -1383,7 +1433,7 @@ def _run_analysis_steps(sid: str):
         )
 
         # Step 7: Build report
-        _push_event(sid, "step", {"num": 7, "status": "active", "text": "Сборка отчёта..."})
+        _push_event(sid, "step", {"num": 7, "status": "active", "text": "Готовим итоговый документ..."})
         if mc:
             mc.start_timer("step7_build_report")
 
@@ -1456,7 +1506,7 @@ def _run_analysis_steps(sid: str):
         _push_event(sid, "step", {
             "num": 7,
             "status": "done",
-            "text": f"Отчёт собран ({size_kb} KB, статус: {report_status})",
+            "text": f"Итоговый документ готов (статус: {report_status})",
         })
 
         # T7: Finalize metrics and log
@@ -1898,34 +1948,34 @@ def _run_full_pipeline_auto(sid: str, url: str):
     set_metrics_collector(mc)
 
     try:
-        # Step 0: Refresh models
-        _push_event(sid, "step", {"num": 0, "status": "active", "text": "Выбираю AI-модели..."})
+        # Step 0: Prepare the research route
+        _push_event(sid, "step", {"num": 0, "status": "active", "text": "Собираем исходный контур..."})
         try:
             refresh_models()
         except Exception:
             pass
-        _push_event(sid, "step", {"num": 0, "status": "done", "text": "AI-модели выбраны"})
+        _push_event(sid, "step", {"num": 0, "status": "done", "text": "Маршрут исследования готов"})
 
         # Step 1: Scrape
-        _push_event(sid, "step", {"num": 1, "status": "active", "text": "Загрузка сайта..."})
+        _push_event(sid, "step", {"num": 1, "status": "active", "text": "Изучаем сайт и продукт..."})
         mc.start_timer("step1_scrape")
         from app.pipeline.steps.step1_scrape import run as scrape
         scraped = scrape(url)
         mc.stop_timer("step1_scrape")
         session["data"]["scraped"] = scraped
-        _push_event(sid, "step", {"num": 1, "status": "done", "text": f"Сайт: {scraped.get('title', '')}"})
+        _push_event(sid, "step", {"num": 1, "status": "done", "text": f"Сайт изучен: {scraped.get('title', '') or 'основные материалы собраны'}"})
 
         # Step 2: Identify
-        _push_event(sid, "step", {"num": 2, "status": "active", "text": "Определяю компанию..."})
+        _push_event(sid, "step", {"num": 2, "status": "active", "text": "Уточняем профиль компании..."})
         mc.start_timer("step2_identify")
         from app.pipeline.steps.step2_identify import run as identify
         company_info = identify(scraped)
         mc.stop_timer("step2_identify")
         session["data"]["company_info"] = company_info
-        _push_event(sid, "step", {"num": 2, "status": "done", "text": f"Компания: {company_info.get('name', '?')}"})
+        _push_event(sid, "step", {"num": 2, "status": "done", "text": f"Контур компании: {company_info.get('name', '?')}"})
 
         # Step 3: FNS lookup
-        _push_event(sid, "step", {"num": 3, "status": "active", "text": "Поиск в ФНС..."})
+        _push_event(sid, "step", {"num": 3, "status": "active", "text": "Собираем официальные сведения..."})
         mc.start_timer("step3_fns")
         try:
             from app.pipeline.steps.step3_fns import run as fns_lookup
@@ -1935,7 +1985,11 @@ def _run_full_pipeline_auto(sid: str, url: str):
             logger.warning("FNS lookup failed: %s", str(e)[:200])
             session["data"]["fns_data"] = {"fns_error": str(e)}
         mc.stop_timer("step3_fns")
-        _push_event(sid, "step", {"num": 3, "status": "done", "text": "ФНС данные получены"})
+        fc = session["data"].get("fns_data", {}).get("fns_company", {})
+        if fc.get("inn"):
+            _push_event(sid, "step", {"num": 3, "status": "done", "text": f"Подтверждено юрлицо: {fc.get('name', '')} | ИНН {fc.get('inn', '')}"})
+        else:
+            _push_event(sid, "step", {"num": 3, "status": "warning", "text": "Официальный контур не определился автоматически"})
 
         # AUTO-CONFIRM company (no user pause)
         session["data"]["confirmed_company"] = company_info
@@ -1945,7 +1999,7 @@ def _run_full_pipeline_auto(sid: str, url: str):
         if inn:
             try:
                 from app.pipeline.enrichment.checko import get_company as checko_company, get_finances as checko_finances
-                _push_event(sid, "step", {"num": "3c", "status": "active", "text": "Checko.ru — данные компании..."})
+                _push_event(sid, "step", {"num": "3c", "status": "active", "text": "Дополняем официальный контур..."})
                 checko_data = checko_company(inn)
                 if checko_data:
                     session["data"]["checko_company"] = checko_data
@@ -1973,16 +2027,17 @@ def _run_full_pipeline_auto(sid: str, url: str):
                         session["data"]["fns_data"] = fns_data
                 details = []
                 if checko_data:
-                    details.append(f"сотр: {checko_data.get('employees', '?')}")
+                    details.append(f"сотрудники: {checko_data.get('employees', '?')}")
                 if checko_fin:
                     details.append(f"финансы: {len(checko_fin)} лет")
-                _push_event(sid, "step", {"num": "3c", "status": "done", "text": f"Checko: {', '.join(details)}"})
+                detail_text = ", ".join(details) if details else "ключевые сведения собраны"
+                _push_event(sid, "step", {"num": "3c", "status": "done", "text": f"Официальный контур дополнен: {detail_text}"})
             except Exception as e:
                 logger.warning("Checko auto failed: %s", str(e)[:200])
-                _push_event(sid, "step", {"num": "3c", "status": "warning", "text": f"Checko: {e}"})
+                _push_event(sid, "step", {"num": "3c", "status": "warning", "text": f"Официальный контур: {e}"})
 
         # Step 4: Find competitors
-        _push_event(sid, "step", {"num": 4, "status": "active", "text": "Поиск конкурентов..."})
+        _push_event(sid, "step", {"num": 4, "status": "active", "text": "Формируем конкурентное поле..."})
         mc.start_timer("step4_competitors")
         from app.pipeline.steps.step4_competitors import run as find_competitors
         comp_result = find_competitors(
@@ -1993,7 +2048,7 @@ def _run_full_pipeline_auto(sid: str, url: str):
         mc.stop_timer("step4_competitors")
         session["data"]["market_info"] = comp_result
         comps = comp_result.get("competitors", [])
-        _push_event(sid, "step", {"num": 4, "status": "done", "text": f"Конкурентов: {len(comps)}"})
+        _push_event(sid, "step", {"num": 4, "status": "done", "text": f"Собрали конкурентное поле: {len(comps)} игроков"})
 
         # AUTO-CONFIRM competitors (no user pause)
         session["data"]["confirmed_competitors"] = comps
@@ -2063,7 +2118,7 @@ async def analyze_simple(request: Request):
     return {
         "ok": True,
         "session_id": sid,
-        "message": "Анализ запущен (полный пайплайн с ФНС). Поллите статус.",
+        "message": "Исследование запущено. Проверяйте статус по session_id.",
         "poll_url": f"/api/analyze/{sid}",
     }
 
@@ -2116,7 +2171,7 @@ async def analyze_poll(sid: str):
     return {
         "ok": True,
         "status": "running",
-        "current_step": last_step or "Инициализация...",
+        "current_step": last_step or "Собираем исходный контур...",
     }
 
 
