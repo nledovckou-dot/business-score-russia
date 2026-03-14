@@ -635,11 +635,33 @@ footer {
 </head>
 <body>
 
-<!-- T55: Draft mode banner -->
-{% if draft_mode %}
-<div style="background:rgba(224,128,64,0.15);border-bottom:2px solid var(--orange);padding:12px 24px;text-align:center;font-size:0.9em;">
-    <strong style="color:var(--orange);">&#9888; ЧЕРНОВИК</strong> — {{ failed_gates|length if failed_gates else '?' }} секций не прошли гейт качества. Данные требуют доработки.
+<!-- Release status banner -->
+{% if report_status != 'publishable' %}
+<div style="background:rgba(224,128,64,0.15);border-bottom:2px solid var(--orange);padding:14px 24px;text-align:center;font-size:0.9em;">
+    <strong style="color:var(--orange);">&#9888; ЧЕРНОВИК</strong>
+    {% if blocking_issues %}
+    — отчёт не готов к публикации: {{ blocking_issues|length }} блокирующих замечаний.
+    {% elif failed_gates %}
+    — {{ failed_gates|length }} секций не прошли гейт качества. Данные требуют доработки.
+    {% else %}
+    — отчёт требует дополнительной верификации.
+    {% endif %}
+    {% if quality_summary and quality_summary.score is not none %}
+    <span style="color:var(--text2);">QA {{ quality_summary.score }}/100</span>
+    {% endif %}
 </div>
+{% if blocking_issues %}
+<div style="background:rgba(13,11,14,0.92);border-bottom:1px solid var(--border);padding:10px 24px 14px;">
+    <div style="max-width:980px;margin:0 auto;">
+        <div style="font-size:0.78em;letter-spacing:0.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;">Блокирующие замечания</div>
+        <ul style="margin:0;padding-left:20px;color:var(--text2);line-height:1.5;">
+            {% for issue in blocking_issues[:5] %}
+            <li>{{ issue }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endif %}
 {% endif %}
 
 <!-- ═══════ HERO ═══════ -->

@@ -330,6 +330,9 @@ class TestReportData:
         assert rd.financials == []
         assert rd.pipeline_version == "2.0"
         assert rd.board_review == {}
+        assert rd.report_status == "draft"
+        assert rd.blocking_issues == []
+        assert rd.quality_summary == {}
 
     def test_report_date_default(self, company_b2c_service):
         """Report date defaults to today."""

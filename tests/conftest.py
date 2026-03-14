@@ -315,6 +315,23 @@ def mock_board_reviews() -> dict:
                 },
             },
             {
+                "role": "QA Director",
+                "name": "QA Director",
+                "response": {
+                    "approved": False,
+                    "critiques": [
+                        {
+                            "section": "competitors",
+                            "issue": "Нет подтверждения источников по конкуренту C",
+                            "severity": "medium",
+                            "suggestion": "Оставить только verified competitors",
+                            "criteria": "empty_fields",
+                        },
+                    ],
+                    "summary": "Качество данных по конкурентам недостаточно подтверждено.",
+                },
+            },
+            {
                 "role": "CEO",
                 "name": "CEO",
                 "response": {
@@ -337,7 +354,7 @@ def mock_board_reviews() -> dict:
         "consensus": {
             "approved": False,
             "critical_issues": 2,
-            "total_critiques": 4,
+            "total_critiques": 5,
         },
         "needs_revision": True,
         "timing": {
@@ -387,6 +404,15 @@ def mock_board_reviews_approved() -> dict:
                     "approved": True,
                     "critiques": [],
                     "summary": "No issues found.",
+                },
+            },
+            {
+                "role": "QA Director",
+                "name": "QA Director",
+                "response": {
+                    "approved": True,
+                    "critiques": [],
+                    "summary": "Критических проблем качества не найдено.",
                 },
             },
             {

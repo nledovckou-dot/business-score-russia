@@ -20,6 +20,7 @@ from app.auth import AuthManager
 from app.config import REPORTS_DIR, BusinessType
 from app.landing import LANDING_HTML
 from app.metrics import MetricsCollector, get_aggregate_stats
+from app.pipeline.release import add_blocking_issue, finalize_release, set_report_status
 from app.security import (
     check_rate_limit_request,
     check_rate_limit_report,
@@ -1069,6 +1070,9 @@ def _run_analysis_steps(sid: str):
         if mc:
             mc.stop_timer("step2b_relevance_gate")
 
+        board_review_data = {}
+        quality_result: dict[str, Any] | None = None
+
         # Step 6: Board of Directors review (T25/T26)
         _push_event(sid, "step", {"num": "6a", "status": "active", "text": "Совет директоров — 5 AI-экспертов..."})
         if mc:
@@ -1078,6 +1082,7 @@ def _run_analysis_steps(sid: str):
             panel = form_panel(report_data, company_info)
             review_result = run_review(report_data, panel)
             report_data = apply_revisions(report_data, review_result)
+            board_review_data = report_data.get("board_review", {})
             consensus = review_result.get("consensus", {})
             approved = consensus.get("approved", False)
             critiques = consensus.get("total_critiques", 0)
@@ -1086,13 +1091,14 @@ def _run_analysis_steps(sid: str):
                 "text": f"Совет директоров: {status_text}"})
         except Exception as e:
             logger.warning("Board review failed: %s", e)
+            add_blocking_issue(report_data, f"Board review failed: {e}")
+            set_report_status(report_data, "draft")
             _push_event(sid, "step", {"num": "6a", "status": "warning",
                 "text": f"Совет директоров: {e}"})
         if mc:
             mc.stop_timer("step6_board")
 
         # Step 6b: Revision — apply board critiques to fix report data
-        board_review_data = report_data.get("board_review")
         if board_review_data and board_review_data.get("consensus", {}).get("total_critiques", 0) > 0:
             _push_event(sid, "step", {"num": "6b", "status": "active", "text": "Исправление данных по замечаниям борда..."})
             if mc:
@@ -1101,9 +1107,11 @@ def _run_analysis_steps(sid: str):
                 from app.pipeline.steps.step7_revise import revise_report
                 report_data = revise_report(report_data, board_review_data, company_info)
                 _push_event(sid, "step", {"num": "6b", "status": "done",
-                    "text": "Данные исправлены по замечаниям совета директоров"})
+                    "text": "Данные очищены и загейтены по замечаниям совета директоров"})
             except Exception as e:
                 logger.warning("Revision step failed: %s", e)
+                add_blocking_issue(report_data, f"Revision step failed: {e}")
+                set_report_status(report_data, "draft")
                 _push_event(sid, "step", {"num": "6b", "status": "warning",
                     "text": f"Ревизия: {e}"})
             if mc:
@@ -1151,10 +1159,18 @@ def _run_analysis_steps(sid: str):
             )
         except Exception as e:
             logger.warning("Quality check failed: %s", e)
+            add_blocking_issue(report_data, f"Quality check failed: {e}")
+            set_report_status(report_data, "draft")
             _push_event(sid, "step", {"num": "qa", "status": "warning",
                 "text": f"Проверка качества: {e}"})
         if mc:
             mc.stop_timer("step_quality")
+
+        report_data = finalize_release(
+            report_data,
+            board_review=board_review_data,
+            quality_result=quality_result,
+        )
 
         # Step 7: Build report
         _push_event(sid, "step", {"num": 7, "status": "active", "text": "Сборка отчёта..."})
@@ -1222,10 +1238,16 @@ def _run_analysis_steps(sid: str):
         filename = f"report_{uuid.uuid4().hex[:8]}.html"
         path = save_report(rd, filename=filename)
         size_kb = round(path.stat().st_size / 1024)
+        report_status = report_data.get("report_status", "draft")
+        blocking_issues = report_data.get("blocking_issues", [])
 
         if mc:
             mc.stop_timer("step7_build_report")
-        _push_event(sid, "step", {"num": 7, "status": "done", "text": f"Отчёт собран ({size_kb} KB)"})
+        _push_event(sid, "step", {
+            "num": 7,
+            "status": "done",
+            "text": f"Отчёт собран ({size_kb} KB, статус: {report_status})",
+        })
 
         # T7: Finalize metrics and log
         if mc:
@@ -1250,6 +1272,8 @@ def _run_analysis_steps(sid: str):
             "url": f"/reports/{filename}",
             "size_kb": size_kb,
             "company": report_data.get("company", {}).get("name", ""),
+            "report_status": report_status,
+            "blocking_issues": blocking_issues[:5],
         }
         # Include remaining reports if user is authenticated
         if auth_token:
@@ -1805,8 +1829,10 @@ async def analyze_poll(sid: str):
                 "url": result.get("url", ""),
                 "size_kb": result.get("size_kb", 0),
                 "company": result.get("company", ""),
+                "report_status": result.get("report_status", "draft"),
+                "blocking_issues": result.get("blocking_issues", []),
             }
-        return {"ok": True, "status": "done", "url": "", "company": ""}
+        return {"ok": True, "status": "done", "url": "", "company": "", "report_status": "draft", "blocking_issues": []}
 
     if status == "error":
         err_events = session.get("events", [])

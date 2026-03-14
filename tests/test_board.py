@@ -21,22 +21,22 @@ from app.pipeline.steps.step6_board import (
 class TestFormPanel:
     """Tests for panel formation."""
 
-    def test_panel_has_5_experts(self):
-        """Panel always contains exactly 5 experts."""
+    def test_panel_has_6_experts(self):
+        """Panel always contains exactly 6 experts."""
         panel = form_panel(
             report_data={"company": {"name": "Test"}},
             company_info={"name": "Test Co", "business_type": "B2C_SERVICE"},
         )
-        assert len(panel) == 5
+        assert len(panel) == 6
 
     def test_panel_roles(self):
-        """Panel contains the expected 5 roles."""
+        """Panel contains the expected expert roles."""
         panel = form_panel(
             report_data={},
             company_info={"name": "Test", "business_type": "B2B_SERVICE"},
         )
         roles = {e["role"] for e in panel}
-        assert roles == {"CFO", "CMO", "Industry Expert", "Skeptic", "CEO"}
+        assert roles == {"CFO", "CMO", "Industry Expert", "Skeptic", "QA Director", "CEO"}
 
     def test_panel_expert_has_required_keys(self):
         """Each expert dict has role, name, system, focus_areas."""
@@ -249,7 +249,7 @@ class TestApplyRevisions:
         br = result["board_review"]
 
         # Check reviews structure
-        assert len(br["reviews"]) == 5
+        assert len(br["reviews"]) == 6
         for review in br["reviews"]:
             assert "role" in review
             assert "name" in review
@@ -271,6 +271,7 @@ class TestApplyRevisions:
         result = apply_revisions(report, mock_board_reviews_approved)
         assert result["board_review"]["consensus"]["approved"] is True
         assert result["board_review"]["consensus"]["critical_issues"] == 0
+        assert result.get("report_status", "draft") != "draft"
 
     def test_hallucination_gates_blocks(self, mock_board_reviews):
         """High-severity hallucination critiques gate the related blocks."""
@@ -302,6 +303,13 @@ class TestApplyRevisions:
         # Board warnings contain expert role
         board_questions = [q for q in oq if "[Совет директоров" in q]
         assert len(board_questions) > 0
+
+    def test_failed_review_adds_blocking_issue(self, mock_board_reviews):
+        """Rejected board review becomes a blocking issue."""
+        report = {"company": {"name": "Test"}, "section_gates": {}, "open_questions": []}
+        result = apply_revisions(report, mock_board_reviews)
+        assert result["report_status"] == "draft"
+        assert any("Совет директоров не одобрил отчёт" in issue for issue in result["blocking_issues"])
 
     def test_max_5_board_warnings(self):
         """At most 5 board warnings are added to open_questions."""

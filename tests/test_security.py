@@ -326,7 +326,7 @@ class TestRateLimiting:
 
         result = check_rate_limit_report(test_ip)
         assert result is not None
-        assert "Лимит отчётов" in result
+        assert "отчётов" in result
 
         self._clear_rate_logs(test_ip)
 

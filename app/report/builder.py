@@ -113,6 +113,11 @@ def build_report(data: ReportData, theme: dict[str, str] | None = None) -> str:
         sections=sections,
         block_count=sum(len(s["rendered_blocks"]) for s in sections),
         theme=theme,
+        draft_mode=data.draft_mode,
+        report_status=data.report_status,
+        blocking_issues=data.blocking_issues,
+        failed_gates=data.failed_gates,
+        quality_summary=data.quality_summary,
     )
 
     return html
@@ -243,6 +248,9 @@ def _build_base_context(data: ReportData, charts: dict[str, str], theme: dict) -
         "section_gates": data.section_gates,
         "failed_gates": data.failed_gates,
         "draft_mode": data.draft_mode,
+        "report_status": data.report_status,
+        "blocking_issues": data.blocking_issues,
+        "quality_summary": data.quality_summary,
         "pipeline_version": data.pipeline_version,
         # Board of Directors (T27)
         "board_review": data.board_review,

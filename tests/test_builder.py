@@ -83,6 +83,22 @@ class TestBuildReport:
         html = build_report(minimal_report_data, theme=custom_theme)
         assert "#FF0000" in html
 
+    def test_draft_banner_renders_blocking_issues(self, minimal_report_data):
+        """Draft reports show the blocking issues banner."""
+        minimal_report_data.report_status = "draft"
+        minimal_report_data.blocking_issues = ["QA: нет подтверждённых финансовых данных"]
+        html = build_report(minimal_report_data)
+        assert "ЧЕРНОВИК" in html
+        assert "нет подтверждённых финансовых данных" in html
+
+    def test_publishable_report_hides_draft_banner(self, minimal_report_data):
+        """Publishable reports don't show the draft banner."""
+        minimal_report_data.report_status = "publishable"
+        minimal_report_data.draft_mode = False
+        minimal_report_data.blocking_issues = []
+        html = build_report(minimal_report_data)
+        assert "Блокирующие замечания" not in html
+
 
 # ── Different business types ──
 

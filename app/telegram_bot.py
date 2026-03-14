@@ -410,6 +410,8 @@ def _run_pipeline_loop(chat_id: int, progress_msg_id: int | None, sid: str) -> N
             report_url_path = report_data.get("url", "")
             company_name = report_data.get("company", "")
             size_kb = report_data.get("size_kb", 0)
+            report_status = report_data.get("report_status", "draft")
+            blocking_issues = report_data.get("blocking_issues", [])
 
             # Build full public URL
             report_full_url = f"{BSR_PUBLIC_URL}{report_url_path}"
@@ -417,17 +419,26 @@ def _run_pipeline_loop(chat_id: int, progress_msg_id: int | None, sid: str) -> N
             _update_progress(
                 chat_id,
                 progress_msg_id,
-                f"Отчёт готов! ({size_kb} KB)",
+                f"{'Отчёт готов' if report_status == 'publishable' else 'Черновик отчёта готов'}! ({size_kb} KB)",
             )
 
             # Send the report link as a separate message
             send_message(
                 chat_id,
-                f"<b>Отчёт готов</b>"
+                f"<b>{'Отчёт готов' if report_status == 'publishable' else 'Черновик отчёта'}</b>"
                 + (f": {_escape_html(company_name)}" if company_name else "")
                 + f"\n\n{report_full_url}\n\n"
                 f"Размер: {size_kb} KB\n"
-                "Отправь ещё одну ссылку для нового анализа.",
+                + (
+                    "Статус: publishable\n"
+                    if report_status == "publishable"
+                    else "Статус: draft\n"
+                )
+                + (
+                    "Блокеры:\n- " + "\n- ".join(_escape_html(x) for x in blocking_issues[:3]) + "\n\n"
+                    if blocking_issues else ""
+                )
+                + "Отправь ещё одну ссылку для нового анализа.",
                 disable_web_page_preview=True,
             )
             logger.info("Report ready: %s for session %s", report_full_url, sid)

@@ -15,6 +15,7 @@ import time
 from typing import Any
 
 from app.pipeline.llm_client import call_board_llm, call_board_llm_parallel
+from app.pipeline.release import add_blocking_issue, set_report_status
 
 logger = logging.getLogger(__name__)
 
@@ -705,9 +706,9 @@ def apply_revisions(report_data: dict, reviews: dict) -> dict:
 
     1. Форматирует board_review для шаблона b1_board_conclusion.html
     2. Применяет авто-правки по high-severity замечаниям:
-       - Добавляет disclaimers в секции с критическими замечаниями
        - Обновляет section_gates для отключения ненадёжных секций
-       - Добавляет warnings в calc_traces
+       - Добавляет blocking issues и open questions
+       - Переводит отчёт в draft, если совет не одобрил публикацию
 
     Args:
         report_data: собранный отчёт
@@ -753,6 +754,15 @@ def apply_revisions(report_data: dict, reviews: dict) -> dict:
 
     high_critiques = [c for c in all_critiques if c.get("severity") == "high"]
 
+    if not consensus.get("approved", False):
+        add_blocking_issue(
+            report_data,
+            f"Совет директоров не одобрил отчёт ({consensus.get('critical_issues', 0)} критических замечаний)",
+        )
+        set_report_status(report_data, "draft")
+    else:
+        set_report_status(report_data, "publishable")
+
     # ── 3. Авто-правки по high-severity замечаниям ──
     section_gates = report_data.get("section_gates", {})
     board_warnings = []
@@ -777,10 +787,11 @@ def apply_revisions(report_data: dict, reviews: dict) -> dict:
         section_name = (critique.get("section", "") or "").lower()
         issue = (critique.get("issue", "") or "").lower()
 
-        # Если эксперт указал на галлюцинацию или фейковые данные — гейтим секцию
-        is_hallucination = any(kw in issue for kw in [
+        # High-severity замечания должны убирать сомнительные секции из публичного отчёта.
+        is_untrusted = any(kw in issue for kw in [
             "галлюцина", "выдуман", "фейк", "не существ", "hallucin",
             "fabricat", "несуществующ", "вымышлен",
+            "unverified", "невериф", "без источ", "без подтвержд",
         ])
 
         matched_blocks = []
@@ -788,13 +799,19 @@ def apply_revisions(report_data: dict, reviews: dict) -> dict:
             if key in section_name or key in issue:
                 matched_blocks.extend(blocks)
 
-        if is_hallucination and matched_blocks:
+        if matched_blocks:
             for block_id in matched_blocks:
                 section_gates[block_id] = False
                 logger.warning(
                     "Board: гейтим блок %s по замечанию '%s' от %s",
                     block_id, critique.get("issue", "")[:80], critique.get("from_expert", "?"),
                 )
+
+        if is_untrusted:
+            add_blocking_issue(
+                report_data,
+                f"{critique.get('from_expert', 'Board')}: {critique.get('issue', '')}".strip(),
+            )
 
         # Добавляем warning
         board_warnings.append({
@@ -805,6 +822,7 @@ def apply_revisions(report_data: dict, reviews: dict) -> dict:
         })
 
     report_data["section_gates"] = section_gates
+    report_data["failed_gates"] = sorted({k for k, v in section_gates.items() if not v})
 
     # ── 4. Добавляем board warnings к open_questions ──
     if board_warnings:
@@ -815,6 +833,11 @@ def apply_revisions(report_data: dict, reviews: dict) -> dict:
             )
             if question not in open_questions:
                 open_questions.append(question)
+            suggestion = (w.get("suggestion") or "").strip()
+            if suggestion:
+                issue_text = f"Нужно действие: {suggestion}"
+                if issue_text not in open_questions:
+                    open_questions.append(issue_text)
         report_data["open_questions"] = open_questions
 
     logger.info(

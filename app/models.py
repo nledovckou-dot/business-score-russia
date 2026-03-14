@@ -1,7 +1,7 @@
 """Pydantic models for company data, report blocks, and assembled report."""
 
 from datetime import date
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -265,6 +265,9 @@ class ReportData(BaseModel):
     section_gates: Dict[str, bool] = Field(default_factory=dict)
     failed_gates: List[str] = Field(default_factory=list)
     draft_mode: bool = False
+    report_status: Literal["draft", "publishable"] = "draft"
+    blocking_issues: List[str] = Field(default_factory=list)
+    quality_summary: Dict[str, Any] = Field(default_factory=dict)
     pipeline_version: str = "2.0"
 
     # v3.0 — Board of Directors review (T24-T27)
