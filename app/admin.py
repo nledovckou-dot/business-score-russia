@@ -612,9 +612,11 @@ async def admin_monitoring(request: Request):
 async def admin_page(request: Request):
     """Admin dashboard HTML."""
     if not _check_admin(request):
-        # Show login form
         return HTMLResponse(content=_LOGIN_HTML)
-    return HTMLResponse(content=_DASHBOARD_HTML)
+    # Encode with xmlcharrefreplace to avoid surrogate errors on some Python builds
+    body = _DASHBOARD_HTML.encode("utf-8", errors="xmlcharrefreplace")
+    from starlette.responses import Response
+    return Response(content=body, media_type="text/html; charset=utf-8")
 
 
 # ── Login form ──
