@@ -1,0 +1,52 @@
+{# E1: Executive Summary — key highlights for management #}
+{% from '_macros.html' import metric_card, info_tip, callout %}
+
+{% if executive_summary %}
+<div class="card" style="border:1px solid var(--gold-border); background:linear-gradient(135deg, var(--card) 0%, rgba(201,164,76,0.04) 100%);">
+
+    {# Key Metrics Row #}
+    {% if executive_summary.key_metrics %}
+    <div class="grid-4" style="margin-bottom:24px;">
+        {% for m in executive_summary.key_metrics %}
+        {{ metric_card(m.value, m.label, m.color|default("gold")) }}
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {# Highlights #}
+    {% if executive_summary.highlights %}
+    <h4 style="color:var(--gold2); margin-bottom:12px; font-size:1.05em; letter-spacing:0.03em;">Ключевые выводы</h4>
+    <ul style="color:var(--text2); line-height:1.8; padding-left:20px; margin-bottom:24px;">
+        {% for h in executive_summary.highlights %}
+        <li style="margin-bottom:6px;">{{ h }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {# Top Recommendations #}
+    {% if executive_summary.top_recommendations %}
+    <h4 style="color:var(--gold2); margin-bottom:12px; font-size:1.05em; letter-spacing:0.03em;">Приоритетные действия</h4>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px; margin-bottom:24px;">
+        {% for rec in executive_summary.top_recommendations %}
+        <div style="background:var(--bg3); border:1px solid var(--border); border-radius:12px; padding:20px; border-left:4px solid var(--{{ rec.priority_color|default('gold') }});">
+            <h5 style="color:var(--{{ rec.priority_color|default('gold') }}); margin-bottom:8px; font-size:0.95em;">{{ rec.title }}</h5>
+            <p style="color:var(--text2); font-size:0.88em; line-height:1.6;">{{ rec.description }}</p>
+            {% if rec.timeline %}
+            <p style="color:var(--text3); font-size:0.8em; margin-top:8px;">&#128197; {{ rec.timeline }}</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {# Verdict #}
+    {% if executive_summary.verdict %}
+    <div style="background:var(--{{ executive_summary.verdict_color|default('gold') }}-bg); border:1px solid var(--{{ executive_summary.verdict_color|default('gold') }}-border, var(--border)); border-radius:12px; padding:20px; margin-top:16px;">
+        <div style="font-size:0.78em; text-transform:uppercase; letter-spacing:0.08em; color:var(--{{ executive_summary.verdict_color|default('gold') }}); margin-bottom:8px; font-weight:600;">Общая оценка</div>
+        <p style="color:var(--text); line-height:1.7; font-size:0.95em;">{{ executive_summary.verdict }}</p>
+    </div>
+    {% endif %}
+
+    {{ info_tip("Исполнительное резюме сформировано на основе полного анализа. Детали — в соответствующих секциях отчёта.") }}
+</div>
+{% endif %}

@@ -12,6 +12,8 @@ from app.config import BusinessType
 
 # Block ID → template path (relative to blocks/)
 BLOCK_TEMPLATES: dict[str, str] = {
+    # Executive Summary
+    "E1": "summary/e1_executive_summary.html",
     # Part I — Macro (market)
     "M1": "macro/m1_market_overview.html",
     "M2": "macro/m2_regulatory.html",
@@ -61,6 +63,7 @@ BLOCK_TEMPLATES: dict[str, str] = {
 
 # Sections: logical grouping of blocks with titles
 SECTIONS = [
+    {"id": "summary",  "num": "E",   "title": "Исполнительное резюме",     "subtitle": "Ключевые выводы и рекомендации для руководства"},
     {"id": "macro",    "num": "I",   "title": "Макро-анализ рынка",        "subtitle": "Объём, динамика, тренды отрасли"},
     {"id": "meso",     "num": "II",  "title": "Конкурентный ландшафт",     "subtitle": "Перцептуальная карта, профили, сравнение"},
     {"id": "micro",    "num": "III", "title": "Анализ компании",           "subtitle": "Профиль, финансы, SWOT, digital"},
@@ -76,6 +79,7 @@ SECTIONS = [
 
 # Which blocks belong to which section
 SECTION_BLOCKS: dict[str, list[str]] = {
+    "summary":  ["E1"],
     "macro":    ["M1", "M2", "M3", "M4"],
     "meso":     ["C1", "C2", "C3", "C4", "C5", "C6"],
     "micro":    ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10"],
@@ -92,7 +96,7 @@ SECTION_BLOCKS: dict[str, list[str]] = {
 # Block availability per business type
 PROFILES: dict[BusinessType, list[str]] = {
     BusinessType.B2C_SERVICE: [
-        "M1", "M2", "M3", "M4",
+        "E1", "M1", "M2", "M3", "M4",
         "C1", "C2", "C3", "C4", "C6",
         "P1", "P2", "P3", "P4", "P6", "P7", "P10",
         "S1", "S2", "S3", "S4", "S5",
@@ -100,7 +104,7 @@ PROFILES: dict[BusinessType, list[str]] = {
         "O1", "O2", "C7", "C8", "B1",
     ],
     BusinessType.B2C_PRODUCT: [
-        "M1", "M2", "M3", "M4",
+        "E1", "M1", "M2", "M3", "M4",
         "C1", "C2", "C3", "C4", "C6",
         "P1", "P2", "P3", "P4", "P9", "P10",
         "S1", "S2", "S3", "S4", "S5",
@@ -108,7 +112,7 @@ PROFILES: dict[BusinessType, list[str]] = {
         "O1", "O2", "C7", "C8", "B1",
     ],
     BusinessType.B2B_SERVICE: [
-        "M1", "M2", "M3", "M4",
+        "E1", "M1", "M2", "M3", "M4",
         "C1", "C2", "C3", "C4", "C5",
         "P1", "P2", "P3", "P4", "P5", "P8", "P10",
         "S1", "S2", "S3", "S4", "S5",
@@ -116,7 +120,7 @@ PROFILES: dict[BusinessType, list[str]] = {
         "O1", "O2", "C7", "C8", "B1",
     ],
     BusinessType.B2B_PRODUCT: [
-        "M1", "M2", "M3", "M4",
+        "E1", "M1", "M2", "M3", "M4",
         "C1", "C2", "C3", "C4", "C5",
         "P1", "P2", "P3", "P4", "P5", "P8", "P9", "P10",
         "S1", "S2", "S3", "S4", "S5",
@@ -124,7 +128,7 @@ PROFILES: dict[BusinessType, list[str]] = {
         "O1", "O2", "C7", "C8", "B1",
     ],
     BusinessType.PLATFORM: [
-        "M1", "M2", "M3", "M4",
+        "E1", "M1", "M2", "M3", "M4",
         "C1", "C2", "C3", "C4",
         "P1", "P2", "P3", "P4", "P5", "P10",
         "S1", "S2", "S3", "S4", "S5",
@@ -132,7 +136,7 @@ PROFILES: dict[BusinessType, list[str]] = {
         "O1", "O2", "C7", "C8", "B1",
     ],
     BusinessType.B2B_B2C_HYBRID: [
-        "M1", "M2", "M3", "M4",
+        "E1", "M1", "M2", "M3", "M4",
         "C1", "C2", "C3", "C4", "C5", "C6",
         "P1", "P2", "P3", "P4", "P5", "P8", "P9", "P10",
         "S1", "S2", "S3", "S4", "S5",

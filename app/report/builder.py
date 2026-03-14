@@ -29,6 +29,7 @@ from app.report.profiles import (
 
 # Human-readable names for placeholder fallback (T9/T14)
 BLOCK_NAMES: dict[str, str] = {
+    "E1": "Исполнительное резюме",
     "M1": "Обзор рынка", "M2": "Регуляторика", "M3": "Технологические тренды", "M4": "Рынок труда",
     "C1": "Перцептуальная карта", "C2": "Профили конкурентов", "C3": "Радар компетенций",
     "C4": "Сравнительная таблица", "C5": "Охват рынка", "C6": "География конкурентов",
@@ -204,6 +205,8 @@ def _build_base_context(data: ReportData, charts: dict[str, str], theme: dict) -
     ]
 
     return {
+        # Executive Summary
+        "executive_summary": data.executive_summary,
         # Core
         "company": data.company,
         "report_date": data.report_date,

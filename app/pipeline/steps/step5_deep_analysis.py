@@ -1168,6 +1168,138 @@ def analyze_opinions(
 
 
 # ════════════════════════════════════════════════════════
+# Executive Summary (generated AFTER all analysis)
+# ════════════════════════════════════════════════════════
+
+def analyze_executive_summary(
+    scraped: dict,
+    company_info: dict,
+    fns_data: dict,
+    competitors: list[dict],
+    market_info: dict,
+    swot: dict | None = None,
+    recommendations: list | None = None,
+) -> dict:
+    """Generate executive summary: key metrics, highlights, top recommendations.
+
+    Called AFTER all other analysis sections are complete.
+    Uses FAST model (Gemini) to save costs — this is a synthesis task, not analysis.
+    """
+    name = company_info.get("name", "Компания")
+
+    # Prepare financial summary
+    fin_summary = "Нет данных ФНС"
+    financials = fns_data.get("financials", [])
+    if financials:
+        latest = financials[-1] if isinstance(financials, list) else financials
+        if isinstance(latest, dict):
+            rev = latest.get("revenue")
+            profit = latest.get("net_profit")
+            year = latest.get("year", "?")
+            parts = [f"Год: {year}"]
+            if rev is not None:
+                if rev >= 1_000_000:
+                    parts.append(f"выручка {rev / 1_000_000:.1f} млрд ₽")
+                elif rev >= 1000:
+                    parts.append(f"выручка {rev / 1000:.1f} млн ₽")
+            if profit is not None:
+                if abs(profit) >= 1000:
+                    parts.append(f"прибыль {profit / 1000:.1f} млн ₽")
+            fin_summary = ", ".join(parts)
+
+    # Prepare SWOT summary
+    swot_text = "SWOT не сгенерирован"
+    if isinstance(swot, dict):
+        parts = []
+        for key, label in [("strengths", "S"), ("weaknesses", "W"), ("opportunities", "O"), ("threats", "T")]:
+            items = swot.get(key, [])
+            if isinstance(items, list) and items:
+                parts.append(f"{label}: {'; '.join(str(i) for i in items[:2])}")
+        if parts:
+            swot_text = "\n".join(parts)
+
+    # Prepare competitors summary
+    comp_names = [c.get("name", "?") for c in (competitors or [])[:5]]
+    comp_text = ", ".join(comp_names) if comp_names else "не определены"
+
+    # Prepare recommendations summary
+    rec_text = "нет"
+    if isinstance(recommendations, list) and recommendations:
+        rec_items = []
+        for r in recommendations[:3]:
+            if isinstance(r, dict):
+                rec_items.append(f"- {r.get('title', '?')}: {r.get('description', '')[:100]}")
+        rec_text = "\n".join(rec_items) if rec_items else "нет"
+
+    prompt = f"""Создай исполнительное резюме для руководства компании «{name}».
+
+## Финансы
+{fin_summary}
+
+## Конкуренты
+{comp_text}
+
+## SWOT
+{swot_text}
+
+## Рекомендации
+{rec_text}
+
+## Рынок
+{market_info.get('market_description', 'нет данных')[:300]}
+
+Верни JSON:
+{{
+  "executive_summary": {{
+    "key_metrics": [
+      {{"value": "XXX", "label": "Выручка", "color": "gold"}},
+      {{"value": "+XX%", "label": "Рост г/г", "color": "green"}},
+      {{"value": "X", "label": "Конкуренты", "color": "blue"}},
+      {{"value": "XX%", "label": "Рентабельность", "color": "purple"}}
+    ],
+    "highlights": [
+      "Вывод 1 с конкретными цифрами",
+      "Вывод 2",
+      "Вывод 3",
+      "Вывод 4"
+    ],
+    "top_recommendations": [
+      {{
+        "title": "Приоритет 1",
+        "description": "Описание с обоснованием",
+        "timeline": "3-6 месяцев",
+        "priority_color": "red"
+      }},
+      {{
+        "title": "Приоритет 2",
+        "description": "Описание",
+        "timeline": "6-12 месяцев",
+        "priority_color": "gold"
+      }},
+      {{
+        "title": "Приоритет 3",
+        "description": "Описание",
+        "timeline": "12+ месяцев",
+        "priority_color": "green"
+      }}
+    ],
+    "verdict": "Общая оценка в 2-3 предложениях: перспективы, риски, рекомендация.",
+    "verdict_color": "gold"
+  }}
+}}
+
+Правила:
+1. key_metrics — 4-6 показателей из данных выше (НЕ выдумывай цифры)
+2. highlights — 4-6 пунктов, конкретно с числами
+3. top_recommendations — 3 приоритетных из списка рекомендаций
+4. verdict_color: green (сильный), gold (средний), red (проблемный)
+5. Всё на русском"""
+
+    result = _safe_llm_call(prompt, "executive_summary", max_tokens=2500)
+    return result
+
+
+# ════════════════════════════════════════════════════════
 # Секция 8: Продукты и услуги
 # ════════════════════════════════════════════════════════
 

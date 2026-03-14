@@ -1034,6 +1034,24 @@ def _run_analysis_steps(sid: str):
         # Sanitize LLM output first
         report_data = _sanitize_llm_output(report_data)
 
+        # Executive Summary — generated AFTER all analysis, uses SWOT + recommendations
+        try:
+            from app.pipeline.steps.step5_deep_analysis import analyze_executive_summary
+            exec_summary = analyze_executive_summary(
+                scraped=data.get("scraped", {}),
+                company_info=company_info,
+                fns_data=data.get("fns_data", {}),
+                competitors=confirmed_competitors,
+                market_info=data.get("market_info", {}),
+                swot=report_data.get("swot"),
+                recommendations=report_data.get("recommendations"),
+            )
+            if exec_summary and exec_summary.get("executive_summary"):
+                report_data["executive_summary"] = exec_summary["executive_summary"]
+                logger.info("Executive summary generated")
+        except Exception as e:
+            logger.warning("Executive summary failed: %s", str(e)[:200])
+
         # Step 2a: Verification (pure Python)
         _push_event(sid, "step", {"num": "2a", "status": "active", "text": "Верификация расчётов..."})
         if mc:

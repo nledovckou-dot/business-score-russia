@@ -259,6 +259,9 @@ class ReportData(BaseModel):
     founders: List[Founder] = Field(default_factory=list)
     opinions: List[Opinion] = Field(default_factory=list)
 
+    # Executive Summary (generated after all analysis)
+    executive_summary: Optional[Dict[str, Any]] = None
+
     # v2.0 — Pipeline extensions
     calc_traces: List[CalcTrace] = Field(default_factory=list)
     methodology: Dict[str, str] = Field(default_factory=dict)
