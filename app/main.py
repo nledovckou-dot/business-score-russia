@@ -1782,8 +1782,14 @@ async def debug_rate():
 @app.post("/api/analyze")
 async def analyze_simple(request: Request):
     """Non-interactive endpoint: full pipeline with real FNS data (no user pauses)."""
-    # Rate limit temporarily disabled for batch testing (v0.7.0)
-    # TODO: re-enable after demo reports are generated
+    client_ip = get_client_ip(request)
+    report_error = check_rate_limit_report(client_ip)
+    if report_error:
+        return JSONResponse(
+            {"ok": False, "error": report_error},
+            status_code=429,
+            headers={"Retry-After": "3600"},
+        )
 
     body = await request.json()
     raw_url = (body.get("url") or "").strip()

@@ -1,0 +1,113 @@
+[
+  {
+    "company": "Selectel",
+    "experts": [
+      {
+        "role": "CFO",
+        "score": 4,
+        "strengths": [
+          "Наличие базовых финансовых метрик",
+          "Попытка использования стандартных финансовых формул"
+        ],
+        "weaknesses": [
+          "Отсутствие актуальных финансовых данных",
+          "Некорректное использование уровня достоверности",
+          "Недостаточная обоснованность сценариев"
+        ],
+        "comment": "Отчет содержит существенные недостатки в финансовых данных и расчетах, что не позволяет подтвердить его достоверность."
+      },
+      {
+        "role": "CMO",
+        "score": 5,
+        "strengths": [
+          "Попытка анализа конкурентного ландшафта",
+          "Наличие SWOT-анализа"
+        ],
+        "weaknesses": [
+          "Отсутствие значимых конкурентов",
+          "Неактуальные данные о социальных сетях",
+          "Отсутствие оценки TAM/SAM/SOM"
+        ],
+        "comment": "Отчет требует доработки в нескольких ключевых областях, включая конкурентный анализ и актуализацию данных о социальных сетях."
+      },
+      {
+        "role": "Industry Expert",
+        "score": 4,
+        "strengths": [
+          "Общий обзор рыночных трендов",
+          "Попытка анализа регуляторных изменений"
+        ],
+        "weaknesses": [
+          "Неверное определение типа бизнеса",
+          "Отсутствие информации о фаундерах",
+          "Недостаточная информация о рыночной доле"
+        ],
+        "comment": "Отчет содержит несколько критических ошибок, включая неверное определение типа бизнеса и отсутствие информации о фаундерах."
+      },
+      {
+        "role": "Skeptic",
+        "score": 3,
+        "strengths": [
+          "Попытка верификации данных",
+          "Наличие методологии"
+        ],
+        "weaknesses": [
+          "Отсутствие источников для рыночной доли",
+          "Использование оценочных данных без подтверждения",
+          "Некорректно указанный тип бизнеса"
+        ],
+        "comment": "Отчет содержит несколько критических недочетов, включая отсутствие источников для рыночной доли и финансовых показателей."
+      },
+      {
+        "role": "CEO",
+        "score": 4,
+        "strengths": [
+          "Попытка стратегического анализа",
+          "Наличие рекомендаций"
+        ],
+        "weaknesses": [
+          "Отсутствие финансовых данных",
+          "Неверное определение типа бизнеса",
+          "Недостаточная верификация рыночной информации"
+        ],
+        "comment": "Отчет не готов к публикации из-за множества критических замечаний, включая отсутствие финансовых данных и неверное определение типа бизнеса."
+      }
+    ],
+    "average_score": 4.0,
+    "overall_verdict": "Отчет содержит серьезные недостатки, включая отсутствие актуальных финансовых данных, неверное определение типа бизнеса и недостаточную верификацию рыночной информации. Необходимо внести значительные доработки для повышения его достоверности и полезности.",
+    "top_issues": [
+      "Отсутствие актуальных финансовых данных",
+      "Неверное определение типа бизнеса",
+      "Недостаточная верификация рыночной информации"
+    ],
+    "improvements_vs_before": [
+      "Попытка использования стандартных финансовых формул",
+      "Наличие SWOT-анализа",
+      "Попытка анализа регуляторных изменений"
+    ],
+    "report_url": "http://89.167.19.68:8090/reports/report_d13620d3.html",
+    "generation": {
+      "url": "http://89.167.19.68:8090/reports/report_d13620d3.html",
+      "company": "Selectel",
+      "size_kb": 197,
+      "elapsed_sec": 352
+    }
+  },
+  {
+    "company": "Skillbox (B2B_SERVICE — EdTech)",
+    "report_url": "http://89.167.19.68:8090/reports/report_aa6a4e96.html",
+    "error": "HTTP Error 429: Too Many Requests"
+  },
+  {
+    "company": "Aviasales (PLATFORM — поиск билетов)",
+    "error": "OpenAI API error 429: {\n    \"error\": {\n        \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.\",\n        \"type\": \"insufficient_quota\",\n      ..."
+  },
+  {
+    "company": "Dodo Engineering (B2C_SERVICE — пиццерия)",
+    "error": "OpenAI API error 429: {\n    \"error\": {\n        \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.\",\n        \"type\": \"insufficient_quota\",\n      ..."
+  },
+  {
+    "company": "Ozon (PLATFORM — маркетплейс)",
+    "error": "OpenAI API error 429: {\n    \"error\": {\n        \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.\",\n        \"type\": \"insufficient_quota\",\n      ..."
+  }
+]

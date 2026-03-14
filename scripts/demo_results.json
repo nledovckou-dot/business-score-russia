@@ -1,0 +1,47 @@
+[
+  {
+    "url": "http://89.167.19.68:8090/reports/report_bdd19006.html",
+    "company": "Авиасейлс",
+    "size_kb": 154,
+    "elapsed_sec": 318,
+    "session_id": "5dc3e329cabb",
+    "input_name": "Aviasales (PLATFORM — поиск авиабилетов)",
+    "input_url": "https://aviasales.ru"
+  },
+  {
+    "url": "http://89.167.19.68:8090/reports/report_7ad63700.html",
+    "company": "Ozon",
+    "size_kb": 152,
+    "elapsed_sec": 249,
+    "session_id": "154abe547c77",
+    "input_name": "Ozon (PLATFORM — маркетплейс)",
+    "input_url": "https://ozon.ru"
+  },
+  {
+    "url": "http://89.167.19.68:8090/reports/report_ae51e27e.html",
+    "company": "Skillbox",
+    "size_kb": 187,
+    "elapsed_sec": 350,
+    "session_id": "7bba50fc29f0",
+    "input_name": "Skillbox (B2B_SERVICE — EdTech, онлайн-образование)",
+    "input_url": "https://skillbox.ru"
+  },
+  {
+    "url": "http://89.167.19.68:8090/reports/report_06e90799.html",
+    "company": "Selectel",
+    "size_kb": 146,
+    "elapsed_sec": 534,
+    "session_id": "2e3b943a12de",
+    "input_name": "Selectel (B2B_SERVICE — облачный хостинг)",
+    "input_url": "https://selectel.ru"
+  },
+  {
+    "url": "http://89.167.19.68:8090/reports/report_3132c7a3.html",
+    "company": "Dodo Engineering",
+    "size_kb": 142,
+    "elapsed_sec": 518,
+    "session_id": "526bbf65c21e",
+    "input_name": "Dodo Engineering / Додо Пицца (B2C_SERVICE — пиццерия)",
+    "input_url": "https://dodo.dev"
+  }
+]

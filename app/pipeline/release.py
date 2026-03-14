@@ -64,9 +64,16 @@ def finalize_release(
 
     if quality_result is None:
         add_blocking_issue(report_data, "Автоматическая проверка качества не выполнена")
-    elif not quality_result.get("passed", False):
-        for issue in (quality_result.get("critical_failures") or [])[:5]:
-            add_blocking_issue(report_data, f"QA: {issue}")
+    else:
+        q_score = quality_result.get("score", 0)
+        if q_score < 70:
+            add_blocking_issue(
+                report_data,
+                f"Качество отчёта {q_score}/100 — ниже порога публикации (70/100)",
+            )
+        if not quality_result.get("passed", False):
+            for issue in (quality_result.get("critical_failures") or [])[:5]:
+                add_blocking_issue(report_data, f"QA: {issue}")
 
     failed_gates = report_data.get("failed_gates") or []
     if len(failed_gates) > 3:

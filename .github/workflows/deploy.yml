@@ -109,89 +109,22 @@ jobs:
             sudo -n systemctl start bsr
             sleep 5
 
-            # Verify landing page HTML length matches Python import
-            CURL_LEN=$(curl -s http://localhost:8083/ | wc -c)
-            echo "CURL landing length: $CURL_LEN (expected ~27743)"
-
-            # Verify the code is correct
-            echo "=== Verify deployed code ==="
-            grep "REPORTS_PER_HOUR" "$APP_DIR/app/security.py"
-            echo "--- landing.py CSS root ---"
-            grep -o ':root{[^}]*}' "$APP_DIR/app/landing.py" | head -1
-            echo "--- landing.py SVG stroke ---"
-            grep 'stroke-width' "$APP_DIR/app/landing.py" | head -3
-            echo "--- git HEAD ---"
-            cd "$APP_DIR" && git log --oneline -1
-
-            # Debug: check what Python serves as landing
-            cd "$APP_DIR" && "$APP_DIR/.venv/bin/python3" -c 'import sys; sys.path.insert(0,"."); from app.landing import LANDING_HTML; print("LEN:", len(LANDING_HTML)); print("HAS_NAVY:", "--navy" in LANDING_HTML); i=LANDING_HTML.find(":root{"); print("CSS:", LANDING_HTML[i:i+80] if i>=0 else "NOT_FOUND")'
-
-            # Launch test analysis
-            echo "--- Launching test analysis ---"
-            TEST_RESP=$(curl -sS -X POST http://localhost:8083/api/analyze -H "Content-Type: application/json" -d '{"url":"https://dodopizza.ru","company_name":"Додо Пицца"}' 2>&1)
-            echo "$TEST_RESP"
-            TEST_SID=$(echo "$TEST_RESP" | "$APP_DIR/.venv/bin/python3" -c "import sys,json; print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null)
-            if [ -n "$TEST_SID" ]; then
-              sleep 30
-              echo "--- Analysis status after 30s ---"
-              curl -sS "http://localhost:8083/api/analyze/$TEST_SID" 2>&1 | "$APP_DIR/.venv/bin/python3" -m json.tool 2>/dev/null
-            fi
-
             # Firewall
             sudo -n ufw allow 8090/tcp 2>/dev/null || true
             sudo -n iptables -C INPUT -p tcp --dport 8090 -j ACCEPT 2>/dev/null || sudo -n iptables -I INPUT -p tcp --dport 8090 -j ACCEPT
 
-            # Debug: check what nginx is actually serving vs uvicorn
-            echo "=== NGINX CONFIG ==="
-            cat /etc/nginx/sites-enabled/bsr.conf 2>/dev/null | head -30
-            echo "=== NGINX DEFAULT ==="
-            ls -la /etc/nginx/sites-enabled/ 2>/dev/null
-            echo "=== CURL LOCALHOST:8083 ==="
-            curl -s http://localhost:8083/ | head -3
-            echo "=== CURL LOCALHOST:8090 ==="
-            curl -s http://localhost:8090/ | head -3
-
-            # Diagnostics
-            echo "=== BSR service status ==="
+            # Verify deploy
+            echo "=== Deploy verification ==="
+            cd "$APP_DIR" && git log --oneline -1
+            echo "--- Service status ---"
             sudo -n systemctl status bsr --no-pager | head -10
-            echo "=== Checking port 8083 ==="
-            curl -s -o /dev/null -w "%{http_code}" http://localhost:8083/ || echo "not yet ready"
-            echo ""
-            echo "=== Checking port 8090 (nginx) ==="
-            curl -s -o /dev/null -w "%{http_code}" http://localhost:8090/ || echo "not yet ready"
-
-            # ── Full infra diagnostic ──
-            echo ""
-            echo "===== INFRA DIAGNOSTIC ====="
-
-            echo "--- DDG TEST ---"
-            timeout 8 curl -sS -o /dev/null -w "DDG: HTTP %{http_code}, time %{time_total}s\n" -A "Mozilla/5.0" "https://html.duckduckgo.com/html/?q=test" 2>&1 || echo "DDG: BLOCKED/TIMEOUT"
-
-            echo "--- GEMINI SEARCH GROUNDING ---"
-            GKEY=$(grep "^GEMINI_API_KEY=" .env 2>/dev/null | head -1 | cut -d= -f2 | tr -d '"' | tr -d "'" | tr -d ' ')
-            if [ -n "$GKEY" ]; then
-              RESP=$(timeout 25 curl -sS -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$GKEY" -H "Content-Type: application/json" -d '{"contents":[{"parts":[{"text":"Найди ИНН компании Додо Пицца"}]}],"tools":[{"google_search":{}}],"generationConfig":{"temperature":0,"maxOutputTokens":256}}' 2>&1)
-              echo "$RESP" | "$APP_DIR/.venv/bin/python3" -c "import sys,json; d=json.load(sys.stdin); c=d.get('candidates',[{}])[0]; gm=c.get('groundingMetadata',{}); chunks=gm.get('groundingChunks',[]); print(f'Grounding chunks: {len(chunks)}'); [print(f'  - {ch.get(\"web\",{}).get(\"title\",\"\")[:60]} | {ch.get(\"web\",{}).get(\"uri\",\"\")}') for ch in chunks[:5]]; print(f'Answer: {c.get(\"content\",{}).get(\"parts\",[{}])[0].get(\"text\",\"\")[:300]}')" 2>/dev/null || echo "Gemini raw: $(echo $RESP | head -c 500)"
-            else
-              echo "SKIP - no GEMINI_API_KEY"
-            fi
-
-            echo "--- RUSSIAN PROXY ---"
-            timeout 10 curl -sS -o /dev/null -w "Proxy: HTTP %{http_code}, time %{time_total}s\n" -X POST http://158.160.158.164:8888/scrape -H "X-Proxy-Token: bsr-proxy-2026" -H "Content-Type: application/json" -d '{"url":"https://dodopizza.ru"}' 2>&1 || echo "Proxy: UNREACHABLE"
-
-            echo "--- PLAYWRIGHT ---"
-            "$APP_DIR/.venv/bin/python3" -c "from playwright.sync_api import sync_playwright; print('Playwright: OK')" 2>&1 | head -3
-
-            echo "--- FNS API ---"
-            FKEY=$(grep "^FNS_API_KEY=" .env 2>/dev/null | head -1 | cut -d= -f2 | tr -d '"' | tr -d "'" | tr -d ' ')
-            timeout 8 curl -sS "https://api-fns.ru/api/search?q=%D0%B4%D0%BE%D0%B4%D0%BE+%D0%BF%D0%B8%D1%86%D1%86%D0%B0&key=${FKEY:-demo}" 2>&1 | "$APP_DIR/.venv/bin/python3" -c "import sys,json; d=json.load(sys.stdin); items=d.get('items',[]); print(f'FNS results: {len(items)}'); [print(f'  - {it.get(\"ЮЛ\",{}).get(\"НаимСокрЮЛ\",\"?\")} ИНН:{it.get(\"ЮЛ\",{}).get(\"ИНН\",\"?\")}') for it in items[:3]]" 2>/dev/null || echo "FNS: FAILED"
-
-            echo "--- REPORTS ON DISK ---"
-            ls -lht "$APP_DIR/app/storage/reports/report_"*.html 2>/dev/null | head -5
-            echo "Total: $(ls "$APP_DIR/app/storage/reports/report_"*.html 2>/dev/null | wc -l) reports"
-
-            echo "--- RECENT ERRORS ---"
-            sudo -n journalctl -u bsr --no-pager -n 100 --since "5 min ago" 2>/dev/null | grep -i "error\|exception\|traceback" | tail -10
-
-
+            echo "--- Health check ---"
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8083/api/health)
+            echo "uvicorn :8083 → HTTP $HTTP_CODE"
+            HTTP_CODE_NGINX=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8090/api/health)
+            echo "nginx :8090 → HTTP $HTTP_CODE_NGINX"
+            echo "--- Reports on disk ---"
+            ls "$APP_DIR/app/storage/reports/report_"*.html 2>/dev/null | wc -l | xargs -I{} echo "Total: {} reports"
+            echo "--- Recent errors ---"
+            sudo -n journalctl -u bsr --no-pager -n 50 --since "2 min ago" 2>/dev/null | grep -i "error\|exception\|traceback" | tail -5
 
