@@ -568,7 +568,7 @@ async def admin_monitoring(request: Request):
     async def probe_keyso():
         token = os.environ.get(
             "KEYSO_API_TOKEN",
-            "69b55d3c5ad036.282600972fbfa13f85beaece8e7d215ad21351f1",
+            "69b563282aa8e2.426513828814d70e40a4a42b1235ab9278ba2bda",
         )
         if not token:
             return {"details": "Key not set", "ok": False, "quota": None}
@@ -585,6 +585,24 @@ async def admin_monitoring(request: Request):
                 return {"details": "OK (empty)", "quota": "10 req/10s"}
             if r.status_code in (401, 403):
                 return {"details": f"Token invalid ({r.status_code})", "ok": False, "quota": None}
+            return {"details": f"HTTP {r.status_code}", "ok": False, "quota": None}
+
+    async def probe_checko():
+        key = os.environ.get("CHECKO_API_KEY", "dHL2dcu0gcn3Hqfz")
+        if not key:
+            return {"details": "Ключ не задан", "ok": False, "quota": None}
+        async with httpx.AsyncClient() as c:
+            r = await c.get(f"https://api.checko.ru/v2/company", params={
+                "key": key, "inn": "7707083893",  # Сбербанк — тестовый запрос
+            }, timeout=TIMEOUT)
+            if r.status_code == 200:
+                data = r.json()
+                meta = data.get("meta", {})
+                company = data.get("data", {})
+                name = company.get("НаимСокр", "?")
+                today_count = meta.get("today_request_count", "?")
+                balance = meta.get("balance", "?")
+                return {"details": f"OK ({name})", "quota": f"today: {today_count}, balance: {balance}"}
             return {"details": f"HTTP {r.status_code}", "ok": False, "quota": None}
 
     async def probe_telegram():
@@ -613,6 +631,7 @@ async def admin_monitoring(request: Request):
         probe("HeadHunter", "Data", probe_hh()),
         probe("2GIS", "Data", probe_twogis()),
         probe("Keys.so", "SEO", probe_keyso()),
+        probe("Checko.ru", "Data", probe_checko()),
         probe("Telegram Bot", "Infra", probe_telegram()),
         probe("BSR (self)", "Infra", probe_bsr_self()),
     ]
