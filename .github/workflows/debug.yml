@@ -7,7 +7,7 @@ jobs:
   status:
     runs-on: ubuntu-latest
     steps:
-      - name: List ALL reports on VPS
+      - name: Launch test analysis
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -16,26 +16,15 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 3m
           script: |
-            DIR=/opt/business-score-russia/app/storage/reports
-            echo "=== ALL REPORT FILES ==="
-            ls -la $DIR/report_*.html 2>/dev/null | awk '{print $5, $6, $7, $8, $9}'
-            echo ""
-            echo "=== REPORT DETAILS ==="
-            for f in $DIR/report_*.html; do
-              [ -f "$f" ] || continue
-              ID=$(basename "$f" .html | sed 's/report_//')
-              SIZE=$(du -h "$f" | cut -f1)
-              TITLE=$(grep -oP '<title>\K[^<]+' "$f" 2>/dev/null | head -1)
-              DATE=$(stat -c %y "$f" | cut -d. -f1)
-              H2=$(grep -c '<h2' "$f" 2>/dev/null || echo 0)
-              SVG=$(grep -c '<svg' "$f" 2>/dev/null || echo 0)
-              COMP=$(grep -ci 'конкурент' "$f" 2>/dev/null || echo 0)
-              PLACE=$(grep -ci 'TODO\|placeholder\|N/A\|undefined' "$f" 2>/dev/null || echo 0)
-              echo "$ID | $SIZE | $DATE | h2=$H2 svg=$SVG comp=$COMP plc=$PLACE | $TITLE"
-            done
-            echo ""
-            echo "=== NGINX CONFIG ==="
-            grep -A3 'location /reports' /etc/nginx/sites-enabled/bsr.conf 2>/dev/null || echo "No nginx reports config"
-            echo ""
-            echo "=== BSR SERVICE ==="
+            echo "=== BSR Service Status ==="
             sudo -n systemctl status bsr --no-pager | head -5
+
+            echo ""
+            echo "=== Launch Test Analysis: Додо Пицца ==="
+            curl -s -X POST http://localhost:8083/api/analyze \
+              -H "Content-Type: application/json" \
+              -d '{"url": "https://dodopizza.ru", "company_name": "Додо Пицца"}' | head -5
+
+            echo ""
+            echo "=== Recent Logs ==="
+            sudo -n journalctl -u bsr --no-pager -n 30 | tail -20
