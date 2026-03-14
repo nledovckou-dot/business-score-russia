@@ -7,80 +7,35 @@ jobs:
   status:
     runs-on: ubuntu-latest
     steps:
-      - name: Audit reports via SSH
+      - name: List ALL reports on VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          command_timeout: 5m
+          command_timeout: 3m
           script: |
             DIR=/opt/business-score-russia/app/storage/reports
-
-            echo "=== REPORT AUDIT ==="
-            for ID in 437784aa 7f58b489 88ed9734 eccaeacb 56743cb7 d5412710 c9499eb7 1bb8532a 03b2729a cbb07ef1; do
-              FILE="$DIR/report_${ID}.html"
-              if [ ! -f "$FILE" ]; then
-                echo "[$ID] FILE NOT FOUND"
-                continue
-              fi
-
-              SIZE=$(du -h "$FILE" | cut -f1)
-              TITLE=$(grep -oP '<title>\K[^<]+' "$FILE" 2>/dev/null | head -1)
-              echo ""
-              echo "=== [$ID] $TITLE ($SIZE) ==="
-
-              # Sections count
-              H2=$(grep -c '<h2' "$FILE" 2>/dev/null || echo 0)
-              H3=$(grep -c '<h3' "$FILE" 2>/dev/null || echo 0)
-              echo "  Sections: h2=$H2, h3=$H3"
-
-              # SWOT
-              SWOT_S=$(grep -ci 'strengths\|сильные' "$FILE" 2>/dev/null || echo 0)
-              SWOT_W=$(grep -ci 'weaknesses\|слабые' "$FILE" 2>/dev/null || echo 0)
-              SWOT_O=$(grep -ci 'opportunities\|возможности' "$FILE" 2>/dev/null || echo 0)
-              SWOT_T=$(grep -ci 'threats\|угрозы' "$FILE" 2>/dev/null || echo 0)
-              echo "  SWOT: S=$SWOT_S W=$SWOT_W O=$SWOT_O T=$SWOT_T"
-
-              # Competitors
-              COMP=$(grep -ci 'competitor\|конкурент' "$FILE" 2>/dev/null || echo 0)
-              echo "  Competitor mentions: $COMP"
-
-              # Financials / FNS
-              FNS=$(grep -ci 'фнс\|налоговая\|выручка' "$FILE" 2>/dev/null || echo 0)
-              echo "  FNS/financial mentions: $FNS"
-
-              # SVG charts
-              SVG=$(grep -c '<svg' "$FILE" 2>/dev/null || echo 0)
-              echo "  SVG charts: $SVG"
-
-              # Board of Directors
-              BOARD=$(grep -ci 'board\|директоров\|борд\|рецензия\|эксперт' "$FILE" 2>/dev/null || echo 0)
-              QA=$(grep -ci 'QA Director\|качеству\|quality' "$FILE" 2>/dev/null || echo 0)
-              echo "  Board mentions: $BOARD, QA Director: $QA"
-
-              # Problems: JSON in text
-              JSON=$(grep -c '{"' "$FILE" 2>/dev/null || echo 0)
-              echo "  JSON fragments: $JSON"
-
-              # Placeholders
-              PLACE=$(grep -ci 'TODO\|placeholder\|N/A\|undefined\|lorem' "$FILE" 2>/dev/null || echo 0)
-              echo "  Placeholders: $PLACE"
-
-              # Empty sections (div with very little content)
-              EMPTY=$(grep -c 'Нет данных\|Данные недоступны\|Информация отсутствует' "$FILE" 2>/dev/null || echo 0)
-              echo "  'No data' sections: $EMPTY"
-
-              # KPI
-              KPI=$(grep -ci 'kpi\|benchmark\|бенчмарк' "$FILE" 2>/dev/null || echo 0)
-              echo "  KPI/benchmark mentions: $KPI"
-
-              # Glossary
-              GLOSS=$(grep -ci 'глоссарий\|glossary\|термин' "$FILE" 2>/dev/null || echo 0)
-              echo "  Glossary mentions: $GLOSS"
-
-              # First 3 h2 titles
-              echo "  Top sections:"
-              grep -oP '<h2[^>]*>\K[^<]+' "$FILE" 2>/dev/null | head -8 | sed 's/^/    /'
+            echo "=== ALL REPORT FILES ==="
+            ls -la $DIR/report_*.html 2>/dev/null | awk '{print $5, $6, $7, $8, $9}'
+            echo ""
+            echo "=== REPORT DETAILS ==="
+            for f in $DIR/report_*.html; do
+              [ -f "$f" ] || continue
+              ID=$(basename "$f" .html | sed 's/report_//')
+              SIZE=$(du -h "$f" | cut -f1)
+              TITLE=$(grep -oP '<title>\K[^<]+' "$f" 2>/dev/null | head -1)
+              DATE=$(stat -c %y "$f" | cut -d. -f1)
+              H2=$(grep -c '<h2' "$f" 2>/dev/null || echo 0)
+              SVG=$(grep -c '<svg' "$f" 2>/dev/null || echo 0)
+              COMP=$(grep -ci 'конкурент' "$f" 2>/dev/null || echo 0)
+              PLACE=$(grep -ci 'TODO\|placeholder\|N/A\|undefined' "$f" 2>/dev/null || echo 0)
+              echo "$ID | $SIZE | $DATE | h2=$H2 svg=$SVG comp=$COMP plc=$PLACE | $TITLE"
             done
+            echo ""
+            echo "=== NGINX CONFIG ==="
+            grep -A3 'location /reports' /etc/nginx/sites-enabled/bsr.conf 2>/dev/null || echo "No nginx reports config"
+            echo ""
+            echo "=== BSR SERVICE ==="
+            sudo -n systemctl status bsr --no-pager | head -5
