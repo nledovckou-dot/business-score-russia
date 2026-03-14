@@ -6,7 +6,7 @@ jobs:
   debug:
     runs-on: ubuntu-latest
     steps:
-      - name: Check report status via SSH
+      - name: Launch test reports via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -18,14 +18,17 @@ jobs:
             echo "=== Service status ==="
             systemctl status bsr --no-pager | head -5
             echo ""
-            echo "=== Reports in storage ==="
-            ls -lah /opt/business-score-russia/app/storage/reports/ 2>/dev/null | tail -20
+            echo "=== Existing reports ==="
+            ls -la /opt/business-score-russia/app/storage/reports/ | wc -l
             echo ""
-            echo "=== Check DNS session ==="
-            curl -s http://127.0.0.1:8083/api/analyze/e9d8a1c5a5f7 2>/dev/null | head -c 500
+            echo "=== Launch DNS (B2C) ==="
+            curl -s -X POST http://127.0.0.1:8083/api/analyze \
+              -H "Content-Type: application/json" \
+              -d '{"url":"https://dns-shop.ru"}'
             echo ""
-            echo "=== Check CDEK session ==="
-            curl -s http://127.0.0.1:8083/api/analyze/4445e5a3ecdc 2>/dev/null | head -c 500
+            sleep 15
+            echo "=== Launch CDEK (B2B) ==="
+            curl -s -X POST http://127.0.0.1:8083/api/analyze \
+              -H "Content-Type: application/json" \
+              -d '{"url":"https://cdek.ru"}'
             echo ""
-            echo "=== Recent journal logs ==="
-            journalctl -u bsr --since "25 min ago" --no-pager | grep -i -E "error|fail|complete|report.*saved|board|quality" | tail -20
