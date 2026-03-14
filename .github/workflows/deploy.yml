@@ -98,13 +98,12 @@ jobs:
             fi
             sudo -n nginx -t && sudo -n systemctl reload nginx || echo "nginx reload failed, check config"
 
-            # Stop service and kill ALL uvicorn processes
+            # Stop service and kill ALL stale uvicorn processes
             sudo -n systemctl stop bsr 2>/dev/null || true
             sleep 2
-            sudo -n pkill -f "uvicorn app.main" 2>/dev/null || true
+            # Kill any leftover uvicorn by exact binary path (not -f to avoid killing SSH)
+            sudo -n killall -9 uvicorn 2>/dev/null || true
             sleep 1
-            echo "--- Remaining uvicorn processes ---"
-            pgrep -af uvicorn || echo "No uvicorn running (good)"
 
             # Restart service
             sudo -n systemctl start bsr
