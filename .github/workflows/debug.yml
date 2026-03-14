@@ -7,7 +7,7 @@ jobs:
   status:
     runs-on: ubuntu-latest
     steps:
-      - name: Launch test analysis
+      - name: Launch test + check status
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -16,15 +16,15 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 3m
           script: |
-            echo "=== BSR Service Status ==="
-            sudo -n systemctl status bsr --no-pager | head -5
-
-            echo ""
-            echo "=== Launch Test Analysis: Додо Пицца ==="
-            curl -s -X POST http://localhost:8083/api/analyze \
+            echo "=== Launch Analysis: Додо Пицца ==="
+            RESP=$(curl -s -X POST http://localhost:8083/api/analyze \
               -H "Content-Type: application/json" \
-              -d '{"url": "https://dodopizza.ru", "company_name": "Додо Пицца"}' | head -5
+              -d '{"url": "https://dodopizza.ru", "company_name": "Додо Пицца"}')
+            echo "$RESP"
+            SID=$(echo "$RESP" | grep -oP '"session_id":"[^"]+' | cut -d'"' -f4)
+            echo "Session: $SID"
 
             echo ""
-            echo "=== Recent Logs ==="
-            sudo -n journalctl -u bsr --no-pager -n 30 | tail -20
+            echo "=== Existing Reports ==="
+            DIR=/opt/business-score-russia/app/storage/reports
+            ls -lt $DIR/report_*.html 2>/dev/null | head -5 | awk '{print $5, $6, $7, $8, $9}'
