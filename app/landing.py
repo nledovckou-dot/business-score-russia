@@ -205,6 +205,57 @@ h1 b{font-weight:600;color:var(--gold)}
             <div class="url-tag" id="url-tag"></div>
         </div>
 
+        <!-- Animated radar visualization -->
+        <div id="radar-viz" style="display:flex;justify-content:center;padding:24px 0 16px;">
+            <svg width="180" height="180" viewBox="0 0 200 200" id="radar-svg">
+                <defs>
+                    <linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#C9A44C;stop-opacity:0.3"/>
+                        <stop offset="100%" style="stop-color:#4A8FE0;stop-opacity:0.3"/>
+                    </linearGradient>
+                </defs>
+                <!-- Background grid -->
+                <polygon points="100,30 166,65 150,140 50,140 34,65" fill="none" stroke="#2A2530" stroke-width="1" opacity="0.5"/>
+                <polygon points="100,50 148,75 137,130 63,130 52,75" fill="none" stroke="#2A2530" stroke-width="0.5" opacity="0.3"/>
+                <!-- Rotating scan line -->
+                <line x1="100" y1="100" x2="100" y2="30" stroke="#C9A44C" stroke-width="1.5" opacity="0.6" id="radar-scan">
+                    <animateTransform attributeName="transform" type="rotate" from="0 100 100" to="360 100 100" dur="4s" repeatCount="indefinite"/>
+                </line>
+                <!-- Data fill (grows as steps complete) -->
+                <polygon id="radar-fill" points="100,85 110,90 108,100 92,100 90,90" fill="url(#rg)" stroke="#C9A44C" stroke-width="1" opacity="0.6">
+                    <animate attributeName="opacity" values="0.3;0.7;0.3" dur="2s" repeatCount="indefinite"/>
+                </polygon>
+                <!-- Pentagon outline -->
+                <polygon points="100,30 166,65 150,140 50,140 34,65" fill="none" stroke="#C9A44C" stroke-width="1.5" opacity="0.8"/>
+                <!-- Corner dots (light up as steps complete) -->
+                <circle cx="100" cy="30" r="4" fill="#2A2530" stroke="#C9A44C" stroke-width="1" class="radar-dot" id="rd1"/>
+                <circle cx="166" cy="65" r="4" fill="#2A2530" stroke="#C9A44C" stroke-width="1" class="radar-dot" id="rd2"/>
+                <circle cx="150" cy="140" r="4" fill="#2A2530" stroke="#C9A44C" stroke-width="1" class="radar-dot" id="rd3"/>
+                <circle cx="50" cy="140" r="4" fill="#2A2530" stroke="#C9A44C" stroke-width="1" class="radar-dot" id="rd4"/>
+                <circle cx="34" cy="65" r="4" fill="#2A2530" stroke="#C9A44C" stroke-width="1" class="radar-dot" id="rd5"/>
+                <!-- Labels -->
+                <text x="100" y="22" text-anchor="middle" fill="#C9A44C" font-size="9" opacity="0.7">SEO</text>
+                <text x="175" y="63" text-anchor="start" fill="#C9A44C" font-size="9" opacity="0.7">Финансы</text>
+                <text x="158" y="152" text-anchor="start" fill="#C9A44C" font-size="9" opacity="0.7">Рынок</text>
+                <text x="42" y="152" text-anchor="end" fill="#C9A44C" font-size="9" opacity="0.7">Digital</text>
+                <text x="25" y="63" text-anchor="end" fill="#C9A44C" font-size="9" opacity="0.7">HR</text>
+                <!-- Center text -->
+                <text x="100" y="97" text-anchor="middle" fill="#C9A44C" font-size="11" font-weight="600" id="radar-pct">0%</text>
+                <text x="100" y="110" text-anchor="middle" fill="#8899AA" font-size="8" id="radar-status">сбор данных</text>
+                <!-- Error state (hidden by default) -->
+                <g id="radar-error" style="display:none;">
+                    <polygon points="100,30 166,65 150,140 50,140 34,65" fill="rgba(212,64,64,0.15)" stroke="#D44040" stroke-width="2"/>
+                    <text x="100" y="100" text-anchor="middle" fill="#D44040" font-size="28">&#x2717;</text>
+                    <text x="100" y="120" text-anchor="middle" fill="#D44040" font-size="10" id="radar-error-text">Ошибка</text>
+                </g>
+                <!-- Success state (hidden by default) -->
+                <g id="radar-success" style="display:none;">
+                    <polygon points="100,30 166,65 150,140 50,140 34,65" fill="rgba(61,184,106,0.15)" stroke="#3DB86A" stroke-width="2"/>
+                    <text x="100" y="105" text-anchor="middle" fill="#3DB86A" font-size="32">&#x2713;</text>
+                </g>
+            </svg>
+        </div>
+
         <div class="steps">
             <div class="step-group">Сбор данных</div>
             <div class="step" id="s0"><div class="step-icon">&middot;</div><span>Выбор AI-моделей</span></div>
@@ -339,6 +390,7 @@ function listenSSE(){
     evtSource.addEventListener('waiting_competitors',function(e){showCompetitorPanel(JSON.parse(e.data))});
     evtSource.addEventListener('done',function(e){
         var d=JSON.parse(e.data);evtSource.close();
+        radarSuccess();
         document.getElementById('result').style.display='block';
         document.getElementById('rcompany').textContent=d.company||'';
         document.getElementById('rlink').href=d.url;
@@ -346,7 +398,7 @@ function listenSSE(){
         if(authUser&&d.reports_remaining!==undefined){authUser.reports_remaining=d.reports_remaining;authUser.reports_used=5-d.reports_remaining;updateAuthUI()}
     });
     evtSource.addEventListener('error',function(e){
-        try{var d=JSON.parse(e.data);showError(d.message||'Ошибка')}catch(ex){showError('Соединение потеряно')}
+        try{var d=JSON.parse(e.data);showError(d.message||'Ошибка');updateRadar('err','fail')}catch(ex){showError('Соединение потеряно');updateRadar('err','fail')}
         evtSource.close();
     });
 }
@@ -404,6 +456,35 @@ function confirmCompetitors(){
     fetch('/api/confirm-competitors/'+SID,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({competitors:sel})});
 }
 
+var _radarDone=0,_radarTotal=15;
+var _radarDots=['rd1','rd2','rd3','rd4','rd5'];
+var _radarPhases={s0:0,s1:0,s2:0,s3:0,s4:1,s1b:2,s1c:2,s4h:2,s4k:2,s4e:2,s5:2,s2a:3,s2b:3,s6a:3,sqa:4,s7:4};
+var _radarLabels=['сбор данных','конкуренты','глубокий анализ','верификация','сборка отчёта'];
+function updateRadar(n,status){
+    if(status==='done'){_radarDone++;var pct=Math.min(Math.round(_radarDone/_radarTotal*100),100);
+    document.getElementById('radar-pct').textContent=pct+'%';
+    var phase=_radarPhases[n];if(phase!==undefined){
+    document.getElementById('radar-status').textContent=_radarLabels[phase]||'';
+    var dot=document.getElementById(_radarDots[phase]);if(dot)dot.setAttribute('fill','#C9A44C');}
+    // Grow radar fill polygon based on progress
+    var r=30+pct*0.7;var pts='100,'+(100-r)+' '+(100+r*0.6)+','+(100-r*0.3)+' '+(100+r*0.45)+','+(100+r*0.5)+' '+(100-r*0.45)+','+(100+r*0.5)+' '+(100-r*0.6)+','+(100-r*0.3);
+    document.getElementById('radar-fill').setAttribute('points',pts);}
+    if(status==='fail'){
+    document.getElementById('radar-scan').style.display='none';
+    document.getElementById('radar-fill').style.display='none';
+    document.getElementById('radar-error').style.display='block';
+    var errEl=document.getElementById('radar-error-text');if(errEl)errEl.textContent='Ошибка анализа';}
+}
+function radarSuccess(){
+    document.getElementById('radar-scan').style.display='none';
+    document.getElementById('radar-fill').style.display='none';
+    document.getElementById('radar-error').style.display='none';
+    document.getElementById('radar-success').style.display='block';
+    document.getElementById('radar-pct').style.display='none';
+    document.getElementById('radar-status').style.display='none';
+    _radarDots.forEach(function(id){var d=document.getElementById(id);if(d)d.setAttribute('fill','#3DB86A');});
+}
+
 function setStep(n,status,text){
     var el=document.getElementById('s'+n);
     if(!el)return;
@@ -413,6 +494,7 @@ function setStep(n,status,text){
     if(status==='done')icon.textContent='\u2713';
     else if(status==='fail')icon.textContent='\u2717';
     else if(status==='warning')icon.textContent='!';
+    updateRadar(n,status);
 }
 
 function showError(m){var e=document.getElementById('error');e.style.display='block';e.textContent=m}
