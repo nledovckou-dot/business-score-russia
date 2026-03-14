@@ -2,9 +2,11 @@
 
 For each competitor from step4:
 1. Scrape website → extract social links, text
-2. Find INN via FNS search by name
-3. Get FNS financials (revenue, employees) by INN
-4. Get EGRUL data (year_founded, founders) by INN
+2. 2GIS → rating, reviews count, working hours
+3. Find INN via FNS search (→ Rusprofile fallback)
+4. Get FNS financials (revenue, employees) by INN
+5. Get EGRUL data (year_founded, founders) by INN
+6. Social media → real followers/subscribers (VK API, TG, IG)
 
 Runs in parallel via ThreadPoolExecutor (max_workers=4).
 """
@@ -18,6 +20,40 @@ import concurrent.futures
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _find_inn_rusprofile(name: str, city: str | None = None) -> str | None:
+    """Fallback: scrape Rusprofile to find INN when FNS search fails."""
+    import urllib.parse
+
+    try:
+        from app.pipeline.scraper import scrape_website
+    except ImportError:
+        return None
+
+    query = urllib.parse.quote(name)
+    url = f"https://www.rusprofile.ru/search?query={query}&type=ul"
+    try:
+        scraped = scrape_website(url, timeout=15)
+        text = scraped.get("text", "")
+        if not text:
+            return None
+
+        # Rusprofile shows INN in format "ИНН 1234567890" or "ИНН: 1234567890"
+        inn_patterns = [
+            re.compile(r"ИНН[:\s]+(\d{10,12})"),
+            re.compile(r"inn[:\s]+(\d{10,12})", re.IGNORECASE),
+        ]
+        for pattern in inn_patterns:
+            match = pattern.search(text)
+            if match:
+                inn = match.group(1)
+                logger.info("[step4.5] Rusprofile fallback: found INN %s for '%s'", inn, name)
+                return inn
+    except Exception as e:
+        logger.warning("[step4.5] Rusprofile fallback failed for '%s': %s", name, str(e)[:200])
+
+    return None
 
 
 def _find_inn(name: str, city: str | None = None) -> str | None:
@@ -79,8 +115,33 @@ def _enrich_one(comp: dict, index: int) -> dict:
         except Exception as e:
             logger.warning("[step4.5] %s: scrape failed: %s", name, str(e)[:200])
 
-    # 2. Find INN
+    # 2. 2GIS: rating, reviews, working hours
+    if city or name:
+        try:
+            from app.pipeline.enrichment.twogis import search_organization
+            twogis_results = search_organization(name, city=city or None, page_size=3)
+            if twogis_results:
+                best = twogis_results[0]
+                comp["rating_2gis"] = best.get("rating")
+                comp["reviews_count_2gis"] = best.get("reviews_count", 0)
+                comp["working_hours"] = best.get("working_hours", {})
+                comp["coordinates"] = best.get("coordinates", {})
+                comp["address_2gis"] = best.get("address", "")
+                comp["branch_id_2gis"] = best.get("branch_id", "")
+                comp["metrics"] = comp.get("metrics", {})
+                if best.get("rating"):
+                    comp["metrics"]["Рейтинг 2ГИС"] = f"{best['rating']:.1f}"
+                if best.get("reviews_count"):
+                    comp["metrics"]["Отзывы 2ГИС"] = str(best["reviews_count"])
+                logger.info("[step4.5] %s: 2GIS OK (rating=%.1f, reviews=%d)",
+                            name, best.get("rating") or 0, best.get("reviews_count") or 0)
+        except Exception as e:
+            logger.warning("[step4.5] %s: 2GIS failed: %s", name, str(e)[:200])
+
+    # 3. Find INN (FNS → Rusprofile fallback)
     inn = comp.get("inn") or _find_inn(name, city)
+    if not inn:
+        inn = _find_inn_rusprofile(name, city)
     if inn:
         comp["inn"] = inn
 
@@ -130,7 +191,7 @@ def _enrich_one(comp: dict, index: int) -> dict:
     else:
         logger.info("[step4.5] %s: INN not found, skipping FNS", name)
 
-    # 5. Social links from scraped data
+    # 5. Social links from scraped data + real follower counts
     if scraped_data.get("social_links"):
         social_dict = {}
         for sl in scraped_data["social_links"]:
@@ -142,12 +203,40 @@ def _enrich_one(comp: dict, index: int) -> dict:
         if social_dict:
             comp["social_media"] = social_dict
 
+    # 6. Enrich social links with real follower/subscriber counts
+    social_links = scraped_data.get("social_links", [])
+    if social_links:
+        try:
+            from app.pipeline.enrichment.social_media import enrich_social_links
+            enriched_links = enrich_social_links(social_links)
+            # Update social_media dict with real counts
+            for sl in enriched_links:
+                platform = sl.get("platform", "")
+                if platform and platform in comp.get("social_media", {}):
+                    if sl.get("members"):
+                        comp["social_media"][platform]["members"] = sl["members"]
+                        comp["metrics"] = comp.get("metrics", {})
+                        comp["metrics"][f"VK подписчики"] = f"{sl['members']:,}".replace(",", " ")
+                    if sl.get("subscribers"):
+                        comp["social_media"][platform]["subscribers"] = sl["subscribers"]
+                        comp["metrics"] = comp.get("metrics", {})
+                        comp["metrics"][f"Telegram подписчики"] = f"{sl['subscribers']:,}".replace(",", " ")
+                    if sl.get("followers"):
+                        comp["social_media"][platform]["followers"] = sl["followers"]
+                        comp["metrics"] = comp.get("metrics", {})
+                        comp["metrics"][f"Instagram подписчики"] = f"{sl['followers']:,}".replace(",", " ")
+            logger.info("[step4.5] %s: social media enriched", name)
+        except Exception as e:
+            logger.warning("[step4.5] %s: social enrichment failed: %s", name, str(e)[:200])
+
     elapsed = round(time.monotonic() - t0, 1)
     enriched_fields = []
     if comp.get("inn"):
         enriched_fields.append("INN")
     if comp.get("fns_financials"):
         enriched_fields.append("FNS")
+    if comp.get("rating_2gis"):
+        enriched_fields.append("2GIS")
     if comp.get("social_media"):
         enriched_fields.append("social")
     if comp.get("scraped_text"):
@@ -209,16 +298,18 @@ def run(
     with_inn = sum(1 for c in result if c.get("inn"))
     with_fns = sum(1 for c in result if c.get("fns_financials"))
     with_social = sum(1 for c in result if c.get("social_media"))
+    with_2gis = sum(1 for c in result if c.get("rating_2gis"))
+    with_reviews = sum(1 for c in result if c.get("reviews_count_2gis"))
 
     logger.info(
-        "[step4.5] Done in %.1fs — INN: %d/%d, FNS: %d/%d, social: %d/%d",
-        elapsed, with_inn, total, with_fns, total, with_social, total,
+        "[step4.5] Done in %.1fs — INN: %d/%d, FNS: %d/%d, social: %d/%d, 2GIS: %d/%d",
+        elapsed, with_inn, total, with_fns, total, with_social, total, with_2gis, total,
     )
 
     if progress_callback:
         try:
             progress_callback(
-                f"Обогащено: {with_fns}/{total} с ФНС, {with_social}/{total} с соцсетями",
+                f"Обогащено: {with_fns}/{total} ФНС, {with_2gis}/{total} 2ГИС, {with_social}/{total} соцсети",
                 "done",
             )
         except Exception:
