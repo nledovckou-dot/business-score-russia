@@ -6,24 +6,17 @@ jobs:
   debug:
     runs-on: ubuntu-latest
     steps:
-      - name: Check logs via SSH
+      - name: Launch single report via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          command_timeout: 3m
+          command_timeout: 2m
           script: |
+            echo "=== Launch DNS ==="
+            curl -s -X POST http://127.0.0.1:8083/api/analyze -H "Content-Type: application/json" -d '{"url":"https://dns-shop.ru"}'
+            echo ""
             echo "=== Service status ==="
-            systemctl status bsr --no-pager | head -8
-            echo "=== Journal errors (last 1h) ==="
-            journalctl -u bsr --since "1 hour ago" --no-pager | grep -i "error\|exception\|traceback\|critical\|failed" | tail -30
-            echo "=== Journal last 50 lines ==="
-            journalctl -u bsr --since "1 hour ago" --no-pager | tail -50
-            echo "=== Reports count ==="
-            ls /opt/business-score-russia/app/storage/reports/*.html 2>/dev/null | wc -l
-            echo "=== Memory usage ==="
-            free -h | head -2
-            echo "=== Disk usage ==="
-            df -h /opt | head -2
+            systemctl status bsr --no-pager | head -5
