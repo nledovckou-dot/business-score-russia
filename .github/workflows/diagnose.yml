@@ -14,20 +14,99 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          command_timeout: 2m
+          command_timeout: 3m
           script: |
-            echo "=== systemctl status bsr ==="
-            sudo systemctl status bsr --no-pager -l 2>&1 | tail -30
+            echo "=== 1. SERVICE STATUS ==="
+            sudo systemctl status bsr --no-pager -l 2>&1 | tail -10
+
             echo ""
-            echo "=== journalctl bsr (last 50 lines) ==="
-            sudo journalctl -u bsr --no-pager -n 50 2>&1
-            echo ""
-            echo "=== port check ==="
+            echo "=== 2. PORT CHECK ==="
             ss -tlnp | grep -E '8083|8090' || echo "ports not listening"
+            curl -s -o /dev/null -w "App HTTP: %{http_code}\n" http://localhost:8083/ 2>&1
+
             echo ""
-            echo "=== curl localhost ==="
-            curl -s -o /dev/null -w "%{http_code}" http://localhost:8083/ 2>&1 || echo "failed"
-            echo ""
-            echo "=== python import test ==="
+            echo "=== 3. ENV VARS ==="
             cd /opt/business-score-russia
-            .venv/bin/python3 -c "from app.main import app; print('import OK')" 2>&1 || echo "import failed"
+            for VAR in GEMINI_API_KEY OPENAI_API_KEY FALLBACK_LLM_API_KEY ANTHROPIC_API_KEY TWOGIS_API_KEY FNS_API_KEY; do
+              grep -q "^${VAR}=" .env 2>/dev/null && echo "$VAR: SET" || echo "$VAR: MISSING!"
+            done
+
+            echo ""
+            echo "=== 4. DDG TEST ==="
+            timeout 8 curl -sS -o /dev/null -w "DDG: HTTP %{http_code}, time %{time_total}s\n" \
+              -A "Mozilla/5.0" "https://html.duckduckgo.com/html/?q=test" 2>&1 || echo "DDG: BLOCKED/TIMEOUT"
+
+            echo ""
+            echo "=== 5. GEMINI SEARCH GROUNDING ==="
+            GKEY=$(grep "^GEMINI_API_KEY=" .env 2>/dev/null | head -1 | cut -d= -f2 | tr -d '"' | tr -d "'" | tr -d ' ')
+            if [ -n "$GKEY" ]; then
+              RESP=$(timeout 25 curl -sS -X POST \
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$GKEY" \
+                -H "Content-Type: application/json" \
+                -d '{"contents":[{"parts":[{"text":"Найди ИНН и юридическое лицо компании Додо Пицца"}]}],"tools":[{"google_search":{}}],"generationConfig":{"temperature":0,"maxOutputTokens":512}}' 2>&1)
+              echo "$RESP" | python3 -c "
+import sys,json
+try:
+  d=json.load(sys.stdin)
+  c=d.get('candidates',[{}])[0]
+  gm=c.get('groundingMetadata',{})
+  chunks=gm.get('groundingChunks',[])
+  print(f'Grounding chunks: {len(chunks)}')
+  for ch in chunks[:5]:
+    w=ch.get('web',{})
+    print(f'  - {w.get(\"title\",\"\")[:60]} | {w.get(\"uri\",\"\")}')
+  text=c.get('content',{}).get('parts',[{}])[0].get('text','')
+  print(f'Answer: {text[:400]}')
+except Exception as e:
+  print(f'Parse error: {e}')
+" 2>/dev/null || echo "Gemini raw: $(echo $RESP | head -c 500)"
+            else
+              echo "SKIP - no GEMINI_API_KEY"
+            fi
+
+            echo ""
+            echo "=== 6. RUSSIAN PROXY ==="
+            timeout 10 curl -sS -o /dev/null -w "Proxy: HTTP %{http_code}, time %{time_total}s\n" \
+              -X POST http://158.160.158.164:8888/scrape \
+              -H "X-Proxy-Token: bsr-proxy-2026" \
+              -H "Content-Type: application/json" \
+              -d '{"url":"https://dodopizza.ru"}' 2>&1 || echo "Proxy: UNREACHABLE"
+
+            echo ""
+            echo "=== 7. PLAYWRIGHT ==="
+            cd /opt/business-score-russia
+            .venv/bin/python3 -c "from playwright.sync_api import sync_playwright; print('Playwright: OK')" 2>&1 | head -3
+
+            echo ""
+            echo "=== 8. FNS API ==="
+            FKEY=$(grep "^FNS_API_KEY=" .env 2>/dev/null | head -1 | cut -d= -f2 | tr -d '"' | tr -d "'" | tr -d ' ')
+            timeout 8 curl -sS "https://api-fns.ru/api/search?q=%D0%B4%D0%BE%D0%B4%D0%BE+%D0%BF%D0%B8%D1%86%D1%86%D0%B0&key=${FKEY:-demo}" 2>&1 | python3 -c "
+import sys,json
+try:
+  d=json.load(sys.stdin)
+  items=d.get('items',[])
+  print(f'FNS results: {len(items)}')
+  for it in items[:3]:
+    print(f'  - {it.get(\"ЮЛ\",{}).get(\"НаимСокрЮЛ\",\"?\")} ИНН:{it.get(\"ЮЛ\",{}).get(\"ИНН\",\"?\")}')
+except: print('FNS parse error')
+" 2>/dev/null || echo "FNS: FAILED"
+
+            echo ""
+            echo "=== 9. PYTHON DEPS ==="
+            cd /opt/business-score-russia
+            .venv/bin/python3 -c "
+import lxml; print(f'lxml: OK')
+import bs4; print(f'bs4: OK')
+" 2>&1
+            .venv/bin/python3 -c "import scrapling; print('scrapling: OK')" 2>&1 | head -1
+            .venv/bin/python3 -c "from app.main import app; print('app import: OK')" 2>&1 | head -3
+
+            echo ""
+            echo "=== 10. REPORTS ==="
+            DIR=/opt/business-score-russia/app/storage/reports
+            ls -lht $DIR/report_*.html 2>/dev/null | head -10
+            echo "Total: $(ls $DIR/report_*.html 2>/dev/null | wc -l) reports"
+
+            echo ""
+            echo "=== 11. RECENT ERRORS ==="
+            sudo journalctl -u bsr --no-pager -n 200 --since "1 hour ago" 2>/dev/null | grep -i "error\|exception\|traceback\|failed" | tail -15
