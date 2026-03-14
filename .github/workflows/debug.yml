@@ -6,7 +6,7 @@ jobs:
   debug:
     runs-on: ubuntu-latest
     steps:
-      - name: Launch test reports via SSH
+      - name: Check reports via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -18,17 +18,17 @@ jobs:
             echo "=== Service status ==="
             systemctl status bsr --no-pager | head -5
             echo ""
-            echo "=== Existing reports ==="
-            ls -la /opt/business-score-russia/app/storage/reports/ | wc -l
+            echo "=== Reports in storage (sorted by time) ==="
+            ls -lht /opt/business-score-russia/app/storage/reports/ 2>/dev/null
             echo ""
-            echo "=== Launch DNS (B2C) ==="
-            curl -s -X POST http://127.0.0.1:8083/api/analyze \
-              -H "Content-Type: application/json" \
-              -d '{"url":"https://dns-shop.ru"}'
+            echo "=== NEW reports (last 40 min) ==="
+            find /opt/business-score-russia/app/storage/reports/ -name "*.html" -mmin -40 -exec basename {} \; 2>/dev/null
             echo ""
-            sleep 15
-            echo "=== Launch CDEK (B2B) ==="
-            curl -s -X POST http://127.0.0.1:8083/api/analyze \
-              -H "Content-Type: application/json" \
-              -d '{"url":"https://cdek.ru"}'
+            echo "=== Check DNS session ==="
+            curl -s http://127.0.0.1:8083/api/analyze/de21d738134e 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'status={d.get(\"status\",\"?\")}, report_id={d.get(\"report_id\",\"?\")}, error={d.get(\"error\",\"none\")}')" 2>/dev/null || echo "session lost"
             echo ""
+            echo "=== Check CDEK session ==="
+            curl -s http://127.0.0.1:8083/api/analyze/95144d7b4d39 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'status={d.get(\"status\",\"?\")}, report_id={d.get(\"report_id\",\"?\")}, error={d.get(\"error\",\"none\")}')" 2>/dev/null || echo "session lost"
+            echo ""
+            echo "=== Recent errors (last 40 min) ==="
+            journalctl -u bsr --since "40 min ago" --no-pager | grep -i -E "error|fail|saved|complete|board.*review|quality.*score" | tail -15
