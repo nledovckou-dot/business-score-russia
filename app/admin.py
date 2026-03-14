@@ -607,6 +607,36 @@ async def admin_monitoring(request: Request):
     return {"ok": True, "results": list(results), "timestamp": time.time()}
 
 
+@router.get("/diag-html")
+async def admin_diag_html(request: Request):
+    """Debug: check _DASHBOARD_HTML encoding on this server."""
+    html = _DASHBOARD_HTML
+    length = len(html)
+    # Find surrogates
+    surrogates = []
+    for i, ch in enumerate(html):
+        if 0xD800 <= ord(ch) <= 0xDFFF:
+            surrogates.append({"pos": i, "code": f"U+{ord(ch):04X}", "context": repr(html[max(0,i-5):i+5])})
+    # Try encoding
+    try:
+        encoded = html.encode("utf-8")
+        enc_ok = True
+        enc_len = len(encoded)
+        enc_err = None
+    except UnicodeEncodeError as e:
+        enc_ok = False
+        enc_len = 0
+        enc_err = str(e)
+    return {
+        "length": length,
+        "surrogates": surrogates,
+        "encode_ok": enc_ok,
+        "encode_len": enc_len,
+        "encode_error": enc_err,
+        "chars_12255_12265": repr(html[12255:12265]) if length > 12265 else "too short",
+    }
+
+
 @router.get("", response_class=HTMLResponse)
 @router.get("/", response_class=HTMLResponse)
 async def admin_page(request: Request):
