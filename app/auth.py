@@ -98,7 +98,14 @@ class AuthManager:
     def __init__(self):
         USERS_DIR.mkdir(parents=True, exist_ok=True)
 
-    def register(self, email: str, password: str) -> dict:
+    def register(
+        self,
+        email: str,
+        password: str,
+        consent_data: bool = False,
+        consent_marketing: bool = False,
+        client_ip: str = "",
+    ) -> dict:
         """Register new user. Returns user public dict or raises ValueError."""
         email = email.lower().strip()
         if not email or not _EMAIL_RE.match(email):
@@ -109,6 +116,8 @@ class AuthManager:
             raise ValueError("Пароль должен быть не менее 6 символов")
         if len(password) > 128:
             raise ValueError("Пароль слишком длинный")
+        if not consent_data:
+            raise ValueError("Необходимо согласие на обработку персональных данных")
 
         filename = _email_to_filename(email)
 
@@ -132,6 +141,10 @@ class AuthManager:
                 "created_at": now,
                 "reports_used": 0,
                 "report_ids": [],
+                "consent_data_processing": True,
+                "consent_email_marketing": bool(consent_marketing),
+                "consent_timestamp": now,
+                "consent_ip": client_ip,
                 "active_tokens": [
                     {
                         "token": token,

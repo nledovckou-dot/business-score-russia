@@ -190,7 +190,7 @@ h1 b{font-weight:600;color:var(--gold)}
     <div class="modal">
         <button class="modal-close" onclick="closeModal('login')">&times;</button>
         <h2>Войти</h2>
-        <p class="modal-sub">Войдите, чтобы сохранять отчёты</p>
+        <p class="modal-sub" id="login-sub">Войдите, чтобы сохранять отчёты</p>
         <div class="modal-error" id="login-error"></div>
         <div class="field"><label>Email</label><input id="login-email" type="email" placeholder="name@example.com" onkeydown="if(event.key==='Enter')doLogin()"></div>
         <div class="field"><label>Пароль</label><input id="login-password" type="password" placeholder="Минимум 6 символов" onkeydown="if(event.key==='Enter')doLogin()"></div>
@@ -202,12 +202,24 @@ h1 b{font-weight:600;color:var(--gold)}
 <div class="modal-overlay" id="modal-register">
     <div class="modal">
         <button class="modal-close" onclick="closeModal('register')">&times;</button>
-        <h2>Регистрация</h2>
-        <p class="modal-sub">5 бесплатных отчётов</p>
+        <h2>Создайте аккаунт</h2>
+        <p class="modal-sub" id="register-sub">5 бесплатных отчётов — для получения результата</p>
         <div class="modal-error" id="register-error"></div>
         <div class="field"><label>Email</label><input id="register-email" type="email" placeholder="name@example.com" onkeydown="if(event.key==='Enter')doRegister()"></div>
         <div class="field"><label>Пароль</label><input id="register-password" type="password" placeholder="Минимум 6 символов" onkeydown="if(event.key==='Enter')doRegister()"></div>
-        <button class="btn-full" id="register-btn" onclick="doRegister()">Создать аккаунт</button>
+        <div class="field" style="margin-bottom:8px">
+            <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:0.82em;color:var(--text2)">
+                <input type="checkbox" id="register-consent-data" style="width:auto;margin-top:2px;flex-shrink:0;accent-color:var(--navy)">
+                <span>Я согласен на обработку персональных данных в соответствии с <a href="#" style="color:var(--navy)" onclick="event.preventDefault()">Политикой конфиденциальности</a> (152-ФЗ)</span>
+            </label>
+        </div>
+        <div class="field" style="margin-bottom:14px">
+            <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:0.82em;color:var(--text2)">
+                <input type="checkbox" id="register-consent-marketing" checked style="width:auto;margin-top:2px;flex-shrink:0;accent-color:var(--navy)">
+                <span>Хочу получать аналитические отчёты и новости на email</span>
+            </label>
+        </div>
+        <button class="btn-full" id="register-btn" onclick="doRegister()" disabled>Создать аккаунт</button>
         <div class="modal-switch">Есть аккаунт? <a onclick="closeModal('register');openModal('login')">Войти</a></div>
     </div>
 </div>
@@ -384,10 +396,18 @@ h1 b{font-weight:600;color:var(--gold)}
 <script>fetch('/api/health').then(r=>r.json()).then(d=>{document.getElementById('app-ver').textContent='v'+(d.version||'?')})</script>
 
 <script>
-var authUser=null;
-function openModal(t){document.getElementById('modal-'+t).classList.add('open');var i=document.querySelector('#modal-'+t+' input');if(i)setTimeout(function(){i.focus()},100)}
+var authUser=null,pendingUrl=null;
+function openModal(t){document.getElementById('modal-'+t).classList.add('open');var i=document.querySelector('#modal-'+t+' input');if(i)setTimeout(function(){i.focus()},100);
+    if(t==='register'&&pendingUrl){document.getElementById('register-sub').textContent='Создайте аккаунт для получения отчёта'}
+    if(t==='login'&&pendingUrl){document.getElementById('login-sub').textContent='Войдите для получения отчёта'}
+}
 function closeModal(t){document.getElementById('modal-'+t).classList.remove('open');var e=document.getElementById(t+'-error');if(e){e.classList.remove('visible');e.textContent=''}}
 function showModalError(t,m){var e=document.getElementById(t+'-error');e.textContent=m;e.classList.add('visible')}
+/* Toggle register button based on consent checkbox */
+document.addEventListener('DOMContentLoaded',function(){
+    var cb=document.getElementById('register-consent-data'),btn=document.getElementById('register-btn');
+    if(cb&&btn){cb.addEventListener('change',function(){btn.disabled=!cb.checked})}
+});
 function updateAuthUI(){
     if(authUser){
         document.getElementById('auth-guest').style.display='none';
@@ -403,12 +423,16 @@ function updateAuthUI(){
 }
 function doRegister(){
     var e=document.getElementById('register-email').value.trim(),p=document.getElementById('register-password').value;
+    var cd=document.getElementById('register-consent-data').checked;
+    var cm=document.getElementById('register-consent-marketing').checked;
     if(!e||!p){showModalError('register','Заполните все поля');return}
+    if(!cd){showModalError('register','Необходимо согласие на обработку персональных данных');return}
     var b=document.getElementById('register-btn');b.disabled=true;
-    fetch('/api/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:e,password:p})})
-    .then(function(r){return r.json()}).then(function(r){b.disabled=false;if(!r.ok){showModalError('register',r.error||'Ошибка');return}
-        authUser={email:r.email,reports_used:r.reports_used,reports_remaining:r.reports_remaining};updateAuthUI();closeModal('register')})
-    .catch(function(err){b.disabled=false;showModalError('register','Ошибка: '+err.message)})
+    fetch('/api/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:e,password:p,consent_data:cd,consent_marketing:cm})})
+    .then(function(r){return r.json()}).then(function(r){b.disabled=!cd;if(!r.ok){showModalError('register',r.error||'Ошибка');return}
+        authUser={email:r.email,reports_used:r.reports_used,reports_remaining:r.reports_remaining};updateAuthUI();closeModal('register');
+        if(pendingUrl){startAnalysis()}})
+    .catch(function(err){b.disabled=!cd;showModalError('register','Ошибка: '+err.message)})
 }
 function doLogin(){
     var e=document.getElementById('login-email').value.trim(),p=document.getElementById('login-password').value;
@@ -416,7 +440,8 @@ function doLogin(){
     var b=document.getElementById('login-btn');b.disabled=true;
     fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:e,password:p})})
     .then(function(r){return r.json()}).then(function(r){b.disabled=false;if(!r.ok){showModalError('login',r.error||'Ошибка');return}
-        authUser={email:r.email,reports_used:r.reports_used,reports_remaining:r.reports_remaining};updateAuthUI();closeModal('login')})
+        authUser={email:r.email,reports_used:r.reports_used,reports_remaining:r.reports_remaining};updateAuthUI();closeModal('login');
+        if(pendingUrl){startAnalysis()}})
     .catch(function(err){b.disabled=false;showModalError('login','Ошибка: '+err.message)})
 }
 function doLogout(){fetch('/api/auth/logout',{method:'POST'}).then(function(){authUser=null;updateAuthUI()}).catch(function(){authUser=null;updateAuthUI()})}
@@ -428,9 +453,12 @@ checkAuth();
 var SID=null,evtSource=null,competitorData=[];
 
 function startAnalysis(){
-    var url=document.getElementById('url').value.trim();
+    var url=pendingUrl||document.getElementById('url').value.trim();
     if(!url){document.getElementById('url').focus();return}
     if(!url.match(/^https?:\/\//))url='https://'+url;
+    /* If not logged in — save URL and show registration modal */
+    if(!authUser){pendingUrl=url;openModal('register');return}
+    pendingUrl=null;
     document.getElementById('gobtn').disabled=true;
     document.getElementById('phase-url').style.display='none';
     document.getElementById('phase-pipeline').style.display='block';
