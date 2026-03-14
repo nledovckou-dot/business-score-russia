@@ -32,7 +32,7 @@ _MAX_RETRIES = 2
 def _api_token() -> str:
     return os.environ.get(
         "KEYSO_API_TOKEN",
-        "69b55d3c5ad036.282600972fbfa13f85beaece8e7d215ad21351f1",
+        "69b563282aa8e2.426513828814d70e40a4a42b1235ab9278ba2bda",
     )
 
 
