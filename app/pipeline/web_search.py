@@ -25,8 +25,10 @@ _SEARCH_TIMEOUT = 10  # seconds per request
 _DELAY_BETWEEN_REQUESTS = 2.5  # seconds between searches to avoid rate limiting
 
 # Track DDG failures to skip it early when it's consistently blocked
-_ddg_consecutive_failures = 0
-_DDG_FAILURE_THRESHOLD = 3  # after N consecutive failures, skip DDG entirely
+# Start at threshold: DDG is known blocked on VPS, skip direct attempts entirely.
+# If DDG recovers, a successful proxy-free response will reset this to 0.
+_DDG_FAILURE_THRESHOLD = 3
+_ddg_consecutive_failures = _DDG_FAILURE_THRESHOLD
 
 _HEADERS = {
     "User-Agent": (
@@ -107,7 +109,7 @@ def _search_via_proxy(query: str) -> list[dict]:
         return results
 
     except Exception as e:
-        logger.debug("Proxy DDG search failed for '%s': %s", query[:80], str(e)[:200])
+        logger.warning("Proxy DDG search failed for '%s': %s", query[:80], str(e)[:200])
         return []
 
 
