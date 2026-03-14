@@ -116,16 +116,8 @@ jobs:
             echo "--- git HEAD ---"
             cd "$APP_DIR" && git log --oneline -1
 
-            # Debug: check where Python actually imports from
-            cd "$APP_DIR" && "$APP_DIR/.venv/bin/python3" -c "
-import sys; sys.path.insert(0, '.');
-from app.landing import LANDING_HTML
-print('LANDING_HTML length:', len(LANDING_HTML))
-print('Has navy:', '--navy' in LANDING_HTML)
-print('Has stroke-width 5.5:', 'stroke-width=\"5.5\"' in LANDING_HTML or 'stroke-width=\\\"5.5\\\"' in LANDING_HTML)
-css_root = LANDING_HTML[LANDING_HTML.find(':root{'):LANDING_HTML.find(':root{')+80] if ':root{' in LANDING_HTML else 'NOT FOUND'
-print('CSS root:', css_root)
-"
+            # Debug: check what Python serves as landing
+            cd "$APP_DIR" && "$APP_DIR/.venv/bin/python3" -c 'import sys; sys.path.insert(0,"."); from app.landing import LANDING_HTML; print("LEN:", len(LANDING_HTML)); print("HAS_NAVY:", "--navy" in LANDING_HTML); i=LANDING_HTML.find(":root{"); print("CSS:", LANDING_HTML[i:i+80] if i>=0 else "NOT_FOUND")'
 
             # Launch test analysis
             echo "--- Launching test analysis ---"
