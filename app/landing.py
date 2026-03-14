@@ -17,9 +17,9 @@ _LOGO_SVG = r'''<svg viewBox="0 0 200 210" width="72" height="76" xmlns="http://
   <g transform="translate(100,115)" fill="none" stroke="#1A2B4A" stroke-width="2.5">
     <polygon points="0,-55 52.3,-17 32.3,44.5 -32.3,44.5 -52.3,-17"/>
   </g>
-  <!-- Gold arrow: wide triangle head + narrow shaft (like brand logo) -->
+  <!-- Gold arrow: wide chevron overlapping pentagon top + narrow shaft (brand logo) -->
   <g transform="translate(100,115)" fill="#C9A44C" stroke="none">
-    <polygon points="0,-92 -28,-46 -4,-46 -4,-12 4,-12 4,-46 28,-46"/>
+    <polygon points="0,-90 -35,-38 -4,-38 -4,-5 4,-5 4,-38 35,-38"/>
   </g>
 </svg>'''
 
