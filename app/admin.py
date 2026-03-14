@@ -142,7 +142,7 @@ async def admin_metrics(request: Request):
 
     try:
         stats = get_aggregate_stats()
-        return {"ok": True, **stats}
+        return {"ok": True, "_admin_version": "0.9.5-diag", **stats}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:300]}, status_code=500)
 

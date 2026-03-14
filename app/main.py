@@ -297,6 +297,22 @@ async def health():
     return {"ok": True, "version": APP_VERSION}
 
 
+@app.get("/api/diag-admin")
+async def diag_admin():
+    """Debug: check admin HTML encoding on this server."""
+    from app.admin import _DASHBOARD_HTML
+    html = _DASHBOARD_HTML
+    surrogates = []
+    for i, ch in enumerate(html):
+        if 0xD800 <= ord(ch) <= 0xDFFF:
+            surrogates.append({"pos": i, "code": f"U+{ord(ch):04X}"})
+    try:
+        html.encode("utf-8")
+        return {"ok": True, "length": len(html), "surrogates": surrogates}
+    except UnicodeEncodeError as e:
+        return {"ok": False, "error": str(e), "surrogates": surrogates, "length": len(html)}
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index():
     return HTMLResponse(content=LANDING_HTML)
