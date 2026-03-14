@@ -1,25 +1,27 @@
 """Landing page HTML — light premium theme with РУССКОР radar logo."""
 
-# SVG logo: radar pentagon (navy) with wide gold arrow — matches brand logo
-_LOGO_SVG = r'''<svg viewBox="0 0 200 210" width="72" height="76" xmlns="http://www.w3.org/2000/svg">
-  <!-- Pentagon radar grid -->
-  <g transform="translate(100,115)" fill="none" stroke="#1A2B4A" stroke-width="1.2">
-    <polygon points="0,-55 52.3,-17 32.3,44.5 -32.3,44.5 -52.3,-17"/>
-    <polygon points="0,-36.7 34.9,-11.3 21.5,29.7 -21.5,29.7 -34.9,-11.3"/>
-    <polygon points="0,-18.3 17.4,-5.7 10.8,14.8 -10.8,14.8 -17.4,-5.7"/>
-    <line x1="0" y1="0" x2="0" y2="-55"/>
-    <line x1="0" y1="0" x2="52.3" y2="-17"/>
-    <line x1="0" y1="0" x2="32.3" y2="44.5"/>
-    <line x1="0" y1="0" x2="-32.3" y2="44.5"/>
-    <line x1="0" y1="0" x2="-52.3" y2="-17"/>
+# SVG logo: radar pentagon (navy, thick strokes) + classic gold arrow — Phygital+ brand
+_LOGO_SVG = r'''<svg viewBox="0 0 200 195" width="72" height="70" xmlns="http://www.w3.org/2000/svg">
+  <!-- Pentagon radar grid (thick strokes like original) -->
+  <g transform="translate(100,118)" fill="none" stroke="#1A2B4A" stroke-linejoin="round">
+    <!-- Radial lines from center to vertices -->
+    <g stroke-width="3.5">
+      <line x1="0" y1="0" x2="0" y2="-55"/>
+      <line x1="0" y1="0" x2="52.3" y2="-17"/>
+      <line x1="0" y1="0" x2="32.3" y2="44.5"/>
+      <line x1="0" y1="0" x2="-32.3" y2="44.5"/>
+      <line x1="0" y1="0" x2="-52.3" y2="-17"/>
+    </g>
+    <!-- Inner pentagons -->
+    <polygon points="0,-18.3 17.4,-5.7 10.8,14.8 -10.8,14.8 -17.4,-5.7" stroke-width="3.5"/>
+    <polygon points="0,-36.7 34.9,-11.3 21.5,29.7 -21.5,29.7 -34.9,-11.3" stroke-width="3.5"/>
+    <!-- Outer pentagon (thickest) -->
+    <polygon points="0,-55 52.3,-17 32.3,44.5 -32.3,44.5 -52.3,-17" stroke-width="5.5"/>
   </g>
-  <!-- Outer pentagon stroke -->
-  <g transform="translate(100,115)" fill="none" stroke="#1A2B4A" stroke-width="2.5">
-    <polygon points="0,-55 52.3,-17 32.3,44.5 -32.3,44.5 -52.3,-17"/>
-  </g>
-  <!-- Gold arrow: wide chevron overlapping pentagon top + narrow shaft (brand logo) -->
-  <g transform="translate(100,115)" fill="#C9A44C" stroke="none">
-    <polygon points="0,-90 -35,-38 -4,-38 -4,-5 4,-5 4,-38 35,-38"/>
+  <!-- Gold arrow: classic arrow shape with wide barbs reaching pentagon edges -->
+  <g transform="translate(100,118)">
+    <polygon points="0,-92 -40,-28 -6,-28 -6,10 6,10 6,-28 40,-28"
+             fill="#C9A44C" stroke="#B8933F" stroke-width="1.5" stroke-linejoin="round"/>
   </g>
 </svg>'''
 
