@@ -141,6 +141,16 @@ jobs:
             sudo -n ufw allow 8090/tcp 2>/dev/null || true
             sudo -n iptables -C INPUT -p tcp --dport 8090 -j ACCEPT 2>/dev/null || sudo -n iptables -I INPUT -p tcp --dport 8090 -j ACCEPT
 
+            # Debug: check what nginx is actually serving vs uvicorn
+            echo "=== NGINX CONFIG ==="
+            cat /etc/nginx/sites-enabled/bsr.conf 2>/dev/null | head -30
+            echo "=== NGINX DEFAULT ==="
+            ls -la /etc/nginx/sites-enabled/ 2>/dev/null
+            echo "=== CURL LOCALHOST:8083 ==="
+            curl -s http://localhost:8083/ | head -3
+            echo "=== CURL LOCALHOST:8090 ==="
+            curl -s http://localhost:8090/ | head -3
+
             # Diagnostics
             echo "=== BSR service status ==="
             sudo -n systemctl status bsr --no-pager | head -10
