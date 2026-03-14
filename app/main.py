@@ -995,13 +995,19 @@ def _run_analysis_steps(sid: str):
                         data["keyso"] = keyso_data
                         vis = keyso_data.get("seo_metrics", {}).get("visibility", 0)
                         dr = keyso_data.get("seo_metrics", {}).get("dr", 0)
+                        ads = keyso_data.get("ad_metrics", {}).get("ads_count", 0)
+                        logger.info("Keys.so OK: domain=%s, DR=%d, vis=%d, ads=%d", company_domain, dr, vis, ads)
                         _push_event(sid, "step", {"num": "4k", "status": "done",
-                            "text": f"Keys.so: DR={dr}, видимость={vis}"})
+                            "text": f"Keys.so: DR={dr}, видимость={vis}, реклама={ads}"})
                     else:
+                        logger.warning("Keys.so returned None for domain=%s", company_domain)
                         _push_event(sid, "step", {"num": "4k", "status": "warning",
                             "text": "Keys.so: домен не найден"})
+                else:
+                    logger.warning("Keys.so: could not extract domain from URL=%s", raw_url)
         except Exception as e:
-            logger.warning("Keys.so failed: %s", str(e)[:200])
+            import traceback
+            logger.error("Keys.so failed for domain=%s: %s\n%s", company_domain, str(e)[:300], traceback.format_exc()[-500:])
             _push_event(sid, "step", {"num": "4k", "status": "warning", "text": f"Keys.so: {e}"})
 
         # Step 4.5: Enrich competitors (T42) — real FNS data, scraping, social
