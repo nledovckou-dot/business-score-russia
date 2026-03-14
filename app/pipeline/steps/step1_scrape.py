@@ -15,6 +15,10 @@ from app.pipeline.web_search import _search_duckduckgo
 
 logger = logging.getLogger(__name__)
 
+# Code version marker — logged at import time to verify deployed code
+_STEP1_VERSION = "2026-03-14-v2"
+logger.info("[step1] Module loaded, version=%s", _STEP1_VERSION)
+
 
 def _domain_to_name(domain: str) -> str:
     """Extract a readable company name guess from domain.

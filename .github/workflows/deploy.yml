@@ -109,9 +109,24 @@ jobs:
             # Verify the code is correct
             echo "=== Verify deployed code ==="
             grep "REPORTS_PER_HOUR" "$APP_DIR/app/security.py"
+            echo "--- step1_scrape.py version ---"
+            grep "_STEP1_VERSION\|RuntimeError\|мало текста" "$APP_DIR/app/pipeline/steps/step1_scrape.py" || echo "No RuntimeError in step1"
+            echo "--- web_search.py model ---"
+            grep "gemini-2" "$APP_DIR/app/pipeline/web_search.py"
 
             # Debug: check where Python actually imports from
-            cd "$APP_DIR" && "$APP_DIR/.venv/bin/python3" -c "import sys; print('sys.path:', sys.path[:5]); import app.security; print('file:', app.security.__file__); print('RPH:', app.security.REPORTS_PER_HOUR)"
+            cd "$APP_DIR" && "$APP_DIR/.venv/bin/python3" -c "import sys; print('sys.path:', sys.path[:5]); import app.pipeline.steps.step1_scrape as s1; print('step1 file:', s1.__file__); print('step1 version:', s1._STEP1_VERSION)"
+
+            # Launch test analysis
+            echo "--- Launching test analysis ---"
+            TEST_RESP=$(curl -sS -X POST http://localhost:8083/api/analyze -H "Content-Type: application/json" -d '{"url":"https://dodopizza.ru","company_name":"Додо Пицца"}' 2>&1)
+            echo "$TEST_RESP"
+            TEST_SID=$(echo "$TEST_RESP" | "$APP_DIR/.venv/bin/python3" -c "import sys,json; print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null)
+            if [ -n "$TEST_SID" ]; then
+              sleep 30
+              echo "--- Analysis status after 30s ---"
+              curl -sS "http://localhost:8083/api/analyze/$TEST_SID" 2>&1 | "$APP_DIR/.venv/bin/python3" -m json.tool 2>/dev/null
+            fi
 
             # Firewall
             sudo -n ufw allow 8090/tcp 2>/dev/null || true
