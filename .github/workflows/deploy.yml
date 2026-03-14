@@ -120,9 +120,22 @@ jobs:
             sudo -n systemctl status bsr --no-pager | head -10
             echo "--- Health check ---"
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8083/api/health)
-            echo "uvicorn :8083 → HTTP $HTTP_CODE"
+            echo "uvicorn :8083 health -> HTTP $HTTP_CODE"
             HTTP_CODE_NGINX=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8090/api/health)
-            echo "nginx :8090 → HTTP $HTTP_CODE_NGINX"
+            echo "nginx :8090 health -> HTTP $HTTP_CODE_NGINX"
+            echo "--- Landing content check ---"
+            curl -s http://localhost:8083/ | wc -c | xargs -I{} echo "uvicorn landing: {} bytes"
+            curl -s http://localhost:8090/ | wc -c | xargs -I{} echo "nginx landing: {} bytes"
+            curl -s http://localhost:8083/ | grep -o 'bg:#[A-Fa-f0-9]*' | head -1 | xargs -I{} echo "uvicorn bg: {}"
+            curl -s http://localhost:8090/ | grep -o 'bg:#[A-Fa-f0-9]*' | head -1 | xargs -I{} echo "nginx bg: {}"
+            echo "--- IPTABLES NAT ---"
+            sudo -n iptables -t nat -L -n 2>/dev/null | grep -i "809\|808\|REDIRECT\|DNAT" | head -10
+            echo "--- Listening ports ---"
+            ss -tlnp 2>/dev/null | grep -E "809|808" || echo "ss failed"
+            echo "--- All uvicorn processes ---"
+            ps aux 2>/dev/null | grep uvicorn | grep -v grep
+            echo "--- Xray/VPN processes ---"
+            ps aux 2>/dev/null | grep -i "xray\|v2ray\|vless" | grep -v grep | head -5
             echo "--- Reports on disk ---"
             ls "$APP_DIR/app/storage/reports/report_"*.html 2>/dev/null | wc -l | xargs -I{} echo "Total: {} reports"
             echo "--- Recent errors ---"
