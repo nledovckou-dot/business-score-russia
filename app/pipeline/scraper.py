@@ -352,6 +352,19 @@ def _parse_html(html: str, url: str) -> dict:
     if addr_el:
         result["contacts"]["address_hint"] = addr_el.strip()[:200]
 
+    # INN / OGRN — often in footer, contacts, or "реквизиты" pages
+    inn_match = re.search(r"ИНН[:\s]*(\d{10,12})", text_full)
+    if inn_match:
+        result["contacts"]["inn"] = inn_match.group(1)
+    ogrn_match = re.search(r"ОГРН[:\s]*(\d{13,15})", text_full)
+    if ogrn_match:
+        result["contacts"]["ogrn"] = ogrn_match.group(1)
+    # Also try patterns without label (just 10-digit number after "ООО")
+    if not inn_match:
+        legal_inn = re.search(r"(?:ООО|ОАО|ЗАО|АО|ПАО)\s+[«\"'][^»\"']+[»\"']\s*,?\s*ИНН\s*:?\s*(\d{10,12})", text_full)
+        if legal_inn:
+            result["contacts"]["inn"] = legal_inn.group(1)
+
     # Social links
     social_patterns = {
         "instagram": r"instagram\.com/([^/?\s\"']+)",

@@ -778,7 +778,9 @@ function showCompanyPanel(d){
     else{s.className='fns-warning';s.textContent='\u26A0 Официальный контур не определился автоматически. Проверьте ИНН вручную.'}
     var mm=fns.entity_mismatch;
     if(mm&&mm.has_mismatch){s.innerHTML+='<br><span style="color:var(--orange)">\u26A0 Бренд сайта \u00AB'+mm.brand_name+'\u00BB и найденное юрлицо \u00AB'+mm.legal_name+'\u00BB отличаются. Проверьте, что отчёт строится по нужной компании.</span>'}
-    document.getElementById('panel-company').style.display='block';
+    var panel=document.getElementById('panel-company');
+    panel.style.display='block';
+    setTimeout(function(){panel.scrollIntoView({behavior:'smooth',block:'center'})},300);
 }
 
 function confirmCompany(){
@@ -793,7 +795,9 @@ function showCompetitorPanel(d){
     competitorData=d.competitors||[];
     document.getElementById('market-name').textContent=d.market_name?'| '+d.market_name:'';
     renderCompetitors();
-    document.getElementById('panel-competitors').style.display='block';
+    var cp=document.getElementById('panel-competitors');
+    cp.style.display='block';
+    setTimeout(function(){cp.scrollIntoView({behavior:'smooth',block:'center'})},300);
 }
 
 function renderCompetitors(){
