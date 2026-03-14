@@ -138,6 +138,36 @@ def _enrich_one(comp: dict, index: int) -> dict:
         except Exception as e:
             logger.warning("[step4.5] %s: 2GIS failed: %s", name, str(e)[:200])
 
+    # 2b. Keys.so SEO analytics (by domain)
+    if website:
+        try:
+            from urllib.parse import urlparse
+            domain = urlparse(website).hostname or ""
+            if domain:
+                from app.pipeline.enrichment.keyso import get_domain_dashboard
+                keyso = get_domain_dashboard(domain)
+                if keyso:
+                    seo = keyso.get("seo_metrics", {})
+                    ads = keyso.get("ad_metrics", {})
+                    comp["keyso"] = keyso
+                    comp["metrics"] = comp.get("metrics", {})
+                    if seo.get("dr"):
+                        comp["metrics"]["DR"] = str(seo["dr"])
+                    if seo.get("visibility"):
+                        comp["metrics"]["SEO видимость"] = f"{seo['visibility']:,}".replace(",", " ")
+                    if ads.get("ads_count"):
+                        comp["metrics"]["Объявлений"] = str(ads["ads_count"])
+                    if ads.get("ad_budget_avg"):
+                        budget = ads["ad_budget_avg"]
+                        if budget >= 1000:
+                            comp["metrics"]["Бюджет рекламы"] = f"{budget // 1000}K ₽/мес"
+                        else:
+                            comp["metrics"]["Бюджет рекламы"] = f"{budget} ₽/мес"
+                    logger.info("[step4.5] %s: Keys.so OK (DR=%d, vis=%d)",
+                                name, seo.get("dr", 0), seo.get("visibility", 0))
+        except Exception as e:
+            logger.warning("[step4.5] %s: Keys.so failed: %s", name, str(e)[:200])
+
     # 3. Find INN (FNS → Rusprofile fallback)
     inn = comp.get("inn") or _find_inn(name, city)
     if not inn:

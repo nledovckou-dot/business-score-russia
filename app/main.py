@@ -979,6 +979,31 @@ def _run_analysis_steps(sid: str):
             except Exception as e:
                 _push_event(sid, "step", {"num": "4h", "status": "warning", "text": f"HH.ru: {e}"})
 
+        # Step 4.5k: Keys.so SEO analytics (company + competitors)
+        keyso_data = None
+        company_domain = ""
+        try:
+            raw_url = data.get("url", "")
+            if raw_url:
+                from urllib.parse import urlparse
+                company_domain = urlparse(raw_url).hostname or ""
+                if company_domain:
+                    _push_event(sid, "step", {"num": "4k", "status": "active", "text": f"SEO-аналитика: {company_domain}..."})
+                    from app.pipeline.enrichment.keyso import get_domain_dashboard
+                    keyso_data = get_domain_dashboard(company_domain)
+                    if keyso_data:
+                        data["keyso"] = keyso_data
+                        vis = keyso_data.get("seo_metrics", {}).get("visibility", 0)
+                        dr = keyso_data.get("seo_metrics", {}).get("dr", 0)
+                        _push_event(sid, "step", {"num": "4k", "status": "done",
+                            "text": f"Keys.so: DR={dr}, видимость={vis}"})
+                    else:
+                        _push_event(sid, "step", {"num": "4k", "status": "warning",
+                            "text": "Keys.so: домен не найден"})
+        except Exception as e:
+            logger.warning("Keys.so failed: %s", str(e)[:200])
+            _push_event(sid, "step", {"num": "4k", "status": "warning", "text": f"Keys.so: {e}"})
+
         # Step 4.5: Enrich competitors (T42) — real FNS data, scraping, social
         _push_event(sid, "step", {"num": "4e", "status": "active", "text": "Обогащение данных конкурентов..."})
         if mc:
@@ -1033,6 +1058,31 @@ def _run_analysis_steps(sid: str):
 
         # Sanitize LLM output first
         report_data = _sanitize_llm_output(report_data)
+
+        # Inject real Keys.so data into digital section (replace AI estimates)
+        keyso_data = data.get("keyso")
+        if keyso_data:
+            digital = report_data.get("digital") or {}
+            seo = keyso_data.get("seo_metrics", {})
+            ads = keyso_data.get("ad_metrics", {})
+            # Override AI estimates with real data
+            if seo.get("visibility"):
+                digital["monthly_traffic"] = seo["visibility"] * 50  # vis → approx monthly visits
+                digital["seo_score"] = min(seo.get("dr", 50), 100)
+            digital["keyso"] = {
+                "dr": seo.get("dr", 0),
+                "visibility": seo.get("visibility", 0),
+                "keywords_top10": seo.get("it10", 0),
+                "keywords_total": seo.get("total_keywords", 0),
+                "pages_in_index": seo.get("pages_in_index", 0),
+                "ads_count": ads.get("ads_count", 0),
+                "ad_budget_avg": ads.get("ad_budget_avg", 0),
+                "top_keywords": keyso_data.get("top_keywords", [])[:5],
+                "seo_competitors": keyso_data.get("seo_competitors", [])[:5],
+                "history": keyso_data.get("history", [])[-6:],
+            }
+            report_data["digital"] = digital
+            logger.info("Injected Keys.so data into digital section")
 
         # Executive Summary — generated AFTER all analysis, uses SWOT + recommendations
         try:

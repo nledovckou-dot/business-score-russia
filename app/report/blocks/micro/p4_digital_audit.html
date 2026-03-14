@@ -1,10 +1,85 @@
-{# P4: Digital Audit — social media + SEO + Engagement Rate #}
+{# P4: Digital Audit — SEO (Keys.so) + social media + Engagement Rate #}
 {% from '_macros.html' import metric_card, info_tip, chart_wrap %}
 
 {% if digital %}
 <div class="card">
     <h3>Digital-аудит</h3>
 
+    {# Keys.so real SEO data (if available) #}
+    {% if digital.keyso %}
+    {% set k = digital.keyso %}
+    <h4 style="color:var(--gold2); font-size:0.95em; margin-bottom:12px;">SEO-здоровье <span class="ct-fact" style="color:var(--green); font-size:0.8em;">&#128274; Keys.so</span></h4>
+    <div class="grid-5" style="margin-bottom:16px;">
+        {{ metric_card(k.dr, 'Domain Rating', 'gold') }}
+        {{ metric_card('{:,}'.format(k.visibility), 'Видимость', 'blue') }}
+        {{ metric_card('{:,}'.format(k.keywords_top10), 'Запросов в Top-10', 'green') }}
+        {{ metric_card('{:,}'.format(k.pages_in_index), 'Страниц в индексе', 'purple') }}
+        {{ metric_card('{:,}'.format(k.keywords_total), 'Всего запросов', 'teal') }}
+    </div>
+
+    {% if k.ads_count > 0 or k.ad_budget_avg > 0 %}
+    <div class="grid-3" style="margin-bottom:16px;">
+        {{ metric_card(k.ads_count, 'Объявлений', 'orange') }}
+        {% if k.ad_budget_avg >= 1000 %}
+        {{ metric_card('{:,}'.format(k.ad_budget_avg // 1000) ~ 'K ₽/мес', 'Бюджет рекламы', 'red') }}
+        {% else %}
+        {{ metric_card('{:,}'.format(k.ad_budget_avg) ~ ' ₽/мес', 'Бюджет рекламы', 'red') }}
+        {% endif %}
+        {{ metric_card(k.get('ads_count', 0), 'Рекл. ключевых', 'orange') }}
+    </div>
+    {% endif %}
+
+    {% if k.top_keywords %}
+    <h4 style="color:var(--text2); font-size:0.88em; margin:16px 0 8px;">Топ запросы в поиске</h4>
+    <table>
+        <thead><tr><th>Запрос</th><th class="r">Частотность</th><th class="r">Позиция</th></tr></thead>
+        <tbody>
+        {% for kw in k.top_keywords %}
+        <tr>
+            <td>{{ kw.word }}</td>
+            <td class="r">{{ '{:,}'.format(kw.search_volume) }}</td>
+            <td class="r" style="font-weight:700;{% if kw.position <= 3 %} color:var(--green);{% elif kw.position <= 10 %} color:var(--gold);{% else %} color:var(--text3);{% endif %}">{{ kw.position }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    {% if k.seo_competitors %}
+    <h4 style="color:var(--text2); font-size:0.88em; margin:16px 0 8px;">SEO-конкуренты (по пересечению запросов)</h4>
+    <table>
+        <thead><tr><th>Домен</th><th class="r">Общих запросов</th><th class="r">Видимость</th></tr></thead>
+        <tbody>
+        {% for sc in k.seo_competitors %}
+        <tr>
+            <td><a href="https://{{ sc.domain }}" style="color:var(--blue);" target="_blank">{{ sc.domain }}</a></td>
+            <td class="r">{{ '{:,}'.format(sc.keyword_overlap) }}</td>
+            <td class="r">{{ '{:,}'.format(sc.visibility) }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    {% if k.history %}
+    <h4 style="color:var(--text2); font-size:0.88em; margin:16px 0 8px;">Динамика видимости (6 мес)</h4>
+    <div style="display:flex; gap:4px; align-items:end; height:60px; margin-bottom:8px;">
+        {% set max_vis = k.history|map(attribute='visibility')|max %}
+        {% for h in k.history %}
+        <div style="flex:1; background:var(--gold); border-radius:3px 3px 0 0; height:{{ (h.visibility / max_vis * 100)|int if max_vis else 10 }}%; min-height:4px;" title="{{ h.month }}: {{ h.visibility }}"></div>
+        {% endfor %}
+    </div>
+    <div style="display:flex; gap:4px; font-size:0.72em; color:var(--text3);">
+        {% for h in k.history %}
+        <div style="flex:1; text-align:center;">{{ h.month[-5:] }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {{ info_tip("SEO-данные получены из Keys.so (реальная аналитика). Регион: Москва.", sources=["Keys.so"]) }}
+    {% else %}
+
+    {# Fallback: AI-estimated metrics #}
     {% if digital.monthly_traffic is not none or digital.seo_score is not none %}
     <div class="grid-3" style="margin-bottom:20px;">
         {% if digital.monthly_traffic is not none %}
@@ -18,6 +93,7 @@
     <div class="info-tip" style="margin-bottom:16px;">
         <span><strong>&#9888; Оценка AI:</strong> Трафик и SEO-оценка сгенерированы языковой моделью. Для точных данных используйте SimilarWeb, Serpstat или Яндекс.Метрику.</span>
     </div>
+    {% endif %}
     {% endif %}
 
     {% if digital.social_accounts %}
