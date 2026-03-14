@@ -14,6 +14,7 @@ import re
 import secrets
 import threading
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -32,6 +33,10 @@ ALLOWED_EMAILS = set(
     if e.strip()
 )
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+
+# Yandex OAuth
+YANDEX_CLIENT_ID = os.getenv("YANDEX_CLIENT_ID", "")
+YANDEX_CLIENT_SECRET = os.getenv("YANDEX_CLIENT_SECRET", "")
 
 # Simple email regex (not RFC 5322 compliant, but good enough for MVP)
 _EMAIL_RE = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
@@ -430,6 +435,124 @@ class AuthManager:
             "name": user.get("name", ""),
             "picture": user.get("picture", ""),
             "token": token,
+            "reports_used": reports_used,
+            "reports_remaining": max(0, FREE_REPORTS_LIMIT - reports_used),
+        }
+
+    def yandex_login(self, auth_code: str) -> dict | None:
+        """Exchange Yandex auth code for token, login/register user.
+
+        Returns user public dict with session token, or None on failure.
+        """
+        if not YANDEX_CLIENT_ID or not YANDEX_CLIENT_SECRET:
+            logger.error("YANDEX_CLIENT_ID or YANDEX_CLIENT_SECRET not set")
+            return None
+
+        # Exchange code for access token
+        try:
+            token_data = urllib.parse.urlencode({
+                "grant_type": "authorization_code",
+                "code": auth_code,
+                "client_id": YANDEX_CLIENT_ID,
+                "client_secret": YANDEX_CLIENT_SECRET,
+            }).encode()
+            req = urllib.request.Request(
+                "https://oauth.yandex.ru/token",
+                data=token_data,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                token_resp = json.loads(resp.read().decode())
+        except Exception as e:
+            logger.warning("Yandex token exchange failed: %s", str(e)[:200])
+            return None
+
+        access_token = token_resp.get("access_token")
+        if not access_token:
+            logger.warning("Yandex: no access_token in response")
+            return None
+
+        # Get user info
+        try:
+            req = urllib.request.Request(
+                "https://login.yandex.ru/info?format=json",
+                headers={"Authorization": f"OAuth {access_token}"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                user_info = json.loads(resp.read().decode())
+        except Exception as e:
+            logger.warning("Yandex user info failed: %s", str(e)[:200])
+            return None
+
+        email = (user_info.get("default_email") or "").lower().strip()
+        if not email:
+            logger.warning("Yandex: no email in user info")
+            return None
+
+        # Check whitelist (if set)
+        if ALLOWED_EMAILS and email not in ALLOWED_EMAILS:
+            logger.warning("Yandex email not in whitelist: %s", email)
+            return None
+
+        # Login or auto-register
+        filename = _email_to_filename(email)
+        with _lock:
+            user = _load_user(filename)
+            session_token = secrets.token_urlsafe(32)
+            now = time.time()
+
+            if not user:
+                # Auto-register Yandex user (no password)
+                name = " ".join(filter(None, [
+                    user_info.get("first_name", ""),
+                    user_info.get("last_name", ""),
+                ])).strip() or user_info.get("login", "")
+                user = {
+                    "email": email,
+                    "yandex_id": str(user_info.get("id", "")),
+                    "name": name,
+                    "picture": f"https://avatars.yandex.net/get-yapic/{user_info.get('default_avatar_id', '0')}/islands-200",
+                    "created_at": now,
+                    "reports_used": 0,
+                    "report_ids": [],
+                    "consent_data_processing": True,
+                    "consent_email_marketing": False,
+                    "consent_timestamp": now,
+                    "active_tokens": [],
+                }
+                logger.info("Auto-registered Yandex user: %s", email)
+
+            # Add session token
+            tokens = user.get("active_tokens", [])
+            tokens = [
+                t for t in tokens
+                if now - t.get("created_at", 0) < TOKEN_TTL_DAYS * 86400
+            ]
+            if len(tokens) >= MAX_TOKENS_PER_USER:
+                tokens.sort(key=lambda t: t.get("last_used", 0))
+                removed = tokens[:len(tokens) - MAX_TOKENS_PER_USER + 1]
+                tokens = tokens[len(tokens) - MAX_TOKENS_PER_USER + 1:]
+                idx = _load_token_index()
+                for rt in removed:
+                    idx.pop(rt.get("token", ""), None)
+                _save_token_index(idx)
+
+            tokens.append({"token": session_token, "created_at": now, "last_used": now})
+            user["active_tokens"] = tokens
+            user["yandex_id"] = str(user_info.get("id", user.get("yandex_id", "")))
+            _save_user(filename, user)
+
+            idx = _load_token_index()
+            idx[session_token] = filename
+            _save_token_index(idx)
+
+        reports_used = user.get("reports_used", 0)
+        logger.info("Yandex login: %s", email)
+        return {
+            "email": email,
+            "name": user.get("name", ""),
+            "picture": user.get("picture", ""),
+            "token": session_token,
             "reports_used": reports_used,
             "reports_remaining": max(0, FREE_REPORTS_LIMIT - reports_used),
         }

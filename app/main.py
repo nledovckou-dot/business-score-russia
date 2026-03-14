@@ -8,6 +8,7 @@ import time
 import uuid
 import json
 import threading
+import urllib.parse
 from typing import Any
 
 from dotenv import load_dotenv
@@ -74,9 +75,10 @@ auth_manager = AuthManager()
 
 # ── Auth gate: require login ──
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+YANDEX_CLIENT_ID = os.getenv("YANDEX_CLIENT_ID", "")
 
 # Paths that don't require authentication
-PUBLIC_PATHS = {"/", "/login", "/api/auth/login", "/api/auth/register", "/api/auth/google", "/api/health", "/api/analyze", "/api/debug-rate"}
+PUBLIC_PATHS = {"/", "/login", "/api/auth/login", "/api/auth/register", "/api/auth/google", "/api/auth/yandex", "/api/auth/yandex/callback", "/api/auth/config", "/api/health", "/api/analyze", "/api/debug-rate"}
 PUBLIC_PREFIXES = ("/reports/", "/static/", "/_next/", "/api/analyze/")
 
 LOGIN_PAGE_HTML = """<!DOCTYPE html>
@@ -303,6 +305,15 @@ async def health():
     return {"ok": True, "version": APP_VERSION, "uptime_sec": uptime_sec, "active_sessions": active}
 
 
+@app.get("/api/auth/config")
+async def auth_config():
+    """Public auth config — client IDs for social login buttons."""
+    return {
+        "google_client_id": GOOGLE_CLIENT_ID,
+        "yandex_client_id": YANDEX_CLIENT_ID,
+    }
+
+
 @app.get("/api/diag-admin")
 async def diag_admin():
     """Debug: check admin HTML encoding on this server."""
@@ -441,6 +452,58 @@ async def auth_google(request: Request):
         "reports_remaining": result["reports_remaining"],
     })
     return _set_auth_cookie(resp, result["token"])
+
+
+@app.get("/api/auth/yandex")
+async def auth_yandex_redirect(request: Request):
+    """Redirect user to Yandex OAuth consent screen."""
+    if not YANDEX_CLIENT_ID:
+        return JSONResponse({"ok": False, "error": "Яндекс OAuth не настроен"}, status_code=500)
+    # Build Yandex OAuth URL
+    import urllib.parse
+    # Determine redirect URI from request
+    scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = request.headers.get("host", request.url.netloc)
+    redirect_uri = f"{scheme}://{host}/api/auth/yandex/callback"
+    # Save pendingUrl in state param if provided
+    state = request.query_params.get("pending_url", "")
+    params = urllib.parse.urlencode({
+        "response_type": "code",
+        "client_id": YANDEX_CLIENT_ID,
+        "redirect_uri": redirect_uri,
+        "state": state,
+    })
+    from starlette.responses import RedirectResponse
+    return RedirectResponse(url=f"https://oauth.yandex.ru/authorize?{params}")
+
+
+@app.get("/api/auth/yandex/callback")
+async def auth_yandex_callback(request: Request):
+    """Handle Yandex OAuth callback — exchange code, set cookie, redirect to landing."""
+    code = request.query_params.get("code", "")
+    state = request.query_params.get("state", "")  # pendingUrl
+    if not code:
+        return HTMLResponse("<h3>Ошибка: нет кода авторизации от Яндекса</h3>", status_code=400)
+
+    result = auth_manager.yandex_login(code)
+    if not result:
+        return HTMLResponse("<h3>Ошибка входа через Яндекс. Попробуйте ещё раз.</h3>", status_code=403)
+
+    # Redirect to landing with success indicator
+    from starlette.responses import RedirectResponse
+    redirect_url = "/?yandex_auth=ok"
+    if state:
+        redirect_url += "&pending_url=" + urllib.parse.quote(state, safe="")
+    resp = RedirectResponse(url=redirect_url, status_code=302)
+    resp.set_cookie(
+        key=COOKIE_NAME,
+        value=result["token"],
+        max_age=COOKIE_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        secure=IS_PRODUCTION,
+    )
+    return resp
 
 
 @app.post("/api/auth/logout")

@@ -9,6 +9,7 @@ LANDING_HTML = r"""<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>РУССКОР — Анализ бизнеса 360</title>
+<script src="https://accounts.google.com/gsi/client" async></script>
 <style>
 :root{
   --bg:#FAFBFD;--bg2:#F2F4F8;--bg3:#E8ECF2;
@@ -153,6 +154,12 @@ h1 b{font-weight:600;color:var(--gold)}
 .modal .modal-switch{text-align:center;margin-top:14px;font-size:0.8em;color:var(--text3)}
 .modal .modal-switch a{color:var(--navy);cursor:pointer;text-decoration:none}
 .modal .modal-switch a:hover{text-decoration:underline}
+.social-btns{display:flex;flex-direction:column;gap:10px;margin-bottom:18px}
+.btn-social{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:11px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:0.9em;font-weight:500;cursor:pointer;font-family:inherit;transition:border-color 0.15s,box-shadow 0.15s}
+.btn-social:hover{border-color:var(--border2);box-shadow:0 1px 6px rgba(0,0,0,0.06)}
+.btn-social svg{flex-shrink:0}
+.modal-divider{display:flex;align-items:center;gap:12px;margin-bottom:18px;color:var(--text3);font-size:0.78em}
+.modal-divider::before,.modal-divider::after{content:'';flex:1;height:1px;background:var(--border)}
 
 /* ── Footer ── */
 .footer{text-align:center;padding:32px 0 16px;color:var(--text3);font-size:0.75em;margin-top:auto;width:100%}
@@ -228,6 +235,17 @@ h1 b{font-weight:600;color:var(--gold)}
         <h2>Войти</h2>
         <p class="modal-sub" id="login-sub">Войдите, чтобы сохранять отчёты</p>
         <div class="modal-error" id="login-error"></div>
+        <div class="social-btns">
+            <button class="btn-social" onclick="googleSignIn()">
+                <svg width="18" height="18" viewBox="0 0 18 18"><path d="M17.64 9.2a10.34 10.34 0 0 0-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92A8.78 8.78 0 0 0 17.64 9.2z" fill="#4285F4"/><path d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.83.86-3.04.86-2.34 0-4.33-1.58-5.04-3.71H.96v2.33A9 9 0 0 0 9 18z" fill="#34A853"/><path d="M3.96 10.71A5.41 5.41 0 0 1 3.68 9c0-.59.1-1.17.28-1.71V4.96H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.04l3-2.33z" fill="#FBBC05"/><path d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.59C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.96l3 2.33C4.67 5.16 6.66 3.58 9 3.58z" fill="#EA4335"/></svg>
+                Войти через Google
+            </button>
+            <button class="btn-social" onclick="yandexSignIn()">
+                <svg width="18" height="18" viewBox="0 0 18 18"><rect width="18" height="18" rx="3" fill="#FC3F1D"/><path d="M10.35 14.4h-1.67V7.52c-1.19 0-2.42.85-2.42 2.67 0 1.29.56 2.01 1.52 2.82l-1.73 1.93C4.75 13.72 4 12.37 4 10.31 4 7.6 5.76 6 8.68 6h1.67v8.4z" fill="#fff"/></svg>
+                Войти через Яндекс
+            </button>
+        </div>
+        <div class="modal-divider">или</div>
         <div class="field"><label>Email</label><input id="login-email" type="email" placeholder="name@example.com" onkeydown="if(event.key==='Enter')doLogin()"></div>
         <div class="field"><label>Пароль</label><input id="login-password" type="password" placeholder="Минимум 6 символов" onkeydown="if(event.key==='Enter')doLogin()"></div>
         <button class="btn-full" id="login-btn" onclick="doLogin()">Войти</button>
@@ -241,6 +259,17 @@ h1 b{font-weight:600;color:var(--gold)}
         <h2>Создайте аккаунт</h2>
         <p class="modal-sub" id="register-sub">5 бесплатных отчётов — для получения результата</p>
         <div class="modal-error" id="register-error"></div>
+        <div class="social-btns">
+            <button class="btn-social" onclick="googleSignIn()">
+                <svg width="18" height="18" viewBox="0 0 18 18"><path d="M17.64 9.2a10.34 10.34 0 0 0-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92A8.78 8.78 0 0 0 17.64 9.2z" fill="#4285F4"/><path d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.83.86-3.04.86-2.34 0-4.33-1.58-5.04-3.71H.96v2.33A9 9 0 0 0 9 18z" fill="#34A853"/><path d="M3.96 10.71A5.41 5.41 0 0 1 3.68 9c0-.59.1-1.17.28-1.71V4.96H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.04l3-2.33z" fill="#FBBC05"/><path d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.59C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.96l3 2.33C4.67 5.16 6.66 3.58 9 3.58z" fill="#EA4335"/></svg>
+                Продолжить через Google
+            </button>
+            <button class="btn-social" onclick="yandexSignIn()">
+                <svg width="18" height="18" viewBox="0 0 18 18"><rect width="18" height="18" rx="3" fill="#FC3F1D"/><path d="M10.35 14.4h-1.67V7.52c-1.19 0-2.42.85-2.42 2.67 0 1.29.56 2.01 1.52 2.82l-1.73 1.93C4.75 13.72 4 12.37 4 10.31 4 7.6 5.76 6 8.68 6h1.67v8.4z" fill="#fff"/></svg>
+                Продолжить через Яндекс
+            </button>
+        </div>
+        <div class="modal-divider">или по email</div>
         <div class="field"><label>Email</label><input id="register-email" type="email" placeholder="name@example.com" onkeydown="if(event.key==='Enter')doRegister()"></div>
         <div class="field"><label>Пароль</label><input id="register-password" type="password" placeholder="Минимум 6 символов" onkeydown="if(event.key==='Enter')doRegister()"></div>
         <div class="field" style="margin-bottom:8px">
@@ -580,7 +609,13 @@ h1 b{font-weight:600;color:var(--gold)}
 </div>
 
 <footer class="footer">РУССКОР <span id="app-ver"></span></footer>
-<script>fetch('/api/health').then(r=>r.json()).then(d=>{document.getElementById('app-ver').textContent='v'+(d.version||'?')})</script>
+<script>
+fetch('/api/health').then(r=>r.json()).then(d=>{document.getElementById('app-ver').textContent='v'+(d.version||'?')});
+/* Load auth config (Google Client ID etc.) */
+fetch('/api/auth/config').then(r=>r.json()).then(function(cfg){
+    window._GOOGLE_CLIENT_ID=cfg.google_client_id||'';
+});
+</script>
 
 <script>
 var authUser=null,pendingUrl=null;
@@ -636,6 +671,45 @@ function checkAuth(){fetch('/api/auth/me').then(function(r){return r.json()}).th
 document.addEventListener('click',function(e){if(e.target.classList.contains('modal-overlay'))e.target.classList.remove('open')});
 document.addEventListener('keydown',function(e){if(e.key==='Escape')document.querySelectorAll('.modal-overlay.open').forEach(function(m){m.classList.remove('open')})});
 checkAuth();
+/* Handle Yandex OAuth callback — auto-login after redirect */
+(function(){
+    var params=new URLSearchParams(window.location.search);
+    if(params.get('yandex_auth')==='ok'){
+        var pu=params.get('pending_url');
+        if(pu)pendingUrl=decodeURIComponent(pu);
+        /* Clean URL */
+        window.history.replaceState({},'','/');
+        /* Auth is set via cookie, just check and auto-start */
+        fetch('/api/auth/me').then(function(r){return r.json()}).then(function(r){
+            if(r.ok&&r.authenticated){
+                authUser={email:r.email,reports_used:r.reports_used,reports_remaining:r.reports_remaining};
+                updateAuthUI();
+                if(pendingUrl)startAnalysis();
+            }
+        });
+    }
+})();
+
+/* Google Sign-In */
+function onGoogleSignIn(response){
+    fetch('/api/auth/google',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({credential:response.credential})})
+    .then(function(r){return r.json()}).then(function(r){
+        if(!r.ok){showModalError('login',r.error||'Ошибка Google');showModalError('register',r.error||'Ошибка Google');return}
+        authUser={email:r.email,reports_used:r.reports_used,reports_remaining:r.reports_remaining};
+        updateAuthUI();closeModal('login');closeModal('register');
+        if(pendingUrl)startAnalysis();
+    }).catch(function(err){showModalError('login','Ошибка: '+err.message)})
+}
+function googleSignIn(){
+    if(!window.google||!google.accounts){showModalError('login','Google SDK не загружен');return}
+    google.accounts.id.initialize({client_id:window._GOOGLE_CLIENT_ID||'',callback:onGoogleSignIn});
+    google.accounts.id.prompt();
+}
+/* Yandex OAuth — redirect-based */
+function yandexSignIn(){
+    var pu=pendingUrl||document.getElementById('url').value.trim()||'';
+    window.location.href='/api/auth/yandex'+(pu?'?pending_url='+encodeURIComponent(pu):'');
+}
 
 var SID=null,evtSource=null,competitorData=[];
 
