@@ -6,7 +6,7 @@ jobs:
   debug:
     runs-on: ubuntu-latest
     steps:
-      - name: Check reports via SSH
+      - name: Check report contents via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -15,20 +15,43 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 2m
           script: |
-            echo "=== Service status ==="
-            systemctl status bsr --no-pager | head -5
+            DIR=/opt/business-score-russia/app/storage/reports
+            echo "=== All reports with company names ==="
+            for f in $DIR/report_*.html; do
+              ID=$(basename "$f" .html | sed 's/report_//')
+              COMPANY=$(grep -oP '<title>\K[^<]+' "$f" 2>/dev/null | head -1)
+              SIZE=$(du -h "$f" | cut -f1)
+              DATE=$(stat -c %y "$f" | cut -d. -f1)
+              echo "$ID | $SIZE | $DATE | $COMPANY"
+            done
             echo ""
-            echo "=== Reports in storage (sorted by time) ==="
-            ls -lht /opt/business-score-russia/app/storage/reports/ 2>/dev/null
+            echo "=== DNS report (03b2729a) board review ==="
+            python3 -c "
+import re, sys
+with open('$DIR/report_03b2729a.html') as f:
+    html = f.read()
+# Find quality score
+m = re.search(r'quality.*?score.*?(\d+)', html, re.IGNORECASE)
+if m: print(f'Quality score: {m.group(1)}')
+# Find board review section
+m = re.search(r'board.*?review|совет.*?директор', html, re.IGNORECASE)
+if m: print(f'Board review: found at pos {m.start()}')
+# Check for QA Director
+if 'QA Director' in html or 'Директор по качеству' in html:
+    print('QA Director: PRESENT')
+else:
+    print('QA Director: NOT FOUND')
+" 2>/dev/null
             echo ""
-            echo "=== NEW reports (last 40 min) ==="
-            find /opt/business-score-russia/app/storage/reports/ -name "*.html" -mmin -40 -exec basename {} \; 2>/dev/null
-            echo ""
-            echo "=== Check DNS session ==="
-            curl -s http://127.0.0.1:8083/api/analyze/de21d738134e 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'status={d.get(\"status\",\"?\")}, report_id={d.get(\"report_id\",\"?\")}, error={d.get(\"error\",\"none\")}')" 2>/dev/null || echo "session lost"
-            echo ""
-            echo "=== Check CDEK session ==="
-            curl -s http://127.0.0.1:8083/api/analyze/95144d7b4d39 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'status={d.get(\"status\",\"?\")}, report_id={d.get(\"report_id\",\"?\")}, error={d.get(\"error\",\"none\")}')" 2>/dev/null || echo "session lost"
-            echo ""
-            echo "=== Recent errors (last 40 min) ==="
-            journalctl -u bsr --since "40 min ago" --no-pager | grep -i -E "error|fail|saved|complete|board.*review|quality.*score" | tail -15
+            echo "=== CDEK report (cbb07ef1) board review ==="
+            python3 -c "
+import re
+with open('$DIR/report_cbb07ef1.html') as f:
+    html = f.read()
+m = re.search(r'quality.*?score.*?(\d+)', html, re.IGNORECASE)
+if m: print(f'Quality score: {m.group(1)}')
+if 'QA Director' in html or 'Директор по качеству' in html:
+    print('QA Director: PRESENT')
+else:
+    print('QA Director: NOT FOUND')
+" 2>/dev/null
