@@ -7,7 +7,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Check analysis status
+      - name: Check today's reports and metrics
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -16,22 +16,68 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 2m
           script: |
-            echo "=== Session fc5a21ed72f3 ==="
-            curl -s http://localhost:8083/api/analyze/fc5a21ed72f3 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "Session not found or finished"
+            echo "=== 1. TODAY'S METRICS (from metrics.jsonl) ==="
+            cd /opt/business-score-russia
+            MFILE=data/metrics.jsonl
+            if [ -f "$MFILE" ]; then
+              echo "Total lines: $(wc -l < $MFILE)"
+              echo ""
+              echo "All entries from March 14 2026:"
+              python3 -c "
+import json, sys
+from datetime import datetime, timezone, timedelta
+msk = timezone(timedelta(hours=3))
+with open('$MFILE') as f:
+    for line in f:
+        try:
+            r = json.loads(line.strip())
+            ts = r.get('timestamp', 0)
+            dt = datetime.fromtimestamp(ts, tz=msk)
+            if dt.date() == datetime(2026, 3, 14).date():
+                print(f'{dt.strftime(\"%H:%M\")} MSK | {r.get(\"company\", \"(empty)\")} | time={r.get(\"total_time_sec\", 0):.0f}s | llm={r.get(\"llm_calls\", 0)} | cost=\${r.get(\"total_cost_usd\", 0):.4f} | sid={r.get(\"session_id\", \"\")}')
+        except: pass
+" 2>&1
+            else
+              echo "metrics.jsonl NOT FOUND"
+            fi
 
             echo ""
-            echo "=== Search Fallback Logs ==="
-            sudo -n journalctl -u bsr --no-pager -n 500 --since "20 min ago" 2>/dev/null | grep -i "proxy ddg\|gemini search\|duckduckgo.*fail\|switching\|grounding\|via proxy\|fallback\|search.*return" | tail -20
+            echo "=== 2. SESSION FILES ON DISK ==="
+            SDIR=data/sessions
+            if [ -d "$SDIR" ]; then
+              echo "Session files:"
+              ls -lht $SDIR/*.json 2>/dev/null | head -20
+              echo ""
+              echo "Session details (company + status):"
+              for f in $SDIR/*.json; do
+                [ -f "$f" ] || continue
+                python3 -c "
+import json, sys
+from datetime import datetime, timezone, timedelta
+msk = timezone(timedelta(hours=3))
+with open('$f') as fh:
+    d = json.load(fh)
+    data = d.get('data', {})
+    meta = d.get('_meta', {})
+    company = data.get('data', {}).get('confirmed_company', {}).get('name', '') or data.get('data', {}).get('company_info', {}).get('name', '') or data.get('company_info', {}).get('name', '')
+    status = data.get('status', '?')
+    ts = meta.get('created_at', 0)
+    dt = datetime.fromtimestamp(ts, tz=msk)
+    url = data.get('data', {}).get('url', '') or data.get('url', '')
+    print(f'{dt.strftime(\"%d.%m %H:%M\")} MSK | {status} | {company or url or \"?\"} | file=$(basename $f)')
+" 2>&1
+              done
+            else
+              echo "sessions dir NOT FOUND"
+            fi
 
             echo ""
-            echo "=== Pipeline Steps ==="
-            sudo -n journalctl -u bsr --no-pager -n 500 --since "20 min ago" 2>/dev/null | grep -i "\[step\|revisi\|board\|quality\|report_\|done\|complet\|scrape_method\|fns\|innн\|competitor" | tail -30
-
-            echo ""
-            echo "=== Errors ==="
-            sudo -n journalctl -u bsr --no-pager -n 500 --since "20 min ago" 2>/dev/null | grep -i "error\|exception\|traceback\|failed" | tail -15
-
-            echo ""
-            echo "=== Reports ==="
+            echo "=== 3. REPORTS ON DISK (today) ==="
             DIR=/opt/business-score-russia/app/storage/reports
-            ls -lht $DIR/report_*.html 2>/dev/null | head -5
+            echo "All reports sorted by date:"
+            ls -lht $DIR/report_*.html 2>/dev/null | head -15
+            echo "Total: $(ls $DIR/report_*.html 2>/dev/null | wc -l) reports"
+
+            echo ""
+            echo "=== 4. JOURNALCTL TODAY ==="
+            sudo -n journalctl -u bsr --no-pager --since "2026-03-14" 2>/dev/null | grep -i "\[step\|pipeline.*start\|pipeline.*done\|report.*saved\|session.*creat\|analyze.*start\|company.*found\|done.*url\|completed" | tail -40
