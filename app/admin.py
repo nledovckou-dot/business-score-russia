@@ -452,6 +452,40 @@ async def admin_list_reports(request: Request):
     return {"ok": True, "reports": reports}
 
 
+def _parse_reset(val: str | None) -> str | None:
+    """Parse ratelimit reset header to human-readable string."""
+    if not val:
+        return None
+    # Could be seconds like "42" or duration like "1m30s"
+    val = val.strip()
+    if val.endswith("s") and val[:-1].replace(".", "").isdigit():
+        s = float(val[:-1])
+    elif val.replace(".", "").isdigit():
+        s = float(val)
+    else:
+        return val  # already human-readable like "1m30s"
+    if s < 60:
+        return f"{int(s)}s"
+    m = int(s) // 60
+    sec = int(s) % 60
+    return f"{m}m{sec}s" if sec else f"{m}m"
+
+
+def _format_k(n: int | str | None) -> str | None:
+    """Format large numbers: 40000 -> '40K'."""
+    if n is None:
+        return None
+    try:
+        n = int(n)
+    except (ValueError, TypeError):
+        return str(n)
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1000:
+        return f"{n / 1000:.0f}K"
+    return str(n)
+
+
 @router.get("/api/monitoring")
 async def admin_monitoring(request: Request):
     """Probe all external APIs and return status."""
@@ -483,12 +517,19 @@ async def admin_monitoring(request: Request):
             r = await c.get("https://api.openai.com/v1/models", headers={"Authorization": f"Bearer {key}"}, timeout=TIMEOUT)
             r.raise_for_status()
             models = r.json().get("data", [])
-            # Try to get rate limit headers
-            rl_remaining = r.headers.get("x-ratelimit-remaining-requests")
-            rl_limit = r.headers.get("x-ratelimit-limit-requests")
-            quota = None
-            if rl_remaining and rl_limit:
-                quota = f"{rl_remaining}/{rl_limit} req"
+            h = r.headers
+            quota = {
+                "requests": None, "tokens": None, "reset": None, "balance": None, "static": None,
+            }
+            rl_req_lim = h.get("x-ratelimit-limit-requests")
+            rl_req_rem = h.get("x-ratelimit-remaining-requests")
+            if rl_req_lim and rl_req_rem:
+                quota["requests"] = {"remaining": int(rl_req_rem), "limit": int(rl_req_lim)}
+            rl_tok_lim = h.get("x-ratelimit-limit-tokens")
+            rl_tok_rem = h.get("x-ratelimit-remaining-tokens")
+            if rl_tok_lim and rl_tok_rem:
+                quota["tokens"] = {"remaining": int(rl_tok_rem), "limit": int(rl_tok_lim)}
+            quota["reset"] = _parse_reset(h.get("x-ratelimit-reset-requests"))
             return {"details": f"{len(models)} моделей", "quota": quota}
 
     async def probe_gemini():
@@ -499,8 +540,10 @@ async def admin_monitoring(request: Request):
             r = await c.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={key}", timeout=TIMEOUT)
             r.raise_for_status()
             models = r.json().get("models", [])
-            # Gemini: no quota endpoint, show known limits
-            return {"details": f"{len(models)} моделей", "quota": "1500 RPD (free tier)"}
+            return {"details": f"{len(models)} моделей", "quota": {
+                "requests": None, "tokens": None, "reset": None, "balance": None,
+                "static": "1500 RPD / 15 RPM (free tier)",
+            }}
 
     async def probe_anthropic():
         key = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -510,12 +553,22 @@ async def admin_monitoring(request: Request):
             r = await c.get("https://api.anthropic.com/v1/models", headers={
                 "x-api-key": key, "anthropic-version": "2023-06-01",
             }, timeout=TIMEOUT)
-            rl_remaining = r.headers.get("x-ratelimit-remaining-tokens") or r.headers.get("retry-after")
-            rl_req = r.headers.get("x-ratelimit-limit-requests")
-            quota = None
-            if rl_req:
-                rl_rem_req = r.headers.get("x-ratelimit-remaining-requests", "?")
-                quota = f"{rl_rem_req}/{rl_req} req"
+            h = r.headers
+            quota = {
+                "requests": None, "tokens": None, "reset": None, "balance": None, "static": None,
+            }
+            # Anthropic uses both x-ratelimit-* and anthropic-ratelimit-* prefixes
+            rl_req_lim = h.get("anthropic-ratelimit-requests-limit") or h.get("x-ratelimit-limit-requests")
+            rl_req_rem = h.get("anthropic-ratelimit-requests-remaining") or h.get("x-ratelimit-remaining-requests")
+            if rl_req_lim and rl_req_rem:
+                quota["requests"] = {"remaining": int(rl_req_rem), "limit": int(rl_req_lim)}
+            rl_tok_lim = h.get("anthropic-ratelimit-tokens-limit") or h.get("x-ratelimit-limit-tokens")
+            rl_tok_rem = h.get("anthropic-ratelimit-tokens-remaining") or h.get("x-ratelimit-remaining-tokens")
+            if rl_tok_lim and rl_tok_rem:
+                quota["tokens"] = {"remaining": int(rl_tok_rem), "limit": int(rl_tok_lim)}
+            quota["reset"] = _parse_reset(
+                h.get("anthropic-ratelimit-requests-reset") or h.get("x-ratelimit-reset-requests")
+            )
             if r.status_code == 200:
                 models = r.json().get("data", [])
                 return {"details": f"{len(models)} моделей", "quota": quota}
@@ -530,7 +583,10 @@ async def admin_monitoring(request: Request):
             if r.status_code == 200:
                 data = r.json()
                 items = data.get("items", [])
-                return {"details": f"OK ({len(items)} записей)", "quota": "100 req/day"}
+                return {"details": f"OK ({len(items)} записей)", "quota": {
+                    "requests": None, "tokens": None, "reset": None, "balance": None,
+                    "static": "100 req/day",
+                }}
             return {"details": f"HTTP {r.status_code}", "ok": False, "quota": None}
 
     async def probe_hh():
@@ -542,10 +598,15 @@ async def admin_monitoring(request: Request):
                 "Authorization": f"Bearer {token}",
                 "User-Agent": "EspacePlatform/1.0 (n.a.ledovskoy@gmail.com)",
             }, params={"text": "python", "per_page": 1}, timeout=TIMEOUT)
-            # HH rate limit headers
-            rl_remaining = r.headers.get("x-ratelimit-remaining")
-            rl_limit = r.headers.get("x-ratelimit-limit")
-            quota = f"{rl_remaining}/{rl_limit} req" if rl_remaining and rl_limit else None
+            h = r.headers
+            quota = {
+                "requests": None, "tokens": None, "reset": None, "balance": None, "static": None,
+            }
+            rl_lim = h.get("x-ratelimit-limit")
+            rl_rem = h.get("x-ratelimit-remaining")
+            if rl_lim and rl_rem:
+                quota["requests"] = {"remaining": int(rl_rem), "limit": int(rl_lim)}
+            quota["reset"] = _parse_reset(h.get("x-ratelimit-reset"))
             if r.status_code == 200:
                 found = r.json().get("found", 0)
                 return {"details": f"OK ({found:,} вакансий)", "quota": quota}
@@ -562,7 +623,10 @@ async def admin_monitoring(request: Request):
             }, timeout=TIMEOUT)
             if r.status_code == 200:
                 total = r.json().get("result", {}).get("total", 0)
-                return {"details": f"OK ({total:,} результатов)", "quota": "10 req/sec"}
+                return {"details": f"OK ({total:,} результатов)", "quota": {
+                    "requests": None, "tokens": None, "reset": None, "balance": None,
+                    "static": "10 req/sec",
+                }}
             return {"details": f"HTTP {r.status_code}", "ok": False, "quota": None}
 
     async def probe_keyso():
@@ -576,13 +640,17 @@ async def admin_monitoring(request: Request):
             r = await c.get("https://api.keys.so/report/simple/domain_dashboard", params={
                 "domain": "sber.ru", "base": "msk",
             }, headers={"X-Keyso-TOKEN": token, "Accept": "application/json", "User-Agent": "BSR-Pipeline/1.0"}, timeout=TIMEOUT)
+            static_quota = {
+                "requests": None, "tokens": None, "reset": None, "balance": None,
+                "static": "10 req/10s",
+            }
             if r.status_code == 200:
                 data = r.json()
                 if data.get("name"):
                     vis = data.get("vis", 0)
                     dr = data.get("dr", 0)
-                    return {"details": f"OK (test: DR={dr}, vis={vis})", "quota": "10 req/10s"}
-                return {"details": "OK (empty)", "quota": "10 req/10s"}
+                    return {"details": f"OK (test: DR={dr}, vis={vis})", "quota": static_quota}
+                return {"details": "OK (empty)", "quota": static_quota}
             if r.status_code in (401, 403):
                 return {"details": f"Token invalid ({r.status_code})", "ok": False, "quota": None}
             return {"details": f"HTTP {r.status_code}", "ok": False, "quota": None}
@@ -593,16 +661,25 @@ async def admin_monitoring(request: Request):
             return {"details": "Ключ не задан", "ok": False, "quota": None}
         async with httpx.AsyncClient() as c:
             r = await c.get(f"https://api.checko.ru/v2/company", params={
-                "key": key, "inn": "7707083893",  # Сбербанк — тестовый запрос
+                "key": key, "inn": "7707083893",
             }, timeout=TIMEOUT)
             if r.status_code == 200:
                 data = r.json()
                 meta = data.get("meta", {})
                 company = data.get("data", {})
-                name = company.get("НаимСокр", "?")
-                today_count = meta.get("today_request_count", "?")
-                balance = meta.get("balance", "?")
-                return {"details": f"OK ({name})", "quota": f"today: {today_count}, balance: {balance}"}
+                name = company.get("\u041d\u0430\u0438\u043c\u0421\u043e\u043a\u0440", "?")
+                today_count = meta.get("today_request_count", 0)
+                balance_raw = meta.get("balance", 0)
+                try:
+                    balance_val = float(balance_raw)
+                    balance_str = f"{balance_val:.0f}\u20bd"
+                except (ValueError, TypeError):
+                    balance_str = str(balance_raw)
+                return {"details": f"OK ({name})", "quota": {
+                    "requests": {"remaining": None, "limit": None, "today": today_count},
+                    "tokens": None, "reset": None,
+                    "balance": balance_str, "static": None,
+                }}
             return {"details": f"HTTP {r.status_code}", "ok": False, "quota": None}
 
     async def probe_telegram():
@@ -613,14 +690,29 @@ async def admin_monitoring(request: Request):
             r = await c.get(f"https://api.telegram.org/bot{token}/getMe", timeout=TIMEOUT)
             r.raise_for_status()
             bot = r.json().get("result", {})
-            return {"details": f"@{bot.get('username', '?')}", "quota": "30 msg/sec"}
+            return {"details": f"@{bot.get('username', '?')}", "quota": {
+                "requests": None, "tokens": None, "reset": None, "balance": None,
+                "static": "30 msg/sec",
+            }}
 
     async def probe_bsr_self():
         async with httpx.AsyncClient() as c:
             r = await c.get("http://localhost:8083/api/health", timeout=5)
             if r.status_code == 200:
                 data = r.json()
-                return {"details": f"v{data.get('version', '?')}", "quota": None}
+                uptime = data.get("uptime_sec", 0)
+                active = data.get("active_sessions", 0)
+                # Format uptime
+                if uptime >= 86400:
+                    up_str = f"{uptime // 86400}d {(uptime % 86400) // 3600}h"
+                elif uptime >= 3600:
+                    up_str = f"{uptime // 3600}h {(uptime % 3600) // 60}m"
+                else:
+                    up_str = f"{uptime // 60}m"
+                return {"details": f"v{data.get('version', '?')}", "quota": {
+                    "requests": None, "tokens": None, "reset": None, "balance": None,
+                    "static": f"uptime: {up_str}, active: {active}",
+                }}
             return {"details": f"HTTP {r.status_code}", "ok": False, "quota": None}
 
     tasks = [
@@ -1080,6 +1172,57 @@ async function loadMonitoring() {
 
         document.getElementById('monCount').textContent = results.length;
 
+        function fmtK(n) {
+            if (n == null) return '?';
+            if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
+            if (n >= 1000) return Math.round(n/1000) + 'K';
+            return String(n);
+        }
+
+        function progressBar(remaining, limit, label) {
+            const pct = Math.round((remaining / limit) * 100);
+            const color = pct > 50 ? '#2e7d32' : pct > 20 ? '#e6a700' : '#d32f2f';
+            const bgColor = pct > 50 ? '#e8f5e9' : pct > 20 ? '#fff8e1' : '#ffeef0';
+            return '<div style="margin-top:6px;">'
+                + '<div style="display:flex;justify-content:space-between;font-size:11px;color:#666;margin-bottom:2px;">'
+                + '<span>' + label + '</span><span style="font-weight:600;color:' + color + ';">' + fmtK(remaining) + '/' + fmtK(limit) + '</span></div>'
+                + '<div style="height:6px;background:' + bgColor + ';border-radius:3px;overflow:hidden;">'
+                + '<div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:3px;transition:width 0.3s;"></div>'
+                + '</div></div>';
+        }
+
+        function renderQuota(q) {
+            if (!q) return '';
+            if (typeof q === 'string') return '<div style="margin-top:8px;padding:6px 10px;background:#f5f5f5;border-radius:6px;font-size:12px;color:#555;"><span style="color:#888;">Limit:</span> ' + q + '</div>';
+            let html = '<div style="margin-top:8px;padding:8px 10px;background:#f8f9fa;border-radius:8px;">';
+            let hasContent = false;
+            if (q.requests && q.requests.remaining != null && q.requests.limit != null) {
+                html += progressBar(q.requests.remaining, q.requests.limit, 'Requests');
+                hasContent = true;
+            } else if (q.requests && q.requests.today != null) {
+                html += '<div style="font-size:11px;color:#666;margin-top:4px;">Today: <strong>' + q.requests.today + '</strong> requests</div>';
+                hasContent = true;
+            }
+            if (q.tokens && q.tokens.remaining != null && q.tokens.limit != null) {
+                html += progressBar(q.tokens.remaining, q.tokens.limit, 'Tokens');
+                hasContent = true;
+            }
+            if (q.reset) {
+                html += '<div style="font-size:11px;color:#888;margin-top:4px;">Reset: <strong>' + q.reset + '</strong></div>';
+                hasContent = true;
+            }
+            if (q.balance) {
+                html += '<div style="font-size:11px;color:#2e7d32;margin-top:4px;">Balance: <strong>' + q.balance + '</strong></div>';
+                hasContent = true;
+            }
+            if (q.static) {
+                html += '<div style="font-size:11px;color:#888;margin-top:' + (hasContent ? '4' : '0') + 'px;">' + q.static + '</div>';
+                hasContent = true;
+            }
+            html += '</div>';
+            return hasContent ? html : '';
+        }
+
         // Render as card grid
         let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;">';
         for (const r of results) {
@@ -1088,9 +1231,7 @@ async function loadMonitoring() {
                 ? '<span style="width:10px;height:10px;border-radius:50%;background:#2e7d32;display:inline-block;"></span>'
                 : '<span style="width:10px;height:10px;border-radius:50%;background:#d32f2f;display:inline-block;"></span>';
             const msColor = r.ms > 3000 ? '#d32f2f' : r.ms > 1000 ? '#e65100' : '#2e7d32';
-            const quotaHtml = r.quota
-                ? '<div style="margin-top:8px;padding:6px 10px;background:#f5f5f5;border-radius:6px;font-size:12px;color:#555;"><span style="color:#888;">Limit:</span> ' + r.quota + '</div>'
-                : '';
+            const quotaHtml = renderQuota(r.quota);
             html += '<div style="background:#fff;border-radius:12px;border:1px solid ' + border + ';padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.04);">'
                 + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
                 + '<div style="display:flex;align-items:center;gap:8px;">' + statusDot + '<span style="font-weight:600;font-size:14px;">' + r.name + '</span></div>'

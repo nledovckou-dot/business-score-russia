@@ -39,6 +39,8 @@ logger = logging.getLogger("bsr.app")
 
 IS_PRODUCTION = os.getenv("BSR_ENV", "production").lower() == "production"
 
+APP_START_TIME = time.monotonic()
+
 # ── Version ──
 _version_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "VERSION")
 try:
@@ -294,7 +296,11 @@ def _set_auth_cookie(response: JSONResponse, token: str) -> JSONResponse:
 
 @app.get("/api/health")
 async def health():
-    return {"ok": True, "version": APP_VERSION}
+    from app.session_store import get_store
+    store = get_store()
+    uptime_sec = int(time.monotonic() - APP_START_TIME)
+    active = sum(1 for s in store.list_sessions() if s.get("status") in ("running", "pending"))
+    return {"ok": True, "version": APP_VERSION, "uptime_sec": uptime_sec, "active_sessions": active}
 
 
 @app.get("/api/diag-admin")
