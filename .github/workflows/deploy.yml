@@ -19,13 +19,14 @@ jobs:
           HH_APP_TOKEN: ${{ secrets.HH_APP_TOKEN }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           BSR_ALLOWED_EMAILS: ${{ secrets.BSR_ALLOWED_EMAILS }}
+          BSR_BETA_EMAILS: ${{ secrets.BSR_BETA_EMAILS }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 15m
-          envs: REPO_URL,GEMINI_API_KEY,FNS_API_KEY,FALLBACK_LLM_API_KEY,ANTHROPIC_API_KEY,HH_APP_TOKEN,GOOGLE_CLIENT_ID,BSR_ALLOWED_EMAILS
+          envs: REPO_URL,GEMINI_API_KEY,FNS_API_KEY,FALLBACK_LLM_API_KEY,ANTHROPIC_API_KEY,HH_APP_TOKEN,GOOGLE_CLIENT_ID,BSR_ALLOWED_EMAILS,BSR_BETA_EMAILS
           script: |
             set -e
             APP_DIR=/opt/business-score-russia
@@ -65,6 +66,7 @@ jobs:
               "HH_APP_TOKEN=${HH_APP_TOKEN}" \
               "GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}" \
               "BSR_ALLOWED_EMAILS=${BSR_ALLOWED_EMAILS}" \
+              "BSR_BETA_EMAILS=${BSR_BETA_EMAILS}" \
               > "$APP_DIR/.env"
 
             # Persistent directories
