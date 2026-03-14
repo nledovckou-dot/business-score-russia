@@ -427,7 +427,7 @@ async def auth_me(request: Request):
 
 @app.post("/api/auth/google")
 async def auth_google(request: Request):
-    """Login via Google Sign-In. Verifies ID token, checks whitelist."""
+    """Login via Google Sign-In. Verifies ID token, auto-registers."""
     try:
         body = await request.json()
     except Exception:
@@ -440,7 +440,7 @@ async def auth_google(request: Request):
     result = auth_manager.google_login(credential)
     if not result:
         return JSONResponse(
-            {"ok": False, "error": "Доступ запрещён. Ваш email не в списке разрешённых."},
+            {"ok": False, "error": "Ошибка входа через Google. Попробуйте ещё раз."},
             status_code=403,
         )
 

@@ -375,11 +375,6 @@ class AuthManager:
             logger.warning("Google email not verified: %s", email)
             return None
 
-        # Check whitelist (if set)
-        if ALLOWED_EMAILS and email not in ALLOWED_EMAILS:
-            logger.warning("Email not in whitelist: %s", email)
-            return None
-
         # Login or auto-register
         filename = _email_to_filename(email)
         with _lock:
@@ -487,11 +482,6 @@ class AuthManager:
         email = (user_info.get("default_email") or "").lower().strip()
         if not email:
             logger.warning("Yandex: no email in user info")
-            return None
-
-        # Check whitelist (if set)
-        if ALLOWED_EMAILS and email not in ALLOWED_EMAILS:
-            logger.warning("Yandex email not in whitelist: %s", email)
             return None
 
         # Login or auto-register
