@@ -240,6 +240,36 @@ def get_aggregate_stats() -> dict[str, Any]:
         for step, vals in step_counts.items()
     }
 
+    # Today's spend: filter records created today (UTC)
+    from datetime import datetime, timezone
+    today_start = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0,
+    ).timestamp()
+    today_records = [r for r in records if r.get("timestamp", 0) >= today_start]
+    today_cost_usd = round(sum(r.get("total_cost_usd", 0) for r in today_records), 4)
+    today_reports = len(today_records)
+
+    # Cost breakdown by provider (group models into providers)
+    provider_cost: dict[str, float] = {}
+    _PROVIDER_MAP = {
+        "gpt": "OpenAI",
+        "o3": "OpenAI",
+        "o1": "OpenAI",
+        "gemini": "Google",
+        "claude": "Anthropic",
+        "anthropic": "Anthropic",
+    }
+    for model_name, data in model_usage.items():
+        provider = "Other"
+        model_lower = model_name.lower()
+        for prefix, prov in _PROVIDER_MAP.items():
+            if prefix in model_lower:
+                provider = prov
+                break
+        provider_cost[provider] = round(
+            provider_cost.get(provider, 0) + data.get("cost_usd", 0), 4
+        )
+
     return {
         "total_reports": total,
         "avg_time_sec": round(sum(times) / total, 1),
@@ -252,6 +282,9 @@ def get_aggregate_stats() -> dict[str, Any]:
         "model_usage": model_usage,
         "avg_step_timings": avg_step_timings,
         "recent_reports": recent_reports,
+        "today_cost_usd": today_cost_usd,
+        "today_reports": today_reports,
+        "provider_cost": provider_cost,
     }
 
 

@@ -433,7 +433,7 @@ async def admin_board_review_result(report_file: str, request: Request):
 
 @router.get("/api/reports")
 async def admin_list_reports(request: Request):
-    """List all report files in storage."""
+    """List all report files in storage with enriched metadata."""
     if not _check_admin(request):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
@@ -441,12 +441,79 @@ async def admin_list_reports(request: Request):
     if not reports_dir.exists():
         return {"ok": True, "reports": []}
 
+    # Build lookup: session_id -> metrics record for cost/quality data
+    from app.metrics import _read_all_records
+    all_metrics = _read_all_records()
+    metrics_by_session: dict[str, dict] = {}
+    for rec in all_metrics:
+        sid = rec.get("session_id", "")
+        if sid:
+            metrics_by_session[sid] = rec
+
+    # Build lookup: report_filename -> board review quality score
+    board_scores: dict[str, float | None] = {}
+    if _BOARD_RESULTS_DIR.exists():
+        for bp in _BOARD_RESULTS_DIR.glob("*.json"):
+            try:
+                bd = json.loads(bp.read_text(encoding="utf-8"))
+                if bd.get("status") == "done":
+                    report_file = bd.get("report_file", bp.stem)
+                    consensus = bd.get("consensus", {})
+                    total_critiques = consensus.get("total_critiques", 0)
+                    critical = consensus.get("critical_issues", 0)
+                    approved = consensus.get("approved", False)
+                    # Quality score: 100 if approved with 0 critiques, deduct per critique
+                    score = 100 - (critical * 15) - ((total_critiques - critical) * 5)
+                    if not approved:
+                        score = min(score, 70)
+                    board_scores[report_file] = max(0, min(100, score))
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    # Match reports to sessions by session_id in filename (report_{sid}.html)
+    store = get_store()
+    session_ids = store.list_sessions()
+
     reports = []
     for f in sorted(reports_dir.glob("report_*.html"), key=lambda p: p.stat().st_mtime, reverse=True):
+        stat = f.stat()
+        # Extract session_id from filename: report_{sid}.html
+        sid = f.stem.replace("report_", "", 1) if f.stem.startswith("report_") else ""
+
+        # Try to get company name from session data
+        company_name = ""
+        llm_cost = None
+        llm_calls = None
+
+        # Check session store
+        if sid:
+            s = store.get(sid)
+            if s:
+                confirmed = s.get("data", {}).get("confirmed_company", {})
+                company_info = s.get("data", {}).get("company_info", {})
+                company_name = confirmed.get("name") or company_info.get("name", "")
+
+        # Check metrics for cost
+        if sid and sid in metrics_by_session:
+            m = metrics_by_session[sid]
+            llm_cost = m.get("total_cost_usd")
+            llm_calls = m.get("llm_calls")
+            if not company_name:
+                company_name = m.get("company", "")
+
+        # Quality score from board review
+        quality_score = board_scores.get(f.name)
+
         reports.append({
             "filename": f.name,
-            "size_kb": round(f.stat().st_size / 1024, 1),
-            "modified": _format_time(f.stat().st_mtime),
+            "session_id": sid,
+            "company": company_name or "—",
+            "size_kb": round(stat.st_size / 1024, 1),
+            "modified": _format_time(stat.st_mtime),
+            "modified_ts": stat.st_mtime,
+            "llm_cost_usd": round(llm_cost, 4) if llm_cost is not None else None,
+            "llm_calls": llm_calls,
+            "quality_score": quality_score,
         })
 
     return {"ok": True, "reports": reports}
@@ -888,6 +955,28 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .loading { text-align: center; padding: 40px; color: #888; }
 #refreshBtn { background: none; border: 1px solid #555; color: #fff; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
 #refreshBtn:hover { background: #333; }
+
+/* Cost breakdown */
+.cost-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 8px; }
+.cost-item { background: #f8f9fa; border-radius: 8px; padding: 10px 14px; }
+.cost-item .provider { font-size: 12px; color: #888; font-weight: 500; }
+.cost-item .amount { font-size: 18px; font-weight: 700; color: #111; margin-top: 2px; }
+
+/* Live sessions */
+.live-card { background: #fff; border: 2px solid #e3f2fd; border-radius: 12px; padding: 16px 20px; display: flex; align-items: center; gap: 16px; }
+.live-card.active { border-color: #1565c0; animation: livePulse 2s infinite; }
+@keyframes livePulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(21,101,192,0.15); } 50% { box-shadow: 0 0 0 8px rgba(21,101,192,0); } }
+.live-dot { width: 10px; height: 10px; border-radius: 50%; background: #1565c0; flex-shrink: 0; }
+.live-info { flex: 1; }
+.live-company { font-weight: 600; font-size: 15px; }
+.live-step { font-size: 13px; color: #555; margin-top: 2px; }
+.live-time { font-size: 12px; color: #888; font-family: 'SF Mono', Monaco, Consolas, monospace; }
+
+/* Quality score badge */
+.quality-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+.quality-badge.high { background: #e8f5e9; color: #2e7d32; }
+.quality-badge.medium { background: #fff3e0; color: #e65100; }
+.quality-badge.low { background: #ffeef0; color: #d32f2f; }
 </style>
 </head>
 <body>
@@ -904,6 +993,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 <div class="container">
     <div class="stats" id="stats">
         <div class="loading">Загрузка...</div>
+    </div>
+
+    <!-- Cost Breakdown by Provider -->
+    <div id="costBreakdown" style="margin-bottom:32px;"></div>
+
+    <!-- Live Sessions -->
+    <div id="liveSessionsSection" style="margin-bottom:32px;display:none;">
+        <div class="section-title">
+            Активные анализы <span class="count" id="liveCount">0</span>
+        </div>
+        <div id="liveContainer" style="display:grid;gap:12px;"></div>
     </div>
 
     <div class="section-title">
@@ -975,19 +1075,38 @@ function renderStats(d) {
             <div class="value">${d.avg_time_sec ? Math.round(d.avg_time_sec) + 'с' : '—'}</div>
         </div>
         <div class="stat-card">
-            <div class="label">Общая стоимость</div>
+            <div class="label">Общая стоимость LLM</div>
             <div class="value">$${(d.total_cost_usd || 0).toFixed(2)}</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Стоимость / отчёт</div>
+            <div class="value">$${(d.avg_cost_per_report_usd || 0).toFixed(2)}</div>
         </div>
         <div class="stat-card">
             <div class="label">LLM вызовов</div>
             <div class="value">${d.total_llm_calls || 0}</div>
         </div>
         <div class="stat-card">
-            <div class="label">Стоимость / отчёт</div>
-            <div class="value">$${(d.avg_cost_per_report_usd || 0).toFixed(2)}</div>
+            <div class="label">Сегодня потрачено</div>
+            <div class="value">$${(d.today_cost_usd || 0).toFixed(2)}</div>
+            <div class="sub">${d.today_reports || 0} отчётов сегодня</div>
         </div>
     `;
     document.getElementById('stats').innerHTML = html;
+
+    // Render cost breakdown by provider
+    const providers = d.provider_cost || {};
+    const providerKeys = Object.keys(providers);
+    if (providerKeys.length > 0) {
+        const providerColors = {'OpenAI': '#10a37f', 'Google': '#4285f4', 'Anthropic': '#d97706', 'Other': '#888'};
+        let costHtml = '<div class="stat-card"><div class="label">Стоимость по провайдерам</div><div class="cost-grid">';
+        for (const [prov, cost] of Object.entries(providers)) {
+            const color = providerColors[prov] || '#888';
+            costHtml += `<div class="cost-item"><div class="provider" style="color:${color}">${prov}</div><div class="amount">$${cost.toFixed(2)}</div></div>`;
+        }
+        costHtml += '</div></div>';
+        document.getElementById('costBreakdown').innerHTML = costHtml;
+    }
 }
 
 async function loadSessions() {
@@ -997,9 +1116,52 @@ async function loadSessions() {
         if (!d.ok) throw new Error(d.error);
         document.getElementById('sessionsCount').textContent = d.total;
         renderSessions(d.sessions);
+        renderLiveSessions(d.sessions);
     } catch (e) {
         document.getElementById('sessionsContainer').innerHTML = '<div class="empty">Ошибка: ' + e.message + '</div>';
     }
+}
+
+function renderLiveSessions(sessions) {
+    const active = sessions.filter(s => !['done', 'error', 'created'].includes(s.status));
+    const section = document.getElementById('liveSessionsSection');
+    const container = document.getElementById('liveContainer');
+    document.getElementById('liveCount').textContent = active.length;
+
+    if (!active.length) {
+        section.style.display = 'none';
+        return;
+    }
+    section.style.display = 'block';
+
+    let html = '';
+    for (const s of active) {
+        const statusLabel = STATUS_LABELS[s.status] || s.status;
+        const progress = Math.round((s.steps_done / s.steps_total) * 100);
+        // Compute elapsed time from created_at
+        const elapsedSec = Math.round((Date.now() / 1000) - (s.created_at || 0));
+        const elapsedMin = Math.floor(elapsedSec / 60);
+        const elapsedStr = elapsedMin >= 60
+            ? Math.floor(elapsedMin / 60) + 'ч ' + (elapsedMin % 60) + 'м'
+            : elapsedMin + 'м ' + (elapsedSec % 60) + 'с';
+
+        html += `<div class="live-card active">
+            <div class="live-dot"></div>
+            <div class="live-info">
+                <div class="live-company">${s.company || '—'}</div>
+                <div class="live-step">${statusLabel} — шаг ${s.steps_done}/${s.steps_total} (${progress}%)</div>
+            </div>
+            <div>
+                <div class="live-time">${elapsedStr}</div>
+                <div style="margin-top:4px;">
+                    <div class="progress-bar" style="width:100px;">
+                        <div class="fill" style="width:${progress}%;background:#1565c0;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }
+    container.innerHTML = html;
 }
 
 function renderSessions(sessions) {
@@ -1071,13 +1233,27 @@ async function loadReports() {
         }
         let rows = '';
         for (const rp of d.reports) {
+            // Quality score badge
+            let qualityCell = '—';
+            if (rp.quality_score != null) {
+                const qClass = rp.quality_score >= 80 ? 'high' : rp.quality_score >= 50 ? 'medium' : 'low';
+                qualityCell = '<span class="quality-badge ' + qClass + '">' + rp.quality_score + '</span>';
+            }
+            // LLM cost
+            const costCell = rp.llm_cost_usd != null ? '$' + rp.llm_cost_usd.toFixed(2) : '—';
+            // Company name
+            const companyCell = rp.company || '—';
+
             rows += '<tr>'
+                + '<td><strong>' + companyCell + '</strong></td>'
                 + '<td><a class="report-link" href="/reports/' + rp.filename + '" target="_blank">' + rp.filename + '</a></td>'
                 + '<td>' + rp.size_kb + ' KB</td>'
+                + '<td>' + costCell + '</td>'
+                + '<td>' + qualityCell + '</td>'
                 + '<td>' + rp.modified + '</td>'
                 + '</tr>';
         }
-        document.getElementById('reportsContainer').innerHTML = '<table class="sessions-table"><thead><tr><th>Файл</th><th>Размер</th><th>Дата</th></tr></thead><tbody>' + rows + '</tbody></table>';
+        document.getElementById('reportsContainer').innerHTML = '<table class="sessions-table"><thead><tr><th>Компания</th><th>Файл</th><th>Размер</th><th>LLM $</th><th>Качество</th><th>Дата</th></tr></thead><tbody>' + rows + '</tbody></table>';
     } catch (e) {
         document.getElementById('reportsContainer').innerHTML = '<div class="empty">Ошибка: ' + e.message + '</div>';
     }
