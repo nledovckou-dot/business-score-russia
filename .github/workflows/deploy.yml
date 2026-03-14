@@ -59,6 +59,7 @@ jobs:
               "BSR_REPORTS_PER_HOUR=30" \
               "GEMINI_API_KEY=${GEMINI_API_KEY}" \
               "FNS_API_KEY=${FNS_API_KEY}" \
+              "OPENAI_API_KEY=${FALLBACK_LLM_API_KEY}" \
               "FALLBACK_LLM_API_KEY=${FALLBACK_LLM_API_KEY}" \
               "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" \
               "HH_APP_TOKEN=${HH_APP_TOKEN}" \

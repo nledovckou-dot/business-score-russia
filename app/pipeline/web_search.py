@@ -56,11 +56,67 @@ _AUTHORITY_DOMAINS = (
 )
 
 
+def _search_via_proxy(query: str) -> list[dict]:
+    """Search DuckDuckGo via Russian proxy (bypasses VPS network blocks).
+
+    Returns list of {title, url, display_url, snippet} — same format as DDG.
+    """
+    proxy_url = "http://158.160.158.164:8888/scrape"
+    ddg_url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
+
+    try:
+        resp = requests.post(
+            proxy_url,
+            json={"url": ddg_url},
+            headers={
+                "X-Proxy-Token": "bsr-proxy-2026",
+                "Content-Type": "application/json",
+            },
+            timeout=15,
+        )
+        data = resp.json()
+        html = data.get("html") or data.get("text") or ""
+        if not html or data.get("status", 0) != 200:
+            return []
+
+        soup = BeautifulSoup(html, "lxml")
+        results = []
+        for result_div in soup.select(".result__body"):
+            title_el = result_div.select_one(".result__a")
+            snippet_el = result_div.select_one(".result__snippet")
+            if not title_el:
+                continue
+            title = title_el.get_text(strip=True)
+            href = title_el.get("href", "")
+            snippet = snippet_el.get_text(strip=True) if snippet_el else ""
+            actual_url = href
+            if "uddg=" in href:
+                m = re.search(r"uddg=([^&]+)", href)
+                if m:
+                    from urllib.parse import unquote
+                    actual_url = unquote(m.group(1))
+            results.append({
+                "title": title,
+                "url": actual_url,
+                "display_url": "",
+                "snippet": snippet,
+            })
+
+        if results:
+            logger.info("Proxy DDG returned %d results for '%s'", len(results), query[:80])
+        return results
+
+    except Exception as e:
+        logger.debug("Proxy DDG search failed for '%s': %s", query[:80], str(e)[:200])
+        return []
+
+
 def _search_via_gemini(query: str) -> list[dict]:
     """Search via Gemini with Google Search grounding.
 
     Returns list of {title, url, display_url, snippet} — same format as DDG.
     Uses Gemini 2.5 Flash with google_search tool for grounding.
+    Prompt forces the model to actually search rather than answer from memory.
     """
     api_key = os.environ.get("GEMINI_API_KEY", "")
     if not api_key:
@@ -72,10 +128,14 @@ def _search_via_gemini(query: str) -> list[dict]:
         f"models/gemini-2.5-flash:generateContent?key={api_key}"
     )
 
+    # Prompt designed to force actual web search — ask for current/specific data
     payload = {
         "contents": [{"parts": [{"text": (
-            f"Найди информацию по запросу: {query}\n"
-            "Дай краткий ответ на основе результатов поиска."
+            f"Выполни поиск в Google по запросу: {query}\n\n"
+            "Перечисли топ-5 результатов поиска в формате:\n"
+            "1. [Заголовок страницы] — URL — краткое описание\n"
+            "2. ...\n\n"
+            "Обязательно укажи реальные URL сайтов из результатов поиска."
         )}]}],
         "tools": [{"google_search": {}}],
         "generationConfig": {
@@ -128,21 +188,39 @@ def _search_via_gemini(query: str) -> list[dict]:
                         else:
                             results[idx]["snippet"] += " " + segment_text[:200]
 
-            # If no grounding chunks but we got text, return it as a single result
+            # If no grounding chunks, parse URLs from the text response
             if not results:
                 text = candidate.get("content", {}).get("parts", [{}])[0].get("text", "")
                 if text:
-                    results.append({
-                        "title": query,
-                        "url": "",
-                        "display_url": "",
-                        "snippet": text[:500],
-                    })
+                    # Try to extract URLs from text
+                    url_matches = re.findall(
+                        r'https?://[^\s\)\]\"\'<>,]+', text
+                    )
+                    if url_matches:
+                        for found_url in url_matches[:10]:
+                            # Clean trailing punctuation
+                            found_url = found_url.rstrip(".")
+                            results.append({
+                                "title": "",
+                                "url": found_url,
+                                "display_url": found_url,
+                                "snippet": "",
+                            })
+                    # Also return text as a snippet even without URLs
+                    if not results:
+                        results.append({
+                            "title": query,
+                            "url": "",
+                            "display_url": "",
+                            "snippet": text[:500],
+                        })
 
             if results:
                 logger.info(
-                    "Gemini search returned %d results for '%s'",
-                    len(results), query[:80],
+                    "Gemini search: %d results (%d with URLs) for '%s'",
+                    len(results),
+                    sum(1 for r in results if r["url"]),
+                    query[:80],
                 )
             return results
 
@@ -231,14 +309,18 @@ def _raw_search_duckduckgo(query: str, max_retries: int = 1) -> list[dict]:
 
 
 def _search_duckduckgo(query: str, max_retries: int = 2) -> list[dict]:
-    """Search the web with automatic fallback: DuckDuckGo → Gemini grounding.
+    """Search the web with automatic fallback chain.
 
-    Circuit breaker: after 3 consecutive DDG failures, skip DDG entirely
-    and go straight to Gemini until DDG recovers.
+    1. DuckDuckGo direct (free, fast — but blocked on VPS)
+    2. DuckDuckGo via Russian proxy (bypasses VPS network blocks)
+    3. Gemini with Google Search grounding (API-based, always works)
+
+    Circuit breaker: after 3 consecutive DDG failures, skip DDG direct
+    and go straight to proxy/Gemini.
     """
     global _ddg_consecutive_failures
 
-    # Circuit breaker: skip DDG if it's been consistently failing
+    # 1. Try DDG direct (skip if circuit breaker tripped)
     if _ddg_consecutive_failures < _DDG_FAILURE_THRESHOLD:
         results = _raw_search_duckduckgo(query, max_retries=min(max_retries, 1))
         if results:
@@ -247,16 +329,20 @@ def _search_duckduckgo(query: str, max_retries: int = 2) -> list[dict]:
         _ddg_consecutive_failures += 1
         if _ddg_consecutive_failures == _DDG_FAILURE_THRESHOLD:
             logger.warning(
-                "DuckDuckGo failed %d times in a row — switching to Gemini search",
+                "DuckDuckGo direct failed %d times — switching to proxy/Gemini",
                 _DDG_FAILURE_THRESHOLD,
             )
 
-    # Fallback to Gemini with Google Search grounding
+    # 2. Try DDG via Russian proxy
+    results = _search_via_proxy(query)
+    if results:
+        return results
+
+    # 3. Fallback to Gemini with Google Search grounding
     results = _search_via_gemini(query)
     if results:
         return results
 
-    # Last resort: if both failed, return empty
     logger.warning("All search providers failed for '%s'", query[:80])
     return []
 
