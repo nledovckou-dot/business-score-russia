@@ -830,6 +830,25 @@ def _run_competitor_steps(sid: str):
 
         # Step 3c: Checko.ru enrichment for main company (primary data source)
         inn = company_info.get("inn") or data.get("fns_data", {}).get("fns_company", {}).get("inn", "")
+        # If no INN yet — try Checko search by company name (Russian + English)
+        if not inn:
+            try:
+                from app.pipeline.enrichment.checko import search_company as checko_search
+                company_name = company_info.get("name", "")
+                legal_name = company_info.get("legal_name", "")
+                for search_term in [legal_name, company_name, company_name.upper()]:
+                    if not search_term or len(search_term) < 4:
+                        continue
+                    found = checko_search(search_term, limit=3)
+                    if found:
+                        inn = found[0].get("inn", "")
+                        if inn:
+                            company_info["inn"] = inn
+                            data["company_info"] = company_info
+                            logger.info("Checko search found INN %s for '%s'", inn, search_term)
+                            break
+            except Exception as e:
+                logger.warning("Checko INN search failed: %s", str(e)[:200])
         if inn:
             try:
                 from app.pipeline.enrichment.checko import get_company as checko_company, get_finances as checko_finances
@@ -2114,6 +2133,21 @@ def _run_full_pipeline_auto(sid: str, url: str):
 
         # Step 3c: Checko.ru enrichment for company
         inn = company_info.get("inn") or session["data"].get("fns_data", {}).get("fns_company", {}).get("inn", "")
+        if not inn:
+            try:
+                from app.pipeline.enrichment.checko import search_company as checko_search
+                for term in [company_info.get("legal_name",""), company_info.get("name",""), company_info.get("name","").upper()]:
+                    if not term or len(term) < 4:
+                        continue
+                    found = checko_search(term, limit=3)
+                    if found and found[0].get("inn"):
+                        inn = found[0]["inn"]
+                        company_info["inn"] = inn
+                        session["data"]["company_info"] = company_info
+                        logger.info("Checko auto search found INN %s for '%s'", inn, term)
+                        break
+            except Exception as e:
+                logger.warning("Checko auto INN search failed: %s", str(e)[:200])
         if inn:
             try:
                 from app.pipeline.enrichment.checko import get_company as checko_company, get_finances as checko_finances

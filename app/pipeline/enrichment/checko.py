@@ -287,22 +287,35 @@ def get_legal_cases(inn: str) -> list[dict]:
 
 
 def search_company(name: str, limit: int = 5) -> list[dict]:
-    """Search companies by name. Returns list of {inn, name, status, address}."""
-    if not name:
+    """Search companies by name. Returns list of {inn, name, status, address}.
+
+    Uses /search with by=name, obj=org, active=true.
+    """
+    if not name or len(name) < 4:
         return []
 
     try:
-        raw = _get("search", {"query": name, "limit": str(limit)})
+        raw = _get("search", {
+            "by": "name",
+            "obj": "org",
+            "query": name,
+            "active": "true",
+            "limit": str(min(limit, 100)),
+        })
     except Exception as e:
         logger.warning("[checko] Search failed for '%s': %s", name, str(e)[:200])
         return []
 
-    items = raw.get("data", [])
+    data = raw.get("data", {})
+    # data can be list or dict with items
+    items = data if isinstance(data, list) else data.get("items", data.get("Записи", []))
     if not isinstance(items, list):
         items = []
 
     results = []
     for item in items[:limit]:
+        if not isinstance(item, dict):
+            continue
         results.append({
             "inn": item.get("ИНН", ""),
             "ogrn": item.get("ОГРН", ""),
