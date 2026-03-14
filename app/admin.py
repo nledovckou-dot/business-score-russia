@@ -571,18 +571,20 @@ async def admin_monitoring(request: Request):
             "69b55d3c5ad036.282600972fbfa13f85beaece8e7d215ad21351f1",
         )
         if not token:
-            return {"details": "Токен не задан", "ok": False, "quota": None}
+            return {"details": "Key not set", "ok": False, "quota": None}
         async with httpx.AsyncClient() as c:
-            r = await c.get("https://api.keys.so/report/domain/dashboard", params={
-                "domain": "sber.ru", "regionId": 1,
-            }, headers={"X-Keyso-TOKEN": token, "Accept": "application/json"}, timeout=TIMEOUT)
+            r = await c.get("https://api.keys.so/report/simple/domain_dashboard", params={
+                "domain": "sber.ru", "base": "msk",
+            }, headers={"X-Keyso-TOKEN": token, "Accept": "application/json", "User-Agent": "BSR-Pipeline/1.0"}, timeout=TIMEOUT)
             if r.status_code == 200:
                 data = r.json()
-                if data.get("success") or data.get("data"):
-                    return {"details": "OK", "quota": "10 req/10s"}
-                return {"details": "OK", "quota": "10 req/10s"}
+                if data.get("name"):
+                    vis = data.get("vis", 0)
+                    dr = data.get("dr", 0)
+                    return {"details": f"OK (test: DR={dr}, vis={vis})", "quota": "10 req/10s"}
+                return {"details": "OK (empty)", "quota": "10 req/10s"}
             if r.status_code in (401, 403):
-                return {"details": f"Токен невалиден ({r.status_code})", "ok": False, "quota": None}
+                return {"details": f"Token invalid ({r.status_code})", "ok": False, "quota": None}
             return {"details": f"HTTP {r.status_code}", "ok": False, "quota": None}
 
     async def probe_telegram():
@@ -807,7 +809,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
             <button id="monRefreshBtn" onclick="loadMonitoring()" style="background:#111;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-size:13px;cursor:pointer;">Проверить все</button>
         </div>
         <div id="monResults">
-            <div style="text-align:center;padding:30px;color:#888;">Нажмите &laquo;Проверить все&raquo;</div>
+            <div class="loading">Loading API status...</div>
         </div>
     </div>
 </div>
@@ -1065,9 +1067,13 @@ async function loadMonitoring() {
     }
 }
 
-// Auto-refresh every 15 seconds
+// Auto-refresh sessions every 15 seconds
 loadAll();
 setInterval(loadAll, 15000);
+
+// Auto-load monitoring on page open + refresh every hour
+loadMonitoring();
+setInterval(loadMonitoring, 3600000);
 </script>
 </body>
 </html>"""
