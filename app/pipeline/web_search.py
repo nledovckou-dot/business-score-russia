@@ -1,14 +1,18 @@
 """Web search verification: check if a competitor company actually exists.
 
-Uses DuckDuckGo HTML search (free, no API key required).
-Fallback: graceful degradation — mark as unverified if search fails.
+Primary: DuckDuckGo HTML search (free, no API key required).
+Fallback: Gemini with Google Search grounding (when DDG is blocked/timeout).
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import re
 import time
+import urllib.request
+import urllib.error
 from typing import Optional
 from urllib.parse import quote_plus, urljoin
 
@@ -19,6 +23,10 @@ logger = logging.getLogger(__name__)
 
 _SEARCH_TIMEOUT = 10  # seconds per request
 _DELAY_BETWEEN_REQUESTS = 2.5  # seconds between searches to avoid rate limiting
+
+# Track DDG failures to skip it early when it's consistently blocked
+_ddg_consecutive_failures = 0
+_DDG_FAILURE_THRESHOLD = 3  # after N consecutive failures, skip DDG entirely
 
 _HEADERS = {
     "User-Agent": (
@@ -48,11 +56,117 @@ _AUTHORITY_DOMAINS = (
 )
 
 
-def _search_duckduckgo(query: str, max_retries: int = 2) -> list[dict]:
+def _search_via_gemini(query: str) -> list[dict]:
+    """Search via Gemini with Google Search grounding.
+
+    Returns list of {title, url, display_url, snippet} — same format as DDG.
+    Uses Gemini 2.5 Flash with google_search tool for grounding.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not api_key:
+        logger.warning("GEMINI_API_KEY not set, cannot use Gemini search fallback")
+        return []
+
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/"
+        f"models/gemini-2.5-flash:generateContent?key={api_key}"
+    )
+
+    payload = {
+        "contents": [{"parts": [{"text": (
+            f"Найди информацию по запросу: {query}\n"
+            "Дай краткий ответ на основе результатов поиска."
+        )}]}],
+        "tools": [{"google_search": {}}],
+        "generationConfig": {
+            "temperature": 0,
+            "maxOutputTokens": 1024,
+        },
+    }
+
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+
+            candidate = body.get("candidates", [{}])[0]
+            grounding = candidate.get("groundingMetadata", {})
+            chunks = grounding.get("groundingChunks", [])
+            supports = grounding.get("groundingSupports", [])
+
+            results = []
+
+            # Extract URLs and titles from grounding chunks
+            for chunk in chunks:
+                web = chunk.get("web", {})
+                uri = web.get("uri", "")
+                title = web.get("title", "")
+                if uri:
+                    results.append({
+                        "title": title,
+                        "url": uri,
+                        "display_url": uri,
+                        "snippet": "",
+                    })
+
+            # Enrich with snippets from grounding supports
+            for support in supports:
+                segment_text = support.get("segment", {}).get("text", "")
+                chunk_indices = support.get("groundingChunkIndices", [])
+                for idx in chunk_indices:
+                    if idx < len(results) and segment_text:
+                        if not results[idx]["snippet"]:
+                            results[idx]["snippet"] = segment_text[:300]
+                        else:
+                            results[idx]["snippet"] += " " + segment_text[:200]
+
+            # If no grounding chunks but we got text, return it as a single result
+            if not results:
+                text = candidate.get("content", {}).get("parts", [{}])[0].get("text", "")
+                if text:
+                    results.append({
+                        "title": query,
+                        "url": "",
+                        "display_url": "",
+                        "snippet": text[:500],
+                    })
+
+            if results:
+                logger.info(
+                    "Gemini search returned %d results for '%s'",
+                    len(results), query[:80],
+                )
+            return results
+
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 500, 502, 503) and attempt < 1:
+                time.sleep(3)
+                continue
+            logger.warning("Gemini search HTTP %d for '%s'", e.code, query[:80])
+            return []
+        except Exception as e:
+            if attempt < 1:
+                time.sleep(2)
+                continue
+            logger.warning("Gemini search failed for '%s': %s", query[:80], str(e)[:200])
+            return []
+
+    return []
+
+
+def _raw_search_duckduckgo(query: str, max_retries: int = 1) -> list[dict]:
     """Search DuckDuckGo HTML version. Returns list of {title, url, snippet}.
 
     DuckDuckGo HTML version doesn't require API keys.
-    Retries with exponential backoff if rate-limited (empty results or 429/202).
+    Reduced retries since we have Gemini fallback.
     """
     url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
 
@@ -65,19 +179,13 @@ def _search_duckduckgo(query: str, max_retries: int = 2) -> list[dict]:
                 allow_redirects=True,
             )
 
-            # Rate limited — retry
             if resp.status_code in (429, 202) and attempt < max_retries:
-                wait = (attempt + 1) * 3
-                logger.info(
-                    "DuckDuckGo rate limited (HTTP %d), retrying in %ds...",
-                    resp.status_code, wait,
-                )
-                time.sleep(wait)
+                time.sleep((attempt + 1) * 3)
                 continue
 
             resp.raise_for_status()
         except requests.exceptions.RequestException as e:
-            logger.warning("DuckDuckGo search failed for '%s': %s", query, e)
+            logger.warning("DuckDuckGo search failed for '%s': %s", query[:80], e)
             if attempt < max_retries:
                 time.sleep((attempt + 1) * 2)
                 continue
@@ -99,7 +207,6 @@ def _search_duckduckgo(query: str, max_retries: int = 2) -> list[dict]:
             snippet = snippet_el.get_text(strip=True) if snippet_el else ""
             display_url = url_el.get_text(strip=True) if url_el else ""
 
-            # DuckDuckGo wraps URLs in a redirect — extract the actual URL
             actual_url = href
             if "uddg=" in href:
                 m = re.search(r"uddg=([^&]+)", href)
@@ -114,20 +221,44 @@ def _search_duckduckgo(query: str, max_retries: int = 2) -> list[dict]:
                 "snippet": snippet,
             })
 
-        # If got results — return immediately
         if results:
             return results
 
-        # Empty results might be rate limiting — retry
         if attempt < max_retries:
-            wait = (attempt + 1) * 3
-            logger.info(
-                "DuckDuckGo returned 0 results for '%s', retrying in %ds...",
-                query, wait,
-            )
-            time.sleep(wait)
+            time.sleep((attempt + 1) * 3)
 
     return results
+
+
+def _search_duckduckgo(query: str, max_retries: int = 2) -> list[dict]:
+    """Search the web with automatic fallback: DuckDuckGo → Gemini grounding.
+
+    Circuit breaker: after 3 consecutive DDG failures, skip DDG entirely
+    and go straight to Gemini until DDG recovers.
+    """
+    global _ddg_consecutive_failures
+
+    # Circuit breaker: skip DDG if it's been consistently failing
+    if _ddg_consecutive_failures < _DDG_FAILURE_THRESHOLD:
+        results = _raw_search_duckduckgo(query, max_retries=min(max_retries, 1))
+        if results:
+            _ddg_consecutive_failures = 0
+            return results
+        _ddg_consecutive_failures += 1
+        if _ddg_consecutive_failures == _DDG_FAILURE_THRESHOLD:
+            logger.warning(
+                "DuckDuckGo failed %d times in a row — switching to Gemini search",
+                _DDG_FAILURE_THRESHOLD,
+            )
+
+    # Fallback to Gemini with Google Search grounding
+    results = _search_via_gemini(query)
+    if results:
+        return results
+
+    # Last resort: if both failed, return empty
+    logger.warning("All search providers failed for '%s'", query[:80])
+    return []
 
 
 def _check_website_exists(url: str) -> bool:

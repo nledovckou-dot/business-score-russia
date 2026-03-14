@@ -16,14 +16,18 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 2m
           script: |
-            echo "=== Session c28a48372606 ==="
-            curl -s http://localhost:8083/api/analyze/c28a48372606 2>/dev/null | python3 -m json.tool 2>/dev/null || curl -s http://localhost:8083/api/analyze/c28a48372606
-
-            echo ""
-            echo "=== New Reports (last hour) ==="
+            echo "=== All Reports ==="
             DIR=/opt/business-score-russia/app/storage/reports
-            find $DIR -name "report_*.html" -mmin -60 -exec ls -lh {} \;
+            ls -lht $DIR/report_*.html 2>/dev/null | head -15
 
             echo ""
-            echo "=== Recent Logs ==="
-            sudo -n journalctl -u bsr --no-pager -n 40 --since "15 min ago" 2>/dev/null | grep -i "step\|revisi\|board\|quality\|error\|report\|block" | tail -25
+            echo "=== Recent Logs (search/gemini) ==="
+            sudo -n journalctl -u bsr --no-pager -n 100 --since "2 hours ago" 2>/dev/null | grep -i "duckduckgo\|gemini search\|search.*fail\|grounding\|fallback.*gemini\|switching.*gemini" | tail -20
+
+            echo ""
+            echo "=== Recent Logs (pipeline) ==="
+            sudo -n journalctl -u bsr --no-pager -n 60 --since "30 min ago" 2>/dev/null | grep -i "step\|revisi\|board\|quality\|error\|report\|block\|done\|complete" | tail -25
+
+            echo ""
+            echo "=== Active Sessions ==="
+            curl -s http://localhost:8083/api/sessions 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "No sessions endpoint"
