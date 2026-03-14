@@ -124,3 +124,69 @@ jobs:
             echo ""
             echo "=== Checking port 8090 (nginx) ==="
             curl -s -o /dev/null -w "%{http_code}" http://localhost:8090/ || echo "not yet ready"
+
+            # ── Full infra diagnostic ──
+            echo ""
+            echo "===== INFRA DIAGNOSTIC ====="
+
+            echo "--- DDG TEST ---"
+            timeout 8 curl -sS -o /dev/null -w "DDG: HTTP %{http_code}, time %{time_total}s\n" \
+              -A "Mozilla/5.0" "https://html.duckduckgo.com/html/?q=test" 2>&1 || echo "DDG: BLOCKED/TIMEOUT"
+
+            echo "--- GEMINI SEARCH GROUNDING ---"
+            GKEY=$(grep "^GEMINI_API_KEY=" .env 2>/dev/null | head -1 | cut -d= -f2 | tr -d '"' | tr -d "'" | tr -d ' ')
+            if [ -n "$GKEY" ]; then
+              RESP=$(timeout 25 curl -sS -X POST \
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$GKEY" \
+                -H "Content-Type: application/json" \
+                -d '{"contents":[{"parts":[{"text":"Найди ИНН компании Додо Пицца"}]}],"tools":[{"google_search":{}}],"generationConfig":{"temperature":0,"maxOutputTokens":256}}' 2>&1)
+              echo "$RESP" | "$APP_DIR/.venv/bin/python3" -c "
+import sys,json
+try:
+  d=json.load(sys.stdin)
+  c=d.get('candidates',[{}])[0]
+  gm=c.get('groundingMetadata',{})
+  chunks=gm.get('groundingChunks',[])
+  print(f'Grounding chunks: {len(chunks)}')
+  for ch in chunks[:5]:
+    w=ch.get('web',{})
+    print(f'  - {w.get(\"title\",\"\")[:60]} | {w.get(\"uri\",\"\")}')
+  text=c.get('content',{}).get('parts',[{}])[0].get('text','')
+  print(f'Answer: {text[:300]}')
+except Exception as e:
+  print(f'Parse error: {e}')
+" 2>/dev/null || echo "Gemini raw: $(echo $RESP | head -c 500)"
+            else
+              echo "SKIP - no GEMINI_API_KEY"
+            fi
+
+            echo "--- RUSSIAN PROXY ---"
+            timeout 10 curl -sS -o /dev/null -w "Proxy: HTTP %{http_code}, time %{time_total}s\n" \
+              -X POST http://158.160.158.164:8888/scrape \
+              -H "X-Proxy-Token: bsr-proxy-2026" \
+              -H "Content-Type: application/json" \
+              -d '{"url":"https://dodopizza.ru"}' 2>&1 || echo "Proxy: UNREACHABLE"
+
+            echo "--- PLAYWRIGHT ---"
+            "$APP_DIR/.venv/bin/python3" -c "from playwright.sync_api import sync_playwright; print('Playwright: OK')" 2>&1 | head -3
+
+            echo "--- FNS API ---"
+            FKEY=$(grep "^FNS_API_KEY=" .env 2>/dev/null | head -1 | cut -d= -f2 | tr -d '"' | tr -d "'" | tr -d ' ')
+            timeout 8 curl -sS "https://api-fns.ru/api/search?q=%D0%B4%D0%BE%D0%B4%D0%BE+%D0%BF%D0%B8%D1%86%D1%86%D0%B0&key=${FKEY:-demo}" 2>&1 | "$APP_DIR/.venv/bin/python3" -c "
+import sys,json
+try:
+  d=json.load(sys.stdin)
+  items=d.get('items',[])
+  print(f'FNS results: {len(items)}')
+  for it in items[:3]:
+    ul=it.get('ЮЛ',{})
+    print(f'  - {ul.get(\"НаимСокрЮЛ\",\"?\")} ИНН:{ul.get(\"ИНН\",\"?\")}')
+except: print('FNS parse error')
+" 2>/dev/null || echo "FNS: FAILED"
+
+            echo "--- REPORTS ON DISK ---"
+            ls -lht "$APP_DIR/app/storage/reports/report_"*.html 2>/dev/null | head -5
+            echo "Total: $(ls "$APP_DIR/app/storage/reports/report_"*.html 2>/dev/null | wc -l) reports"
+
+            echo "--- RECENT ERRORS ---"
+            sudo -n journalctl -u bsr --no-pager -n 100 --since "5 min ago" 2>/dev/null | grep -i "error\|exception\|traceback" | tail -10
