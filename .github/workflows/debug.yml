@@ -1,13 +1,13 @@
-name: Debug VPS
+name: VPS Status
 
 on:
   workflow_dispatch:
 
 jobs:
-  debug:
+  status:
     runs-on: ubuntu-latest
     steps:
-      - name: Check report contents via SSH
+      - name: Check VPS status via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -16,27 +16,32 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 2m
           script: |
+            echo "=== BSR Service ==="
+            sudo -n systemctl status bsr --no-pager | head -8
+
+            echo ""
+            echo "=== Reports ==="
             DIR=/opt/business-score-russia/app/storage/reports
-            echo "=== All reports ==="
+            COUNT=$(ls -1 $DIR/report_*.html 2>/dev/null | wc -l)
+            echo "Total reports: $COUNT"
+            echo ""
             for f in $DIR/report_*.html; do
+              [ -f "$f" ] || continue
               ID=$(basename "$f" .html | sed 's/report_//')
               TITLE=$(grep -oP '<title>\K[^<]+' "$f" 2>/dev/null | head -1)
               SIZE=$(du -h "$f" | cut -f1)
               DATE=$(stat -c %y "$f" | cut -d. -f1)
               echo "$ID | $SIZE | $DATE | $TITLE"
             done
+
             echo ""
-            echo "=== Check QA Director in new reports ==="
-            for ID in 03b2729a cbb07ef1; do
-              FILE="$DIR/report_${ID}.html"
-              if [ -f "$FILE" ]; then
-                echo -n "$ID: "
-                if grep -q "QA Director\|Директор по качеству" "$FILE"; then
-                  echo "QA Director PRESENT"
-                else
-                  echo "QA Director NOT FOUND"
-                fi
-                echo -n "  quality: "
-                grep -oP 'quality.*?score.*?\d+' "$FILE" | head -1 || echo "not found"
-              fi
-            done
+            echo "=== Active Sessions ==="
+            curl -s http://localhost:8083/api/health 2>/dev/null || echo "Health endpoint unavailable"
+
+            echo ""
+            echo "=== Disk Space ==="
+            df -h / | tail -1
+
+            echo ""
+            echo "=== Memory ==="
+            free -h | head -2

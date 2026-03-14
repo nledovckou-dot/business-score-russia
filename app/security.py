@@ -26,7 +26,7 @@ _rate_lock = threading.Lock()
 
 # Limits
 REQUESTS_PER_MINUTE = 30
-REPORTS_PER_HOUR = 100  # Increased for testing; was 10
+REPORTS_PER_HOUR = int(os.environ.get("BSR_REPORTS_PER_HOUR", "30"))
 
 
 def _cleanup_timestamps(timestamps: list[float], window_seconds: float) -> list[float]:
@@ -53,9 +53,14 @@ def check_rate_limit_report(ip: str) -> str | None:
     """Check per-hour report generation rate limit.
 
     Returns None if OK, or an error message string if limit exceeded.
-    TEMPORARILY DISABLED for batch testing.
     """
-    return None  # Disabled for testing
+    now = time.time()
+    with _rate_lock:
+        _report_log[ip] = _cleanup_timestamps(_report_log[ip], 3600)
+        if len(_report_log[ip]) >= REPORTS_PER_HOUR:
+            return f"Слишком много отчётов. Лимит: {REPORTS_PER_HOUR} отчётов в час."
+        _report_log[ip].append(now)
+    return None
 
 
 # ── Input Sanitization ──────────────────────────────────────────────
