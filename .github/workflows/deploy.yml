@@ -158,3 +158,8 @@ jobs:
 
             echo "--- RECENT ERRORS ---"
             sudo -n journalctl -u bsr --no-pager -n 100 --since "5 min ago" 2>/dev/null | grep -i "error\|exception\|traceback" | tail -10
+
+            echo ""
+            echo "--- LAUNCH TEST ANALYSIS ---"
+            RESP=$(curl -s -X POST http://localhost:8083/api/analyze -H "Content-Type: application/json" -d '{"url": "https://dodopizza.ru", "company_name": "Додо Пицца"}')
+            echo "Launch response: $RESP"
