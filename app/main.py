@@ -74,7 +74,7 @@ auth_manager = AuthManager()
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 
 # Paths that don't require authentication
-PUBLIC_PATHS = {"/login", "/api/auth/login", "/api/auth/register", "/api/auth/google", "/api/health", "/api/analyze", "/api/debug-rate"}
+PUBLIC_PATHS = {"/", "/login", "/api/auth/login", "/api/auth/register", "/api/auth/google", "/api/health", "/api/analyze", "/api/debug-rate"}
 PUBLIC_PREFIXES = ("/reports/", "/static/", "/_next/", "/api/analyze/")
 
 LOGIN_PAGE_HTML = """<!DOCTYPE html>
