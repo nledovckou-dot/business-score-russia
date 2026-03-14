@@ -1,0 +1,29 @@
+name: Check Analysis
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check analysis status
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          command_timeout: 2m
+          script: |
+            echo "=== Session c28a48372606 ==="
+            curl -s http://localhost:8083/api/analyze/c28a48372606 2>/dev/null | python3 -m json.tool 2>/dev/null || curl -s http://localhost:8083/api/analyze/c28a48372606
+
+            echo ""
+            echo "=== New Reports (last hour) ==="
+            DIR=/opt/business-score-russia/app/storage/reports
+            find $DIR -name "report_*.html" -mmin -60 -exec ls -lh {} \;
+
+            echo ""
+            echo "=== Recent Logs ==="
+            sudo -n journalctl -u bsr --no-pager -n 40 --since "15 min ago" 2>/dev/null | grep -i "step\|revisi\|board\|quality\|error\|report\|block" | tail -25
