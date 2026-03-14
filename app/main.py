@@ -77,6 +77,13 @@ auth_manager = AuthManager()
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 YANDEX_CLIENT_ID = os.getenv("YANDEX_CLIENT_ID", "")
 
+# Beta gate: only these emails can start analysis (empty = open for all)
+BETA_EMAILS = set(
+    e.strip().lower()
+    for e in os.getenv("BSR_BETA_EMAILS", "").split(",")
+    if e.strip()
+)
+
 # Paths that don't require authentication
 PUBLIC_PATHS = {"/", "/login", "/api/auth/login", "/api/auth/register", "/api/auth/google", "/api/auth/yandex", "/api/auth/yandex/callback", "/api/auth/config", "/api/health", "/api/analyze", "/api/debug-rate"}
 PUBLIC_PREFIXES = ("/reports/", "/static/", "/_next/", "/api/analyze/")
@@ -533,6 +540,17 @@ async def start_session(request: Request):
 
     # Auth: check freemium quota (if logged in)
     auth_token = _get_auth_token(request)
+
+    # Beta gate: only allowed emails can start analysis
+    if BETA_EMAILS:
+        user_info = auth_manager.check_token(auth_token) if auth_token else None
+        user_email = (user_info.get("email", "") if user_info else "").lower()
+        if user_email not in BETA_EMAILS:
+            return JSONResponse(
+                {"ok": False, "error": "Сервис в режиме закрытого тестирования. Скоро откроем для всех!"},
+                status_code=403,
+            )
+
     can_gen, reason = auth_manager.can_generate_report(auth_token)
     if not can_gen:
         return JSONResponse(
