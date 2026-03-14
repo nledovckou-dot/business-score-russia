@@ -75,7 +75,7 @@ GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 
 # Paths that don't require authentication
 PUBLIC_PATHS = {"/login", "/api/auth/login", "/api/auth/register", "/api/auth/google", "/api/health", "/api/analyze", "/api/debug-rate"}
-PUBLIC_PREFIXES = ("/reports/", "/static/", "/_next/")
+PUBLIC_PREFIXES = ("/reports/", "/static/", "/_next/", "/api/analyze/")
 
 LOGIN_PAGE_HTML = """<!DOCTYPE html>
 <html lang="ru">
@@ -1753,6 +1753,7 @@ def _run_full_pipeline_auto(sid: str, url: str):
 
     except Exception as e:
         import traceback
+        tb_str = traceback.format_exc()
         logger.exception("Error in auto pipeline for session %s", sid)
         session = store.get(sid)
         mc_ref = session.get("_metrics") if session else None
@@ -1761,7 +1762,8 @@ def _run_full_pipeline_auto(sid: str, url: str):
         if session:
             session["status"] = "error"
         _push_event(sid, "error", {
-            "message": sanitize_error(e, include_details=not IS_PRODUCTION),
+            "message": sanitize_error(e, include_details=True),  # full details for debugging
+            "traceback": tb_str,
         })
         store.save(sid)
 
@@ -1838,9 +1840,13 @@ async def analyze_poll(sid: str):
         err_events = session.get("events", [])
         error_event = next((e for e in reversed(err_events) if e.get("event") == "error"), None)
         error_msg = "Ошибка анализа"
+        result = {"ok": False, "status": "error"}
         if error_event and error_event.get("data"):
             error_msg = error_event["data"].get("message", error_msg)
-        return {"ok": False, "status": "error", "error": error_msg}
+            if error_event["data"].get("traceback"):
+                result["traceback"] = error_event["data"]["traceback"]
+        result["error"] = error_msg
+        return result
 
     # Still running — return progress info
     events = session.get("events", [])
