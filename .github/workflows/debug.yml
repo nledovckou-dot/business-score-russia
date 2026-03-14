@@ -16,15 +16,80 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 3m
           script: |
-            echo "=== Launch Analysis: Додо Пицца ==="
-            RESP=$(curl -s -X POST http://localhost:8083/api/analyze \
-              -H "Content-Type: application/json" \
-              -d '{"url": "https://dodopizza.ru", "company_name": "Додо Пицца"}')
-            echo "$RESP"
-            SID=$(echo "$RESP" | grep -oP '"session_id":"[^"]+' | cut -d'"' -f4)
-            echo "Session: $SID"
+            echo "=== 1. SERVICE STATUS ==="
+            sudo systemctl status bsr --no-pager -l 2>/dev/null | head -15
 
             echo ""
-            echo "=== Existing Reports ==="
+            echo "=== 2. DEPLOY LOG ==="
+            sudo -n journalctl -u bsr --no-pager -n 5 --since "10 min ago" 2>/dev/null | head -10
+
+            echo ""
+            echo "=== 3. ENV VARS CHECK ==="
+            cd /opt/business-score-russia
+            for VAR in GEMINI_API_KEY OPENAI_API_KEY FALLBACK_LLM_API_KEY ANTHROPIC_API_KEY TWOGIS_API_KEY; do
+              grep -q "$VAR" .env 2>/dev/null && echo "$VAR: SET" || echo "$VAR: MISSING!"
+            done
+
+            echo ""
+            echo "=== 4. DDG TEST (expect fail) ==="
+            timeout 8 curl -sS -o /dev/null -w "DDG: HTTP %{http_code}, time %{time_total}s\n" "https://html.duckduckgo.com/html/?q=test" 2>&1 || echo "DDG: BLOCKED/TIMEOUT"
+
+            echo ""
+            echo "=== 5. GEMINI SEARCH GROUNDING TEST ==="
+            GKEY=$(grep GEMINI_API_KEY .env 2>/dev/null | head -1 | cut -d= -f2 | tr -d '"' | tr -d "'" | tr -d ' ')
+            if [ -n "$GKEY" ]; then
+              RESP=$(timeout 20 curl -sS -X POST \
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$GKEY" \
+                -H "Content-Type: application/json" \
+                -d '{"contents":[{"parts":[{"text":"Найди ИНН компании Додо Пицца"}]}],"tools":[{"google_search":{}}],"generationConfig":{"temperature":0,"maxOutputTokens":256}}' 2>&1)
+              echo "$RESP" | python3 -c "
+import sys,json
+try:
+  d=json.load(sys.stdin)
+  c=d.get('candidates',[{}])[0]
+  gm=c.get('groundingMetadata',{})
+  chunks=gm.get('groundingChunks',[])
+  print(f'Grounding chunks: {len(chunks)}')
+  for ch in chunks[:5]:
+    w=ch.get('web',{})
+    print(f'  - {w.get(\"title\",\"\")[:60]} | {w.get(\"uri\",\"\")}')
+  text=c.get('content',{}).get('parts',[{}])[0].get('text','')
+  print(f'Answer: {text[:300]}')
+except Exception as e:
+  print(f'Parse error: {e}')
+" 2>/dev/null || echo "Gemini error: $(echo $RESP | head -c 500)"
+            else
+              echo "SKIP - no GEMINI_API_KEY in .env"
+            fi
+
+            echo ""
+            echo "=== 6. RUSSIAN PROXY TEST ==="
+            timeout 10 curl -sS -o /dev/null -w "Proxy: HTTP %{http_code}, time %{time_total}s\n" \
+              -X POST http://158.160.158.164:8888/scrape \
+              -H "X-Proxy-Token: bsr-proxy-2026" \
+              -H "Content-Type: application/json" \
+              -d '{"url":"https://dodopizza.ru"}' 2>&1 || echo "Proxy: UNREACHABLE"
+
+            echo ""
+            echo "=== 7. PLAYWRIGHT CHECK ==="
+            cd /opt/business-score-russia
+            python3 -c "from playwright.sync_api import sync_playwright; print('Playwright: OK')" 2>&1 | head -3
+
+            echo ""
+            echo "=== 8. FNS API TEST ==="
+            FKEY=$(grep FNS_API_KEY .env 2>/dev/null | head -1 | cut -d= -f2 | tr -d '"' | tr -d "'" | tr -d ' ')
+            timeout 8 curl -sS -w "\nFNS: HTTP %{http_code}, time %{time_total}s" \
+              "https://api-fns.ru/api/search?q=додо+пицца&key=${FKEY:-demo}" 2>&1 | tail -5
+
+            echo ""
+            echo "=== 9. REPORTS ==="
             DIR=/opt/business-score-russia/app/storage/reports
-            ls -lt $DIR/report_*.html 2>/dev/null | head -5 | awk '{print $5, $6, $7, $8, $9}'
+            ls -lht $DIR/report_*.html 2>/dev/null | head -10
+            echo "Total: $(ls $DIR/report_*.html 2>/dev/null | wc -l) reports"
+
+            echo ""
+            echo "=== 10. PYTHON DEPS ==="
+            cd /opt/business-score-russia
+            python3 -c "import lxml; print(f'lxml: {lxml.__version__}')" 2>&1
+            python3 -c "import scrapling; print('scrapling: OK')" 2>&1 | head -1
+            python3 -c "import bs4; print(f'bs4: OK')" 2>&1
