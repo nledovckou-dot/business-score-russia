@@ -98,13 +98,21 @@ jobs:
             fi
             sudo -n nginx -t && sudo -n systemctl reload nginx || echo "nginx reload failed, check config"
 
-            # Stop service first, then start fresh
+            # Stop service and kill ALL uvicorn processes
             sudo -n systemctl stop bsr 2>/dev/null || true
             sleep 2
+            sudo -n pkill -f "uvicorn app.main" 2>/dev/null || true
+            sleep 1
+            echo "--- Remaining uvicorn processes ---"
+            pgrep -af uvicorn || echo "No uvicorn running (good)"
 
             # Restart service
             sudo -n systemctl start bsr
             sleep 5
+
+            # Verify landing page HTML length matches Python import
+            CURL_LEN=$(curl -s http://localhost:8083/ | wc -c)
+            echo "CURL landing length: $CURL_LEN (expected ~27743)"
 
             # Verify the code is correct
             echo "=== Verify deployed code ==="
