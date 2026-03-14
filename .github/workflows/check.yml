@@ -7,7 +7,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Check today reports and metrics
+      - name: Check analysis status
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -18,29 +18,27 @@ jobs:
           script: |
             cd /opt/business-score-russia
 
-            echo "=== 1. METRICS JSONL ==="
+            echo "=== 1. METRICS ==="
             MFILE=data/metrics.jsonl
             if [ -f "$MFILE" ]; then
-              echo "Total lines: $(wc -l < $MFILE)"
-              echo "Last 20 entries:"
-              tail -20 "$MFILE"
-            else
-              echo "NOT FOUND"
+              echo "Total: $(wc -l < $MFILE) entries"
+              echo "Last 5:"
+              tail -5 "$MFILE"
             fi
 
             echo ""
             echo "=== 2. SESSION FILES ==="
-            ls -lht data/sessions/*.json 2>/dev/null | head -20
+            ls -lht data/sessions/*.json 2>/dev/null | head -10
 
             echo ""
-            echo "=== 3. REPORTS ON DISK ==="
-            ls -lht app/storage/reports/report_*.html 2>/dev/null | head -15
+            echo "=== 3. REPORTS ==="
+            ls -lht app/storage/reports/report_*.html 2>/dev/null | head -10
             echo "Total: $(ls app/storage/reports/report_*.html 2>/dev/null | wc -l)"
 
             echo ""
-            echo "=== 4. JOURNALCTL TODAY ==="
-            sudo -n journalctl -u bsr --no-pager --since "2026-03-14" 2>/dev/null | grep -iE "step|pipeline|report|session|analyz|company|done|complet|error" | tail -50
+            echo "=== 4. RECENT LOGS ==="
+            sudo -n journalctl -u bsr --no-pager -n 300 --since "30 min ago" 2>/dev/null | grep -iE "step|pipeline|report|session|analyz|company|done|complet|error" | tail -30
 
             echo ""
-            echo "=== 5. ACTIVE SESSIONS API ==="
-            curl -s "http://localhost:8083/admin/api/sessions?token=bsr-admin-2026" 2>/dev/null | python3 -m json.tool 2>/dev/null | head -100
+            echo "=== 5. SESSIONS API ==="
+            curl -s "http://localhost:8083/admin/api/sessions?token=bsr-admin-2026" 2>/dev/null | python3 -m json.tool 2>/dev/null | head -60
