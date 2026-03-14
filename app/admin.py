@@ -958,7 +958,7 @@ function showBoardResult(data) {
         let critiquesHtml = '';
         for (const c of (r.critiques || [])) {
             const sevColor = c.severity === 'high' ? '#c62828' : c.severity === 'medium' ? '#e65100' : '#1565c0';
-            critiquesHtml += `<div style="padding:6px 8px;margin:4px 0;background:#f5f5f5;border-radius:4px;font-size:0.85em;"><span style="color:${sevColor};font-weight:600;">[${c.severity.toUpperCase()}]</span> <span style="color:#888;">[${c.section}]</span> ${c.issue}${c.suggestion ? '<br><span style="color:#666;">\ud83d\udca1 ' + c.suggestion + '</span>' : ''}</div>`;
+            critiquesHtml += `<div style="padding:6px 8px;margin:4px 0;background:#f5f5f5;border-radius:4px;font-size:0.85em;"><span style="color:${sevColor};font-weight:600;">[${c.severity.toUpperCase()}]</span> <span style="color:#888;">[${c.section}]</span> ${c.issue}${c.suggestion ? '<br><span style="color:#666;">&#x1F4A1; ' + c.suggestion + '</span>' : ''}</div>`;
         }
         reviewsHtml += `<div style="border:1px solid #ddd;border-radius:8px;padding:14px;margin:8px 0;"><div style="display:flex;justify-content:space-between;margin-bottom:8px;"><strong>${r.name || r.role}</strong> ${badge}</div><p style="font-size:0.88em;color:#555;margin:6px 0;">${r.summary || ''}</p>${critiquesHtml}</div>`;
     }
