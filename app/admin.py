@@ -802,6 +802,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
         <div class="loading">Загрузка...</div>
     </div>
 
+    <!-- Reports Section -->
+    <div style="margin-top:32px;">
+        <div class="section-title">
+            Отчёты <span class="count" id="reportsCount">0</span>
+        </div>
+        <div id="reportsContainer">
+            <div class="loading">Загрузка...</div>
+        </div>
+    </div>
+
     <!-- API Monitoring Section -->
     <div style="margin-top:40px;border-top:2px solid #eee;padding-top:32px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
@@ -829,6 +839,7 @@ const STATUS_LABELS = {
 function loadAll() {
     loadMetrics();
     loadSessions();
+    loadReports();
 }
 
 async function loadMetrics() {
@@ -935,6 +946,30 @@ function renderSessions(sessions) {
             <tbody>${rows}</tbody>
         </table>
     `;
+}
+
+async function loadReports() {
+    try {
+        const r = await fetch('/admin/api/reports');
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.error);
+        document.getElementById('reportsCount').textContent = d.reports.length;
+        if (!d.reports.length) {
+            document.getElementById('reportsContainer').innerHTML = '<div class="empty">Нет отчётов</div>';
+            return;
+        }
+        let rows = '';
+        for (const rp of d.reports) {
+            rows += '<tr>'
+                + '<td><a class="report-link" href="/reports/' + rp.filename + '" target="_blank">' + rp.filename + '</a></td>'
+                + '<td>' + rp.size_kb + ' KB</td>'
+                + '<td>' + rp.modified + '</td>'
+                + '</tr>';
+        }
+        document.getElementById('reportsContainer').innerHTML = '<table class="sessions-table"><thead><tr><th>Файл</th><th>Размер</th><th>Дата</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    } catch (e) {
+        document.getElementById('reportsContainer').innerHTML = '<div class="empty">Ошибка: ' + e.message + '</div>';
+    }
 }
 
 // Get admin token from cookie for API calls
