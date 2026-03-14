@@ -1073,3 +1073,65 @@ def _readability_check(
     else:
         checks.append({"name": "readability", "status": "pass",
                         "message": "Текстовые поля читаемы: нет JSON-фрагментов, placeholder'ов, шаблонных переменных"})
+
+    # 10. Vague words check — metrics must contain numbers, not vague descriptions
+    _vague_word_check(report_data, checks, critical_failures, warnings)
+
+
+# ════════════════════════════════════════════════════════
+# 10. Vague Words Check
+# ════════════════════════════════════════════════════════
+
+_VAGUE_WORDS = re.compile(
+    r"(?:^|\s)(?:мало|много|несколько|немного|достаточно|есть|нет|имеется|"
+    r"отсутствует|примерно|около|порядка|ориентировочно)(?:\s|$|[.,;])",
+    re.IGNORECASE,
+)
+
+
+def _vague_word_check(
+    report_data: dict,
+    checks: list[dict],
+    critical_failures: list[str],
+    warnings: list[str],
+) -> None:
+    """Check that metrics and table values contain numbers, not vague words.
+
+    Rule: "мало", "есть", "~", "—" are forbidden in metric values.
+    Must be a specific number or "нет данных (причина)".
+    """
+    vague_found: list[str] = []
+
+    # Check competitor metrics
+    competitors = report_data.get("competitors") or []
+    for comp in competitors:
+        if not isinstance(comp, dict):
+            continue
+        name = comp.get("name", "?")
+        metrics = comp.get("metrics", {})
+        for key, val in metrics.items():
+            if isinstance(val, str) and _VAGUE_WORDS.search(val):
+                vague_found.append(f"{name}.{key}='{val}'")
+
+    # Check KPI benchmarks
+    for kpi in (report_data.get("kpi_benchmarks") or []):
+        if isinstance(kpi, dict):
+            for field in ("current", "target", "industry_avg"):
+                val = kpi.get(field)
+                if isinstance(val, str) and _VAGUE_WORDS.search(val):
+                    vague_found.append(f"KPI.{kpi.get('name','?')}.{field}='{val}'")
+
+    # Check market data
+    market = report_data.get("market")
+    if isinstance(market, dict):
+        for key, val in market.items():
+            if isinstance(val, str) and _VAGUE_WORDS.search(val):
+                vague_found.append(f"market.{key}='{val}'")
+
+    if vague_found:
+        msg = f"Размытые слова вместо цифр ({len(vague_found)}): {'; '.join(vague_found[:5])}"
+        checks.append({"name": "vague_words", "status": "warn", "message": msg})
+        warnings.append(msg)
+    else:
+        checks.append({"name": "vague_words", "status": "pass",
+                        "message": "Метрики содержат конкретные числа (нет размытых слов)"})
