@@ -168,58 +168,158 @@ def _enrich_one(comp: dict, index: int) -> dict:
         except Exception as e:
             logger.warning("[step4.5] %s: Keys.so failed: %s", name, str(e)[:200])
 
-    # 3. Find INN (FNS → Rusprofile fallback)
+    # 3. Find INN (FNS → Checko → Rusprofile fallback)
     inn = comp.get("inn") or _find_inn(name, city)
     if not inn:
+        # Try Checko search
+        try:
+            from app.pipeline.enrichment.checko import search_company as checko_search
+            results = checko_search(name, limit=3)
+            if results:
+                if city:
+                    city_lower = city.lower()
+                    for r in results:
+                        if city_lower in (r.get("address") or "").lower():
+                            inn = r["inn"]
+                            break
+                if not inn:
+                    inn = results[0].get("inn", "")
+                if inn:
+                    logger.info("[step4.5] %s: INN found via Checko: %s", name, inn)
+        except Exception as e:
+            logger.warning("[step4.5] %s: Checko search failed: %s", name, str(e)[:100])
+    if not inn:
         inn = _find_inn_rusprofile(name, city)
+
     if inn:
         comp["inn"] = inn
+        has_financials = False
 
-        # 3. Get FNS financials
+        # 3a. PRIMARY: Checko.ru (company + finances + affiliates)
         try:
-            from app.pipeline.fns import get_financials
-            financials = get_financials(inn)
-            if financials:
-                comp["fns_financials"] = financials
-                latest = financials[-1] if financials else {}
-                comp["metrics"] = comp.get("metrics", {})
+            from app.pipeline.enrichment.checko import get_company as checko_company, get_finances as checko_finances
+
+            # Company data (ЕГРЮЛ + contacts + risks)
+            checko_data = checko_company(inn)
+            if checko_data:
+                comp["checko"] = checko_data
+                comp["legal_name"] = checko_data.get("name_full") or checko_data.get("name_short", "")
+                if checko_data.get("reg_date"):
+                    year_match = re.search(r"(\d{4})", checko_data["reg_date"])
+                    if year_match:
+                        comp["metrics"] = comp.get("metrics", {})
+                        comp["metrics"]["Год основания"] = year_match.group(1)
+                        comp["year_founded"] = year_match.group(1)
+                if checko_data.get("employees"):
+                    comp["metrics"] = comp.get("metrics", {})
+                    comp["metrics"]["Сотрудники"] = str(checko_data["employees"])
+                if checko_data.get("risk_count", 0) > 0:
+                    comp["metrics"] = comp.get("metrics", {})
+                    comp["metrics"]["Факторы риска"] = str(checko_data["risk_count"])
+                if checko_data.get("contacts", {}).get("website"):
+                    comp["website"] = comp.get("website") or checko_data["contacts"]["website"]
+
+                # Affiliates: check directors' related companies
+                affiliates = []
+                for director in checko_data.get("directors", []):
+                    for related_ogrn in director.get("related_companies", [])[:3]:
+                        affiliates.append({"ogrn": related_ogrn, "via": director.get("name", ""), "role": "director"})
+                for founder in checko_data.get("founders", []):
+                    for related_ogrn in founder.get("related_companies", [])[:3]:
+                        affiliates.append({"ogrn": related_ogrn, "via": founder.get("name", ""), "role": "founder"})
+                if affiliates:
+                    comp["affiliates"] = affiliates[:10]
+                    comp["metrics"] = comp.get("metrics", {})
+                    comp["metrics"]["Аффилированные ЮЛ"] = str(len(set(a["ogrn"] for a in affiliates)))
+
+                logger.info("[step4.5] %s: Checko company OK (employees=%s, risks=%d, affiliates=%d)",
+                            name, checko_data.get("employees"), checko_data.get("risk_count", 0), len(affiliates))
+
+            # Financials (full бухотчётность)
+            checko_fin = checko_finances(inn)
+            if checko_fin:
+                # Convert to legacy format for compatibility
+                fns_compat = []
+                for year_str, vals in sorted(checko_fin.items()):
+                    rev = vals.get("revenue")
+                    if rev is not None:
+                        rev = rev / 1000  # Checko returns rubles, FNS uses thousands
+                    profit = vals.get("net_profit")
+                    if profit is not None:
+                        profit = profit / 1000
+                    assets_val = vals.get("assets")
+                    if assets_val is not None:
+                        assets_val = assets_val / 1000
+                    fns_compat.append({
+                        "year": vals.get("year", int(year_str)),
+                        "revenue": rev,
+                        "net_profit": profit,
+                        "assets": assets_val,
+                        "employees": checko_data.get("employees") if checko_data else None,
+                        "source": "checko",
+                    })
+                comp["fns_financials"] = fns_compat
+                has_financials = True
+
+                # Set revenue metric from latest year
+                latest = fns_compat[-1]
                 rev = latest.get("revenue")
                 if rev is not None:
+                    comp["metrics"] = comp.get("metrics", {})
                     if rev >= 1_000_000:
                         comp["metrics"]["Выручка"] = f"{rev / 1_000_000:.1f} млрд ₽"
                     elif rev >= 1000:
                         comp["metrics"]["Выручка"] = f"{rev / 1000:.1f} млн ₽"
                     else:
                         comp["metrics"]["Выручка"] = f"{rev:,.0f} тыс. ₽"
-                emp = latest.get("employees")
-                if emp:
-                    comp["metrics"]["Сотрудники"] = str(emp)
-                logger.info("[step4.5] %s: FNS financials OK (%d years)", name, len(financials))
-        except Exception as e:
-            logger.warning("[step4.5] %s: FNS financials failed: %s", name, str(e)[:200])
 
-        # 4. Get EGRUL data
-        try:
-            from app.pipeline.fns import get_egrul
-            egrul = get_egrul(inn)
-            if egrul:
-                comp["egrul"] = egrul
-                reg_date = egrul.get("reg_date", "")
-                if reg_date:
-                    year_match = re.search(r"(\d{4})", reg_date)
-                    if year_match:
-                        comp["metrics"] = comp.get("metrics", {})
-                        comp["metrics"]["Год основания"] = year_match.group(1)
-                        comp["year_founded"] = year_match.group(1)
-                # Legal name
-                full_name = egrul.get("full_name", "")
-                if full_name:
-                    comp["legal_name"] = full_name
-                logger.info("[step4.5] %s: EGRUL OK", name)
+                logger.info("[step4.5] %s: Checko finances OK (%d years)", name, len(fns_compat))
         except Exception as e:
-            logger.warning("[step4.5] %s: EGRUL failed: %s", name, str(e)[:200])
+            logger.warning("[step4.5] %s: Checko failed: %s", name, str(e)[:200])
+
+        # 3b. FALLBACK: api-fns.ru (if Checko didn't return financials)
+        if not has_financials:
+            try:
+                from app.pipeline.fns import get_financials
+                financials = get_financials(inn)
+                if financials:
+                    comp["fns_financials"] = financials
+                    latest = financials[-1] if financials else {}
+                    comp["metrics"] = comp.get("metrics", {})
+                    rev = latest.get("revenue")
+                    if rev is not None:
+                        if rev >= 1_000_000:
+                            comp["metrics"]["Выручка"] = f"{rev / 1_000_000:.1f} млрд ₽"
+                        elif rev >= 1000:
+                            comp["metrics"]["Выручка"] = f"{rev / 1000:.1f} млн ₽"
+                        else:
+                            comp["metrics"]["Выручка"] = f"{rev:,.0f} тыс. ₽"
+                    logger.info("[step4.5] %s: FNS fallback financials OK (%d years)", name, len(financials))
+            except Exception as e:
+                logger.warning("[step4.5] %s: FNS fallback failed: %s", name, str(e)[:200])
+
+        # 4. EGRUL fallback (only if Checko didn't provide company data)
+        if not comp.get("checko"):
+            try:
+                from app.pipeline.fns import get_egrul
+                egrul = get_egrul(inn)
+                if egrul:
+                    comp["egrul"] = egrul
+                    reg_date = egrul.get("reg_date", "")
+                    if reg_date:
+                        year_match = re.search(r"(\d{4})", reg_date)
+                        if year_match:
+                            comp["metrics"] = comp.get("metrics", {})
+                            comp["metrics"]["Год основания"] = year_match.group(1)
+                            comp["year_founded"] = year_match.group(1)
+                    full_name = egrul.get("full_name", "")
+                    if full_name:
+                        comp["legal_name"] = full_name
+                    logger.info("[step4.5] %s: EGRUL fallback OK", name)
+            except Exception as e:
+                logger.warning("[step4.5] %s: EGRUL fallback failed: %s", name, str(e)[:200])
     else:
-        logger.info("[step4.5] %s: INN not found, skipping FNS", name)
+        logger.info("[step4.5] %s: INN not found, skipping financials", name)
 
     # 5. Social links from scraped data + real follower counts
     if scraped_data.get("social_links"):
@@ -327,19 +427,22 @@ def run(
     # Stats
     with_inn = sum(1 for c in result if c.get("inn"))
     with_fns = sum(1 for c in result if c.get("fns_financials"))
+    with_checko = sum(1 for c in result if c.get("checko"))
     with_social = sum(1 for c in result if c.get("social_media"))
     with_2gis = sum(1 for c in result if c.get("rating_2gis"))
-    with_reviews = sum(1 for c in result if c.get("reviews_count_2gis"))
+    with_keyso = sum(1 for c in result if c.get("keyso"))
+    with_affiliates = sum(1 for c in result if c.get("affiliates"))
 
     logger.info(
-        "[step4.5] Done in %.1fs — INN: %d/%d, FNS: %d/%d, social: %d/%d, 2GIS: %d/%d",
-        elapsed, with_inn, total, with_fns, total, with_social, total, with_2gis, total,
+        "[step4.5] Done in %.1fs — INN: %d/%d, Checko: %d/%d, FNS: %d/%d, 2GIS: %d/%d, Keys.so: %d/%d, social: %d/%d, affiliates: %d/%d",
+        elapsed, with_inn, total, with_checko, total, with_fns, total,
+        with_2gis, total, with_keyso, total, with_social, total, with_affiliates, total,
     )
 
     if progress_callback:
         try:
             progress_callback(
-                f"Обогащено: {with_fns}/{total} ФНС, {with_2gis}/{total} 2ГИС, {with_social}/{total} соцсети",
+                f"Обогащено: {with_checko}/{total} Checko, {with_fns}/{total} финансы, {with_2gis}/{total} 2ГИС, {with_keyso}/{total} SEO",
                 "done",
             )
         except Exception:
