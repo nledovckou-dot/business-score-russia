@@ -638,7 +638,7 @@ def run_review(report_data: dict, panel: list[dict]) -> dict:
     )
 
     t1 = time.monotonic()
-    ceo_raw = call_board_llm(prompt=ceo_prompt, system=ceo_expert["system"])
+    ceo_raw = call_board_llm(prompt=ceo_prompt, system=ceo_expert["system"], use_opus=True)
     elapsed_ceo = round(time.monotonic() - t1, 2)
 
     if ceo_raw.startswith("[Board LLM Error]"):

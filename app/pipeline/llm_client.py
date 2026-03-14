@@ -338,32 +338,35 @@ def call_llm_json(
 # ── Board of Directors LLM (T28) ──
 
 
-def call_board_llm(prompt: str, system: str | None = None) -> str:
-    """Вызов LLM для совета директоров — Claude Opus (основной) + GPT (fallback).
+def call_board_llm(prompt: str, system: str | None = None, use_opus: bool = False) -> str:
+    """Вызов LLM для совета директоров.
 
-    Используется для AI-экспертов, которые критикуют и рецензируют отчёт.
-    Claude Opus выбран для board т.к. нет TPM лимитов OpenAI на длинные промпты.
-    Низкая temperature (0.3) для точных, выверенных ответов.
+    Cost optimization: Sonnet по умолчанию (~5x дешевле Opus).
+    Opus только для CEO (use_opus=True) — финальный вердикт.
 
-    Chain: Claude Opus → GPT → Gemini.
+    Chain: Sonnet/Opus → GPT → Gemini.
     """
     from app.config import BOARD_LLM_TEMPERATURE, BOARD_LLM_MAX_TOKENS
 
     temperature = BOARD_LLM_TEMPERATURE
     max_tokens = BOARD_LLM_MAX_TOKENS
 
-    # --- Попытка 1: Claude Opus (основной для board) ---
+    # Choose model: Opus for CEO, Sonnet for other experts
+    model = MODEL_OPUS if use_opus else "claude-sonnet-4-6"
+    model_label = "Opus" if use_opus else "Sonnet"
+
+    # --- Попытка 1: Claude (Sonnet or Opus) ---
     t0 = time.monotonic()
     try:
         result = call_anthropic(
             prompt=prompt,
-            model=MODEL_OPUS,
+            model=model,
             system=system or "",
             temperature=temperature,
             max_tokens=max_tokens,
         )
         elapsed = round(time.monotonic() - t0, 2)
-        logger.info("Board LLM OK: model=%s, time=%.2fs", MODEL_OPUS, elapsed)
+        logger.info("Board LLM OK: model=%s (%s), time=%.2fs", model, model_label, elapsed)
         return result
     except Exception as exc:
         elapsed = round(time.monotonic() - t0, 2)

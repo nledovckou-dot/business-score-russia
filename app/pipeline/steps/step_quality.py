@@ -205,15 +205,26 @@ def _hallucination_detector(
     else:
         checks.append({"name": "hallucination_round_numbers", "status": "pass", "message": "Подозрительно круглых чисел нет"})
 
-    # 1e. Opinions without source references
+    # 1e. Opinions without source references or URLs
     opinions = report_data.get("opinions") or []
     unsourced_quotes = 0
+    no_url_quotes = 0
+    fake_url_quotes = 0
     for op in opinions:
         if not isinstance(op, dict):
             continue
         has_source = bool(op.get("source") or op.get("source_url"))
         if not has_source:
             unsourced_quotes += 1
+        # Check for fake/placeholder URLs
+        source_url = op.get("source_url", "")
+        if source_url:
+            for fp in _FAKE_URL_PATTERNS:
+                if fp.search(source_url):
+                    fake_url_quotes += 1
+                    break
+        elif op.get("source") and not source_url:
+            no_url_quotes += 1
 
     if unsourced_quotes > 0:
         msg = f"{unsourced_quotes} из {len(opinions)} цитат без указания источника"
@@ -229,6 +240,16 @@ def _hallucination_detector(
         checks.append({"name": "hallucination_unsourced_quotes", "status": status, "message": msg})
         if not opinions:
             warnings.append(msg)
+
+    if fake_url_quotes > 0:
+        msg = f"{fake_url_quotes} цитат с фейковыми URL (example.com, test.com и т.д.)"
+        checks.append({"name": "hallucination_fake_opinion_urls", "status": "fail", "message": msg})
+        critical_failures.append(msg)
+
+    if no_url_quotes > 0 and no_url_quotes == len(opinions):
+        msg = f"Все {len(opinions)} цитат без URL-ссылки на источник (только название СМИ)"
+        checks.append({"name": "opinions_no_url", "status": "warn", "message": msg})
+        warnings.append(msg)
 
 
 # ════════════════════════════════════════════════════════
