@@ -109,13 +109,23 @@ jobs:
             # Verify the code is correct
             echo "=== Verify deployed code ==="
             grep "REPORTS_PER_HOUR" "$APP_DIR/app/security.py"
-            echo "--- step1_scrape.py version ---"
-            grep "_STEP1_VERSION\|RuntimeError\|мало текста" "$APP_DIR/app/pipeline/steps/step1_scrape.py" || echo "No RuntimeError in step1"
-            echo "--- web_search.py model ---"
-            grep "gemini-2" "$APP_DIR/app/pipeline/web_search.py"
+            echo "--- landing.py CSS root ---"
+            grep -o ':root{[^}]*}' "$APP_DIR/app/landing.py" | head -1
+            echo "--- landing.py SVG stroke ---"
+            grep 'stroke-width' "$APP_DIR/app/landing.py" | head -3
+            echo "--- git HEAD ---"
+            cd "$APP_DIR" && git log --oneline -1
 
             # Debug: check where Python actually imports from
-            cd "$APP_DIR" && "$APP_DIR/.venv/bin/python3" -c "import sys; print('sys.path:', sys.path[:5]); import app.pipeline.steps.step1_scrape as s1; print('step1 file:', s1.__file__); print('step1 version:', s1._STEP1_VERSION)"
+            cd "$APP_DIR" && "$APP_DIR/.venv/bin/python3" -c "
+import sys; sys.path.insert(0, '.');
+from app.landing import LANDING_HTML
+print('LANDING_HTML length:', len(LANDING_HTML))
+print('Has navy:', '--navy' in LANDING_HTML)
+print('Has stroke-width 5.5:', 'stroke-width=\"5.5\"' in LANDING_HTML or 'stroke-width=\\\"5.5\\\"' in LANDING_HTML)
+css_root = LANDING_HTML[LANDING_HTML.find(':root{'):LANDING_HTML.find(':root{')+80] if ':root{' in LANDING_HTML else 'NOT FOUND'
+print('CSS root:', css_root)
+"
 
             # Launch test analysis
             echo "--- Launching test analysis ---"
