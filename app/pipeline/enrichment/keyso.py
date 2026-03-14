@@ -219,6 +219,153 @@ def get_domain_dashboard(domain: str, base: str = "msk") -> dict | None:
     return result
 
 
+def get_organic_competitors(domain: str, base: str = "msk", top: int = 10, limit: int = 25) -> list[dict]:
+    """Get real SEO competitors by keyword overlap.
+
+    This is the KEY endpoint for competitor discovery — returns domains
+    that compete for the same search queries.
+
+    Args:
+        domain: Target domain
+        base: Region code
+        top: Top-N positions to consider (10 or 50)
+        limit: Max results
+
+    Returns:
+        List of dicts: {domain, overlap_count, overlap_pct, visibility,
+                        keywords_total, ads_count, ad_keywords, theme}
+    """
+    if not domain:
+        return []
+
+    domain = _clean_domain(domain)
+
+    try:
+        raw = _get("/report/simple/organic/concurents", {
+            "base": base,
+            "domain": domain,
+            "top": str(top),
+            "per_page": str(min(limit, 50)),
+            "sort": "cnt|desc",
+        })
+    except Exception as e:
+        logger.warning("[keyso] Organic competitors failed for '%s': %s", domain, str(e)[:200])
+        return []
+
+    items = raw.get("data", [])
+    results = []
+    for item in items:
+        results.append({
+            "domain": item.get("name", ""),
+            "overlap_count": item.get("cnt", 0),
+            "overlap_pct": item.get("perc", 0),
+            "visibility": item.get("vis", 0),
+            "keywords_total": item.get("it50", 0),
+            "keywords_top10": item.get("it10", 0),
+            "ads_count": item.get("adscnt", 0),
+            "ad_keywords": item.get("adkeyscnt", 0),
+            "theme": item.get("theme", ""),
+        })
+
+    logger.info("[keyso] Organic competitors for '%s': %d found", domain, len(results))
+    return results
+
+
+def get_organic_keywords(domain: str, base: str = "msk", limit: int = 30) -> list[dict]:
+    """Get top organic keywords the domain ranks for.
+
+    Args:
+        domain: Target domain
+        base: Region code
+        limit: Max results
+
+    Returns:
+        List of dicts: {word, position, search_volume, search_volume_exact, url}
+    """
+    if not domain:
+        return []
+
+    domain = _clean_domain(domain)
+
+    try:
+        raw = _get("/report/simple/organic/keywords", {
+            "base": base,
+            "domain": domain,
+            "per_page": str(min(limit, 50)),
+            "sort": "ws|desc",
+        })
+    except Exception as e:
+        logger.warning("[keyso] Organic keywords failed for '%s': %s", domain, str(e)[:200])
+        return []
+
+    items = raw.get("data", [])
+    results = []
+    for item in items:
+        results.append({
+            "word": item.get("word", ""),
+            "position": item.get("pos", 0),
+            "search_volume": item.get("ws", 0),
+            "search_volume_exact": item.get("wsk", 0),
+            "url": item.get("url", ""),
+            "num_words": item.get("numwords", 0),
+        })
+
+    logger.info("[keyso] Organic keywords for '%s': %d found", domain, len(results))
+    return results
+
+
+def get_context_ads(domain: str, base: str = "msk", limit: int = 20) -> list[dict]:
+    """Get context (Yandex Direct) ads for a domain.
+
+    Args:
+        domain: Target domain
+        base: Region code
+        limit: Max results
+
+    Returns:
+        List of dicts: {header, text, facts, links, keywords_count}
+    """
+    if not domain:
+        return []
+
+    domain = _clean_domain(domain)
+
+    try:
+        raw = _get("/report/simple/context/ads", {
+            "base": base,
+            "domain": domain,
+            "per_page": str(min(limit, 50)),
+            "sort": "keyscnt|desc",
+        })
+    except Exception as e:
+        logger.warning("[keyso] Context ads failed for '%s': %s", domain, str(e)[:200])
+        return []
+
+    items = raw.get("data", [])
+    results = []
+    for item in items:
+        results.append({
+            "header": item.get("header", ""),
+            "text": item.get("txt", ""),
+            "facts": item.get("facts", ""),
+            "links": item.get("links", ""),
+            "keywords_count": item.get("keyscnt", 0),
+            "domain": item.get("domain", domain),
+        })
+
+    logger.info("[keyso] Context ads for '%s': %d found", domain, len(results))
+    return results
+
+
+def _clean_domain(domain: str) -> str:
+    """Clean domain string: remove protocol, path, trailing slash."""
+    domain = domain.strip().lower()
+    domain = domain.replace("https://", "").replace("http://", "").rstrip("/")
+    if "/" in domain:
+        domain = domain.split("/")[0]
+    return domain
+
+
 def get_seo_comparison(domains: list[str], base: str = "msk") -> list[dict]:
     """Get SEO dashboards for multiple domains (for competitive comparison).
 

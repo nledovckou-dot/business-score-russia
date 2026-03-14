@@ -76,6 +76,17 @@
     </div>
     {% endif %}
 
+    {% if k.context_ads %}
+    <h4 style="color:var(--text2); font-size:0.88em; margin:16px 0 8px;">Рекламные объявления (Яндекс Директ)</h4>
+    {% for ad in k.context_ads %}
+    <div style="background:var(--bg3); border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:8px;">
+        <div style="color:var(--blue); font-weight:600; font-size:0.92em;">{{ ad.header }}</div>
+        <div style="color:var(--text2); font-size:0.85em; margin-top:4px;">{{ ad.text }}</div>
+        {% if ad.facts %}<div style="color:var(--text3); font-size:0.78em; margin-top:4px;">{{ ad.facts }}</div>{% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+
     {{ info_tip("SEO-данные получены из Keys.so (реальная аналитика). Регион: Москва.", sources=["Keys.so"]) }}
     {% else %}
 

@@ -995,7 +995,7 @@ def _run_analysis_steps(sid: str):
             except Exception as e:
                 _push_event(sid, "step", {"num": "4h", "status": "warning", "text": f"HH.ru: {e}"})
 
-        # Step 4.5k: Keys.so SEO analytics (company + competitors)
+        # Step 4.5k: Keys.so SEO analytics (company — full suite)
         keyso_data = None
         company_domain = ""
         try:
@@ -1005,22 +1005,46 @@ def _run_analysis_steps(sid: str):
                 company_domain = urlparse(raw_url).hostname or ""
                 if company_domain:
                     _push_event(sid, "step", {"num": "4k", "status": "active", "text": f"SEO-аналитика: {company_domain}..."})
-                    from app.pipeline.enrichment.keyso import get_domain_dashboard
+                    from app.pipeline.enrichment.keyso import (
+                        get_domain_dashboard, get_organic_competitors,
+                        get_organic_keywords, get_context_ads,
+                    )
+
+                    # 1. Dashboard (DR, visibility, top keywords, history)
                     keyso_data = get_domain_dashboard(company_domain)
+
                     if keyso_data:
+                        # 2. Full organic competitors (up to 25)
+                        seo_comps = get_organic_competitors(company_domain, limit=25)
+                        if seo_comps:
+                            keyso_data["organic_competitors_full"] = seo_comps
+
+                        # 3. Top organic keywords (up to 30)
+                        seo_keywords = get_organic_keywords(company_domain, limit=30)
+                        if seo_keywords:
+                            keyso_data["organic_keywords_full"] = seo_keywords
+
+                        # 4. Context ads
+                        ads_list = get_context_ads(company_domain, limit=15)
+                        if ads_list:
+                            keyso_data["context_ads"] = ads_list
+
                         data["keyso"] = keyso_data
                         vis = keyso_data.get("seo_metrics", {}).get("visibility", 0)
                         dr = keyso_data.get("seo_metrics", {}).get("dr", 0)
-                        ads = keyso_data.get("ad_metrics", {}).get("ads_count", 0)
-                        logger.info("Keys.so OK: domain=%s, DR=%d, vis=%d, ads=%d", company_domain, dr, vis, ads)
+                        n_comps = len(seo_comps) if seo_comps else 0
+                        n_keys = len(seo_keywords) if seo_keywords else 0
+                        n_ads = len(ads_list) if ads_list else 0
+                        logger.info(
+                            "Keys.so OK: domain=%s, DR=%d, vis=%d, competitors=%d, keywords=%d, ads=%d",
+                            company_domain, dr, vis, n_comps, n_keys, n_ads,
+                        )
                         _push_event(sid, "step", {"num": "4k", "status": "done",
-                            "text": f"Keys.so: DR={dr}, видимость={vis}, реклама={ads}"})
+                            "text": f"Keys.so: DR={dr}, видимость={vis}, {n_comps} конкурентов, {n_keys} запросов, {n_ads} объявлений"})
                     else:
                         logger.warning("Keys.so returned None for domain=%s", company_domain)
                         _push_event(sid, "step", {"num": "4k", "status": "warning",
                             "text": "Keys.so: домен не найден"})
-                else:
-                    logger.warning("Keys.so: could not extract domain from URL=%s", raw_url)
         except Exception as e:
             import traceback
             logger.error("Keys.so failed for domain=%s: %s\n%s", company_domain, str(e)[:300], traceback.format_exc()[-500:])
@@ -1099,12 +1123,16 @@ def _run_analysis_steps(sid: str):
                 "pages_in_index": seo.get("pages_in_index", 0),
                 "ads_count": ads.get("ads_count", 0),
                 "ad_budget_avg": ads.get("ad_budget_avg", 0),
-                "top_keywords": keyso_data.get("top_keywords", [])[:5],
-                "seo_competitors": keyso_data.get("seo_competitors", [])[:5],
+                "top_keywords": keyso_data.get("organic_keywords_full", keyso_data.get("top_keywords", []))[:10],
+                "seo_competitors": keyso_data.get("organic_competitors_full", keyso_data.get("seo_competitors", []))[:10],
+                "context_ads": keyso_data.get("context_ads", [])[:5],
                 "history": keyso_data.get("history", [])[-6:],
             }
             report_data["digital"] = digital
-            logger.info("Injected Keys.so data into digital section")
+            logger.info("Injected Keys.so data into digital section (keywords=%d, competitors=%d, ads=%d)",
+                        len(digital["keyso"]["top_keywords"]),
+                        len(digital["keyso"]["seo_competitors"]),
+                        len(digital["keyso"]["context_ads"]))
 
         # Executive Summary — generated AFTER all analysis, uses SWOT + recommendations
         try:
