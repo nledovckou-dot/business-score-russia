@@ -726,7 +726,9 @@ function startAnalysis(){
     document.getElementById('url-tag').textContent=url;
     fetch('/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url})})
     .then(function(r){return r.json()}).then(function(r){
-        if(!r.ok){showError(r.error);return}
+        if(!r.ok){
+            if(r.auth_required){pendingUrl=url;authUser=null;updateAuthUI();document.getElementById('phase-url').style.display='block';document.getElementById('phase-pipeline').style.display='none';document.getElementById('gobtn').disabled=false;openModal('login');return}
+            showError(r.error);return}
         SID=r.session_id;listenSSE();
     }).catch(function(err){showError('Ошибка сети: '+err.message)})
 }

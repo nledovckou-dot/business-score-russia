@@ -545,6 +545,13 @@ async def start_session(request: Request):
     if BETA_EMAILS:
         user_info = auth_manager.check_token(auth_token) if auth_token else None
         user_email = (user_info.get("email", "") if user_info else "").lower()
+        logger.info("Beta gate check: token=%s, user_email=%r, allowed=%s",
+                     auth_token[:8] if auth_token else "none", user_email, user_email in BETA_EMAILS)
+        if not user_info:
+            return JSONResponse(
+                {"ok": False, "error": "Требуется авторизация", "auth_required": True},
+                status_code=401,
+            )
         if user_email not in BETA_EMAILS:
             return JSONResponse(
                 {"ok": False, "error": "Сервис в режиме закрытого тестирования. Скоро откроем для всех!"},
