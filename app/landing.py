@@ -731,13 +731,15 @@ function startAnalysis(){
     }).catch(function(err){showError('Ошибка сети: '+err.message)})
 }
 
+var _sseRetries=0,_sseDone=false;
 function listenSSE(){
+    if(_sseDone)return;
     evtSource=new EventSource('/api/events/'+SID);
-    evtSource.addEventListener('step',function(e){var d=JSON.parse(e.data);setStep(d.num,d.status,d.text)});
-    evtSource.addEventListener('waiting_company',function(e){showCompanyPanel(JSON.parse(e.data))});
-    evtSource.addEventListener('waiting_competitors',function(e){showCompetitorPanel(JSON.parse(e.data))});
+    evtSource.addEventListener('step',function(e){_sseRetries=0;var d=JSON.parse(e.data);setStep(d.num,d.status,d.text)});
+    evtSource.addEventListener('waiting_company',function(e){_sseRetries=0;showCompanyPanel(JSON.parse(e.data))});
+    evtSource.addEventListener('waiting_competitors',function(e){_sseRetries=0;showCompetitorPanel(JSON.parse(e.data))});
     evtSource.addEventListener('done',function(e){
-        var d=JSON.parse(e.data);evtSource.close();
+        _sseDone=true;var d=JSON.parse(e.data);evtSource.close();
         radarSuccess();
         document.getElementById('result').style.display='block';
         document.getElementById('rcompany').textContent=d.company||'';
@@ -746,8 +748,20 @@ function listenSSE(){
         if(authUser&&d.reports_remaining!==undefined){authUser.reports_remaining=d.reports_remaining;authUser.reports_used=5-d.reports_remaining;updateAuthUI()}
     });
     evtSource.addEventListener('error',function(e){
-        try{var d=JSON.parse(e.data);showError(d.message||'Ошибка');updateRadar('err','fail')}catch(ex){showError('Соединение потеряно');updateRadar('err','fail')}
-        evtSource.close();
+        try{var d=JSON.parse(e.data);_sseDone=true;evtSource.close();showError(d.message||'Ошибка');updateRadar('err','fail');return}catch(ex){}
+        // Connection lost — auto-reconnect
+        evtSource.close();if(_sseDone)return;
+        _sseRetries++;
+        if(_sseRetries>30){showError('Не удалось восстановить соединение');updateRadar('err','fail');return}
+        var delay=Math.min(_sseRetries*3,30)*1000;
+        var st=document.getElementById('radar-status');if(st)st.textContent='переподключение...';
+        setTimeout(function(){
+            fetch('/api/analyze/'+SID).then(function(r){return r.json()}).then(function(r){
+                if(r.status==='done'){_sseDone=true;radarSuccess();document.getElementById('result').style.display='block';document.getElementById('rcompany').textContent=r.company||'';document.getElementById('rlink').href=r.url;document.getElementById('rmeta').textContent=(r.size_kb||0)+' KB'}
+                else if(r.status==='error'){_sseDone=true;showError(r.error||'Ошибка');updateRadar('err','fail')}
+                else{if(st)st.textContent=r.current_step||'анализ...';listenSSE()}
+            }).catch(function(){listenSSE()})
+        },delay);
     });
 }
 
