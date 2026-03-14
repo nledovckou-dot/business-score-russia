@@ -1091,6 +1091,24 @@ def _run_analysis_steps(sid: str):
         if mc:
             mc.stop_timer("step6_board")
 
+        # Step 6b: Revision — apply board critiques to fix report data
+        board_review_data = report_data.get("board_review")
+        if board_review_data and board_review_data.get("consensus", {}).get("total_critiques", 0) > 0:
+            _push_event(sid, "step", {"num": "6b", "status": "active", "text": "Исправление данных по замечаниям борда..."})
+            if mc:
+                mc.start_timer("step6b_revise")
+            try:
+                from app.pipeline.steps.step7_revise import revise_report
+                report_data = revise_report(report_data, board_review_data, company_info)
+                _push_event(sid, "step", {"num": "6b", "status": "done",
+                    "text": "Данные исправлены по замечаниям совета директоров"})
+            except Exception as e:
+                logger.warning("Revision step failed: %s", e)
+                _push_event(sid, "step", {"num": "6b", "status": "warning",
+                    "text": f"Ревизия: {e}"})
+            if mc:
+                mc.stop_timer("step6b_revise")
+
         # Step Quality: Auto quality check (T10)
         _push_event(sid, "step", {"num": "qa", "status": "active", "text": "Проверка качества отчёта..."})
         if mc:
