@@ -1,6 +1,6 @@
 """Landing page HTML — light premium theme with РУССКОР radar logo."""
 
-# SVG logo: radar pentagon (navy) with upward gold arrow — for light background
+# SVG logo: radar pentagon (navy) with wide gold arrow — matches brand logo
 _LOGO_SVG = r'''<svg viewBox="0 0 200 210" width="72" height="76" xmlns="http://www.w3.org/2000/svg">
   <!-- Pentagon radar grid -->
   <g transform="translate(100,115)" fill="none" stroke="#1A2B4A" stroke-width="1.2">
@@ -17,9 +17,9 @@ _LOGO_SVG = r'''<svg viewBox="0 0 200 210" width="72" height="76" xmlns="http://
   <g transform="translate(100,115)" fill="none" stroke="#1A2B4A" stroke-width="2.5">
     <polygon points="0,-55 52.3,-17 32.3,44.5 -32.3,44.5 -52.3,-17"/>
   </g>
-  <!-- Gold arrow -->
+  <!-- Gold arrow: wide triangle head + narrow shaft (like brand logo) -->
   <g transform="translate(100,115)" fill="#C9A44C" stroke="none">
-    <polygon points="0,-95 15,-55 5,-55 5,-20 -5,-20 -5,-55 -15,-55"/>
+    <polygon points="0,-92 -28,-46 -4,-46 -4,-12 4,-12 4,-46 28,-46"/>
   </g>
 </svg>'''
 
