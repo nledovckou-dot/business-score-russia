@@ -1004,6 +1004,7 @@ def _run_analysis_steps(sid: str):
                 from urllib.parse import urlparse
                 company_domain = urlparse(raw_url).hostname or ""
                 if company_domain:
+                    data["_company_domain"] = company_domain
                     _push_event(sid, "step", {"num": "4k", "status": "active", "text": f"SEO-аналитика: {company_domain}..."})
                     from app.pipeline.enrichment.keyso import (
                         get_domain_dashboard, get_organic_competitors,
@@ -1105,15 +1106,17 @@ def _run_analysis_steps(sid: str):
         # Sanitize LLM output first
         report_data = _sanitize_llm_output(report_data)
 
-        # Inject real Keys.so data into digital section (replace AI estimates)
+        # Inject real SEO data into digital section
         keyso_data = data.get("keyso")
+        digital = report_data.get("digital") or {}
+        company_domain = data.get("_company_domain", "")
+
         if keyso_data:
-            digital = report_data.get("digital") or {}
+            # Company IS indexed — show real SEO metrics
             seo = keyso_data.get("seo_metrics", {})
             ads = keyso_data.get("ad_metrics", {})
-            # Override AI estimates with real data
             if seo.get("visibility"):
-                digital["monthly_traffic"] = seo["visibility"] * 50  # vis → approx monthly visits
+                digital["monthly_traffic"] = seo["visibility"] * 50
                 digital["seo_score"] = min(seo.get("dr", 50), 100)
             digital["keyso"] = {
                 "dr": seo.get("dr", 0),
@@ -1128,11 +1131,35 @@ def _run_analysis_steps(sid: str):
                 "context_ads": keyso_data.get("context_ads", [])[:5],
                 "history": keyso_data.get("history", [])[-6:],
             }
-            report_data["digital"] = digital
-            logger.info("Injected Keys.so data into digital section (keywords=%d, competitors=%d, ads=%d)",
-                        len(digital["keyso"]["top_keywords"]),
-                        len(digital["keyso"]["seo_competitors"]),
-                        len(digital["keyso"]["context_ads"]))
+            logger.info("Injected SEO data into digital section")
+        else:
+            # Company NOT indexed — critical finding + show competitor SEO data
+            digital["keyso_not_indexed"] = True
+            digital["keyso_domain"] = company_domain
+            # Collect SEO data from enriched competitors
+            comp_seo = []
+            for comp in confirmed_competitors:
+                k = comp.get("keyso")
+                if k and k.get("seo_metrics", {}).get("visibility", 0) > 0:
+                    s = k["seo_metrics"]
+                    a = k.get("ad_metrics", {})
+                    comp_seo.append({
+                        "domain": comp.get("website", "").replace("https://", "").replace("http://", "").rstrip("/"),
+                        "name": comp.get("name", ""),
+                        "dr": s.get("dr", 0),
+                        "visibility": s.get("visibility", 0),
+                        "keywords_top10": s.get("it10", 0),
+                        "ads_count": a.get("ads_count", 0),
+                        "ad_budget": a.get("ad_budget_avg", 0),
+                    })
+            comp_seo.sort(key=lambda x: x["visibility"], reverse=True)
+            if comp_seo:
+                digital["keyso_competitor_comparison"] = comp_seo
+                logger.info("Company not indexed, showing %d competitor SEO profiles", len(comp_seo))
+            else:
+                logger.info("Company not indexed, no competitor SEO data available")
+
+        report_data["digital"] = digital
 
         # Executive Summary — generated AFTER all analysis, uses SWOT + recommendations
         try:

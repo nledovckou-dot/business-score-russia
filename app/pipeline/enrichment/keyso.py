@@ -140,6 +140,8 @@ def get_domain_dashboard(domain: str, base: str = "msk") -> dict | None:
 
     # Parse ad metrics
     adcost = raw.get("adcost", {})
+    if not isinstance(adcost, dict):
+        adcost = {}
     ad_metrics = {
         "ads_count": raw.get("adscnt", 0),
         "ad_keywords": raw.get("adkeyscnt", 0),
