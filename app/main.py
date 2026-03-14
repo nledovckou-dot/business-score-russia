@@ -336,13 +336,22 @@ async def auth_register(request: Request):
 
     email = sanitize_text(str(body.get("email", "")).strip(), max_length=254)
     password = str(body.get("password", ""))
+    consent_data = bool(body.get("consent_data", False))
+    consent_marketing = bool(body.get("consent_marketing", False))
 
     # Don't sanitize password (it may contain special chars), just limit length
     if len(password) > 128:
         return JSONResponse({"ok": False, "error": "Пароль слишком длинный"}, status_code=400)
 
+    client_ip = get_client_ip(request)
+
     try:
-        result = auth_manager.register(email, password)
+        result = auth_manager.register(
+            email, password,
+            consent_data=consent_data,
+            consent_marketing=consent_marketing,
+            client_ip=client_ip,
+        )
     except ValueError as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
     except Exception as e:
@@ -1193,6 +1202,34 @@ def _run_analysis_steps(sid: str):
 
         # Sanitize LLM output first
         report_data = _sanitize_llm_output(report_data)
+
+        # CRITICAL: If LLM returned 0 competitors, inject enriched data from step4.5
+        llm_competitors = report_data.get("competitors", [])
+        if not llm_competitors and confirmed_competitors:
+            logger.warning("LLM returned 0 competitors, injecting %d from step4.5 enrichment", len(confirmed_competitors))
+            fallback_comps = []
+            for c in confirmed_competitors:
+                fc = {
+                    "name": c.get("name", "?"),
+                    "description": c.get("description") or c.get("why_competitor", ""),
+                    "legal_name": c.get("legal_name"),
+                    "inn": c.get("inn"),
+                    "website": c.get("website", ""),
+                    "address": c.get("address") or c.get("city", ""),
+                    "x": float(c.get("x", 50)),
+                    "y": float(c.get("y", 50)),
+                    "threat_level": c.get("threat_level", "med"),
+                    "radar_scores": c.get("radar_scores", {}),
+                    "metrics": c.get("metrics", {}),
+                    "verified": c.get("verified", True),
+                    "verification_confidence": c.get("verification_confidence", "medium"),
+                }
+                # Add enriched data
+                if c.get("fns_financials"):
+                    fc["financials"] = c["fns_financials"]
+                fallback_comps.append(fc)
+            report_data["competitors"] = fallback_comps
+            logger.info("Injected %d fallback competitors from enrichment data", len(fallback_comps))
 
         # Inject real SEO data into digital section
         keyso_data = data.get("keyso")
