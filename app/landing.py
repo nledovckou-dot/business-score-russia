@@ -56,21 +56,39 @@ h1 b{font-weight:600;color:var(--gold)}
 
 /* ── Pipeline ── */
 #phase-pipeline{display:none}
-.pipeline-header{text-align:center;margin-bottom:20px}
-.pipeline-header h2{font-size:1.1em;font-weight:500;margin-bottom:4px;color:var(--text)}
+.pipeline-header{text-align:center;margin-bottom:18px}
+.pipeline-header h2{font-size:1.18em;font-weight:600;margin-bottom:6px;color:var(--text)}
+.pipeline-header .pipeline-sub{max-width:620px;margin:0 auto 8px;color:var(--text2);font-size:0.86em;line-height:1.5}
 .pipeline-header .url-tag{color:var(--text3);font-size:0.82em}
+.storyline{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:0 auto 16px;max-width:980px}
+.story-card{border:1px solid var(--border);border-radius:12px;background:var(--card);padding:14px 16px;text-align:left;box-shadow:0 1px 4px rgba(0,0,0,0.04);transition:border-color 0.2s,transform 0.2s,box-shadow 0.2s}
+.story-card.active{border-color:#c9a44c;box-shadow:0 10px 24px rgba(201,164,76,0.12);transform:translateY(-1px)}
+.story-card.done{border-color:#9dd9b2;background:#f7fcf8}
+.story-card-kicker{font-size:0.7em;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text3);margin-bottom:6px}
+.story-card-title{font-size:0.95em;font-weight:600;color:var(--navy);margin-bottom:4px}
+.story-card-copy{font-size:0.78em;line-height:1.45;color:var(--text2)}
+.pipeline-note{display:flex;align-items:flex-start;gap:12px;border:1px solid var(--border);border-radius:12px;background:linear-gradient(135deg,#fff 0%, #f7f9fc 100%);padding:14px 16px;margin:0 auto 18px;max-width:980px;box-shadow:0 1px 4px rgba(0,0,0,0.04)}
+.pipeline-note-label{font-size:0.7em;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--gold);padding-top:2px;flex-shrink:0}
+.pipeline-note-text{font-size:0.84em;line-height:1.5;color:var(--navy);text-align:left}
 .steps{border:1px solid var(--border);border-radius:12px;margin-bottom:16px;overflow:hidden;background:var(--card);box-shadow:0 1px 4px rgba(0,0,0,0.04)}
-.step{display:flex;align-items:center;gap:10px;padding:11px 18px;font-size:0.85em;color:var(--text3);border-bottom:1px solid var(--border);transition:color 0.2s}
+.step{display:flex;align-items:flex-start;gap:12px;padding:12px 18px;font-size:0.85em;color:var(--text3);border-bottom:1px solid var(--border);transition:color 0.2s,background 0.2s}
 .step:last-child{border-bottom:none}
-.step.active{color:var(--navy);font-weight:500}
+.step.active{color:var(--navy);background:#fbfcff}
 .step.done{color:var(--green)}
 .step.fail{color:var(--red)}
 .step.warning{color:var(--orange)}
-.step-icon{width:22px;height:22px;border-radius:50%;border:1.5px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:0.7em;flex-shrink:0}
+.step-icon{width:22px;height:22px;border-radius:50%;border:1.5px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:0.7em;flex-shrink:0;margin-top:2px}
 .step.active .step-icon{animation:pulse 1.5s infinite}
 .step.done .step-icon{background:var(--green);border-color:var(--green);color:#fff}
 .step.fail .step-icon{background:var(--red);border-color:var(--red);color:#fff}
 .step.warning .step-icon{background:var(--orange);border-color:var(--orange);color:#fff}
+.step-body{display:flex;flex-direction:column;gap:2px;min-width:0}
+.step-title{font-weight:600;font-size:0.92em;color:inherit}
+.step-detail{font-size:0.78em;line-height:1.45;color:var(--text2)}
+.step.active .step-detail{color:var(--navy)}
+.step.done .step-detail{color:#257a49}
+.step.warning .step-detail{color:#9a6300}
+.step.fail .step-detail{color:#a63131}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
 .rp{width:24px;height:4px;border-radius:2px;background:#1E1A24;transition:background 0.6s,box-shadow 0.6s}
 .rp.active{background:#C9A44C;box-shadow:0 0 8px rgba(201,164,76,0.4)}
@@ -81,6 +99,7 @@ h1 b{font-weight:600;color:var(--gold)}
 /* ── Panels ── */
 .panel{border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px;display:none;background:var(--card);box-shadow:0 1px 4px rgba(0,0,0,0.04)}
 .panel h3{font-size:0.95em;font-weight:600;margin-bottom:14px;color:var(--navy)}
+.panel-sub{font-size:0.82em;color:var(--text2);margin:-4px 0 14px;line-height:1.5}
 .field{margin-bottom:12px}
 .field label{display:block;font-size:0.75em;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.03em}
 .field input,.field select{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.9em;font-family:inherit;background:var(--card)}
@@ -143,6 +162,8 @@ h1 b{font-weight:600;color:var(--gold)}
 @media(max-width:600px){
     #phase-url{margin-top:10vh}
     h1{font-size:1.4em}
+    .storyline{grid-template-columns:1fr 1fr}
+    .pipeline-note{padding:12px 14px}
     .input-row{flex-direction:column}
     .input-row .btn{width:100%}
     .field-row{grid-template-columns:1fr}
@@ -200,13 +221,42 @@ h1 b{font-weight:600;color:var(--gold)}
             <input id="url" type="url" placeholder="https://example.com" autofocus onkeydown="if(event.key==='Enter')startAnalysis()">
             <button class="btn" id="gobtn" onclick="startAnalysis()">Анализировать</button>
         </div>
-        <div class="hint">ФНС, ЕГРЮЛ, HH.ru, открытые источники</div>
+        <div class="hint">Официальные сведения, рынок, конкуренты, кадровые и digital-сигналы</div>
     </div>
 
     <div id="phase-pipeline">
         <div class="pipeline-header">
-            <h2>Анализ</h2>
+            <h2>Собираем деловую картину</h2>
+            <p class="pipeline-sub">От первичного досье до финального вердикта: шаг за шагом собираем профиль компании, поле рынка, ключевые сигналы бизнеса и итоговые выводы.</p>
             <div class="url-tag" id="url-tag"></div>
+        </div>
+
+        <div class="storyline">
+            <div class="story-card active" id="story-0">
+                <div class="story-card-kicker">Глава 1</div>
+                <div class="story-card-title">Компания</div>
+                <div class="story-card-copy">Выделяем бренд, юрлицо, продуктовый контур и точки опоры бизнеса.</div>
+            </div>
+            <div class="story-card" id="story-1">
+                <div class="story-card-kicker">Глава 2</div>
+                <div class="story-card-title">Рынок и игроки</div>
+                <div class="story-card-copy">Формируем конкурентное поле, площадки присутствия и карту спроса.</div>
+            </div>
+            <div class="story-card" id="story-2">
+                <div class="story-card-kicker">Глава 3</div>
+                <div class="story-card-title">Сигналы бизнеса</div>
+                <div class="story-card-copy">Сводим финансовые, кадровые, поисковые и digital-признаки масштаба.</div>
+            </div>
+            <div class="story-card" id="story-3">
+                <div class="story-card-kicker">Глава 4</div>
+                <div class="story-card-title">Вердикт</div>
+                <div class="story-card-copy">Проверяем опорные факты, убираем шум и готовим финальный вывод.</div>
+            </div>
+        </div>
+
+        <div class="pipeline-note">
+            <div class="pipeline-note-label">Сейчас</div>
+            <div class="pipeline-note-text" id="pipeline-note">Сначала собираем базовый профиль компании и проверяем, к какому бизнесу относится сайт.</div>
         </div>
 
         <!-- Animated analysis visualization -->
@@ -254,37 +304,40 @@ h1 b{font-weight:600;color:var(--gold)}
             </div>
             <!-- Phase indicators -->
             <div id="radar-phases" style="display:flex;gap:6px;">
-                <div class="rp" id="rp0" title="Сбор данных"></div>
-                <div class="rp" id="rp1" title="Конкуренты"></div>
-                <div class="rp" id="rp2" title="Анализ"></div>
-                <div class="rp" id="rp3" title="Верификация"></div>
-                <div class="rp" id="rp4" title="Сборка"></div>
+                <div class="rp" id="rp0" title="Компания"></div>
+                <div class="rp" id="rp1" title="Рынок и игроки"></div>
+                <div class="rp" id="rp2" title="Сигналы бизнеса"></div>
+                <div class="rp" id="rp3" title="Финальный вывод"></div>
             </div>
         </div>
 
         <div class="steps">
-            <div class="step-group">Сбор данных</div>
-            <div class="step" id="s0"><div class="step-icon">&middot;</div><span>Выбор AI-моделей</span></div>
-            <div class="step" id="s1"><div class="step-icon">1</div><span>Загрузка сайта</span></div>
-            <div class="step" id="s2"><div class="step-icon">2</div><span>Определение компании</span></div>
-            <div class="step" id="s3"><div class="step-icon">3</div><span>Поиск в ФНС</span></div>
-            <div class="step-group">Конкуренты</div>
-            <div class="step" id="s4"><div class="step-icon">4</div><span>Поиск конкурентов</span></div>
-            <div class="step-group">Анализ</div>
-            <div class="step" id="s1b"><div class="step-icon">&middot;</div><span>Маркетплейсы</span></div>
-            <div class="step" id="s1c"><div class="step-icon">&middot;</div><span>Бизнес-модели и каналы</span></div>
-            <div class="step" id="s4h"><div class="step-icon">&middot;</div><span>HR и вакансии</span></div>
-            <div class="step" id="s5"><div class="step-icon">5</div><span>Глубокий анализ</span></div>
-            <div class="step-group">Проверка</div>
-            <div class="step" id="s2a"><div class="step-icon">&middot;</div><span>Верификация</span></div>
-            <div class="step" id="s2b"><div class="step-icon">&middot;</div><span>Relevance Gate</span></div>
-            <div class="step" id="s6a"><div class="step-icon">&middot;</div><span>Совет директоров</span></div>
-            <div class="step" id="sqa"><div class="step-icon">&middot;</div><span>Проверка качества</span></div>
-            <div class="step" id="s7"><div class="step-icon">&middot;</div><span>Сборка отчёта</span></div>
+            <div class="step-group">Портрет компании</div>
+            <div class="step" id="s0"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Стартуем исследование</div><div class="step-detail">Собираем базовый контур и готовим маршрут разбора компании.</div></div></div>
+            <div class="step" id="s1"><div class="step-icon">1</div><div class="step-body"><div class="step-title">Изучаем сайт и продукт</div><div class="step-detail">Собираем первичное представление о предложении и языке бренда.</div></div></div>
+            <div class="step" id="s2"><div class="step-icon">2</div><div class="step-body"><div class="step-title">Уточняем профиль компании</div><div class="step-detail">Выделяем бренд, юрлицо, тип бизнеса и рабочий контур.</div></div></div>
+            <div class="step" id="s3"><div class="step-icon">3</div><div class="step-body"><div class="step-title">Собираем официальные сведения</div><div class="step-detail">Проверяем юридический профиль и опорные реквизиты.</div></div></div>
+            <div class="step-group">Рынок и игроки</div>
+            <div class="step" id="s4"><div class="step-icon">4</div><div class="step-body"><div class="step-title">Формируем конкурентное поле</div><div class="step-detail">Собираем тех, с кем компанию действительно нужно сравнивать.</div></div></div>
+            <div class="step" id="s1b"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Проверяем площадки продаж</div><div class="step-detail">Смотрим витрины, маркетплейсы и внешние каналы присутствия.</div></div></div>
+            <div class="step" id="s1c"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Разбираем каналы продаж</div><div class="step-detail">Понимаем, как компания собирает и монетизирует спрос.</div></div></div>
+            <div class="step" id="s4k"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Смотрим поисковую видимость</div><div class="step-detail">Оцениваем заметность бренда и силу присутствия в поиске.</div></div></div>
+            <div class="step" id="s4e"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Обогащаем профили игроков</div><div class="step-detail">Добавляем масштаб, каналы и внешние сигналы по компании и конкурентам.</div></div></div>
+            <div class="step-group">Сигналы бизнеса</div>
+            <div class="step" id="s4h"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Смотрим кадровые сигналы</div><div class="step-detail">Вакансии и найм помогают понять фазу бизнеса и точки усиления.</div></div></div>
+            <div class="step" id="s5"><div class="step-icon">5</div><div class="step-body"><div class="step-title">Собираем управленческую картину</div><div class="step-detail">Связываем рынок, финансы, digital, команду и риски в одну логику.</div></div></div>
+            <div class="step-group">Финальный вывод</div>
+            <div class="step" id="s2a"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Сверяем факты и расчёты</div><div class="step-detail">Проверяем, на чём держатся ключевые выводы и цифры.</div></div></div>
+            <div class="step" id="s2b"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Убираем лишний шум</div><div class="step-detail">Оставляем только релевантные блоки и опорные сигналы.</div></div></div>
+            <div class="step" id="s6a"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Формируем финальный вердикт</div><div class="step-detail">Сводим главные выводы, риски и возможности в один вывод.</div></div></div>
+            <div class="step" id="s6b"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Уточняем спорные места</div><div class="step-detail">Дорабатываем разделы, где нужна дополнительная осторожность.</div></div></div>
+            <div class="step" id="sqa"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Проверяем силу отчёта</div><div class="step-detail">Смотрим, где материал уже силён, а где ещё нужны оговорки.</div></div></div>
+            <div class="step" id="s7"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Готовим итоговый документ</div><div class="step-detail">Собираем отчёт в читаемый финальный материал.</div></div></div>
         </div>
 
         <div class="panel" id="panel-company">
-            <h3>Подтвердите компанию</h3>
+            <h3>Уточните компанию</h3>
+            <p class="panel-sub">Проверьте, что отчёт строится по нужному бренду и юридическому контуру.</p>
             <div id="fns-status"></div>
             <div class="field-row">
                 <div class="field"><label>Название</label><input id="c-name" type="text"></div>
@@ -305,20 +358,20 @@ h1 b{font-weight:600;color:var(--gold)}
                 </div>
             </div>
             <div class="field"><label>Адрес</label><input id="c-address" type="text"></div>
-            <div style="margin-top:8px"><button class="btn" onclick="confirmCompany()">Подтвердить</button></div>
+            <div style="margin-top:8px"><button class="btn" onclick="confirmCompany()">Продолжить</button></div>
         </div>
 
         <div class="panel" id="panel-competitors">
-            <h3>Конкуренты <span id="market-name" style="font-weight:400;color:var(--text3);font-size:0.85em"></span></h3>
-            <p style="font-size:0.82em;color:var(--text2);margin-bottom:14px">Уберите нерелевантных</p>
+            <h3>Согласуйте конкурентное поле <span id="market-name" style="font-weight:400;color:var(--text3);font-size:0.85em"></span></h3>
+            <p class="panel-sub">Оставьте только тех, с кем компанию действительно стоит сравнивать в отчёте.</p>
             <div class="comp-list" id="comp-list"></div>
-            <button class="btn" onclick="confirmCompetitors()">Подтвердить и запустить</button>
+            <button class="btn" onclick="confirmCompetitors()">Подтвердить и продолжить</button>
         </div>
 
         <div class="error" id="error"></div>
 
         <div class="result" id="result">
-            <h3>Отчёт готов</h3>
+            <h3>Картина готова</h3>
             <div class="company" id="rcompany"></div>
             <a id="rlink" href="#" target="_blank">Открыть отчёт</a>
             <div class="meta" id="rmeta"></div>
@@ -418,10 +471,10 @@ function showCompanyPanel(d){
     var bt=ci.business_type_guess||'B2B_SERVICE',sel=document.getElementById('c-type');
     for(var i=0;i<sel.options.length;i++){if(sel.options[i].value===bt)sel.selectedIndex=i}
     var s=document.getElementById('fns-status');
-    if(fc.inn){s.className='fns-info';s.innerHTML='\u2713 ФНС: '+(fc.name||'')+' | ИНН '+fc.inn+(fc.okved?' | ОКВЭД '+fc.okved:'')}
-    else{s.className='fns-warning';s.textContent='\u26A0 Юрлицо не найдено. Введите ИНН вручную.'}
+    if(fc.inn){s.className='fns-info';s.innerHTML='\u2713 Найден официальный контур: '+(fc.name||'')+' | ИНН '+fc.inn+(fc.okved?' | ОКВЭД '+fc.okved:'')}
+    else{s.className='fns-warning';s.textContent='\u26A0 Официальный контур не определился автоматически. Проверьте ИНН вручную.'}
     var mm=fns.entity_mismatch;
-    if(mm&&mm.has_mismatch){s.innerHTML+='<br><span style="color:var(--orange)">\u26A0 Несовпадение: сайт \u00AB'+mm.brand_name+'\u00BB \u2192 юрлицо \u00AB'+mm.legal_name+'\u00BB. Финансы ФНС могут включать другие продукты.</span>'}
+    if(mm&&mm.has_mismatch){s.innerHTML+='<br><span style="color:var(--orange)">\u26A0 Бренд сайта \u00AB'+mm.brand_name+'\u00BB и найденное юрлицо \u00AB'+mm.legal_name+'\u00BB отличаются. Проверьте, что отчёт строится по нужной компании.</span>'}
     document.getElementById('panel-company').style.display='block';
 }
 
@@ -462,26 +515,58 @@ function confirmCompetitors(){
     fetch('/api/confirm-competitors/'+SID,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({competitors:sel})});
 }
 
-var _rDone=0,_rTotal=15,_rPhase=-1;
-var _rPhaseMap={s0:0,s1:0,s2:0,s3:0,s4:1,s1b:2,s1c:2,s4h:2,s4k:2,s4e:2,s5:2,s2a:3,s2b:3,s6a:3,sqa:4,s7:4};
-var _rLabels=['сбор данных','конкуренты','анализ','проверка','финализация'];
+var _trackedSteps=['s0','s1','s2','s3','s4','s1b','s1c','s4k','s4e','s4h','s5','s2a','s2b','s6a','s6b','sqa','s7'];
+var _terminalStatuses={done:true,warning:true,fail:true};
+var _stepStates={};
+var _rPhase=-1;
+var _rPhaseMap={s0:0,s1:0,s2:0,s3:0,s4:1,s1b:1,s1c:1,s4k:1,s4e:1,s4h:2,s5:2,s2a:3,s2b:3,s6a:3,s6b:3,sqa:3,s7:3};
+var _rLabels=['компания','рынок и игроки','сигналы бизнеса','финальный вывод'];
+var _phaseNotes=[
+    'Собираем базовый профиль: сайт, продукт, бренд и официальный контур компании.',
+    'Формируем поле рынка: конкуренты, каналы присутствия и заметность бренда.',
+    'Сводим сигналы бизнеса: команда, каналы, масштаб, digital и рабочую модель.',
+    'Проверяем опорные факты, убираем лишний шум и готовим финальный вывод.'
+];
+function setPipelineNote(text){
+    var note=document.getElementById('pipeline-note');
+    if(note&&text)note.textContent=text;
+}
+function updateStoryline(phase){
+    for(var i=0;i<4;i++){
+        var card=document.getElementById('story-'+i);
+        if(!card)continue;
+        card.className='story-card'+(i<phase?' done':i===phase?' active':'');
+    }
+    if(phase>=0&&phase<_phaseNotes.length)setPipelineNote(_phaseNotes[phase]);
+}
+function completedStepsCount(){
+    var count=0;
+    for(var i=0;i<_trackedSteps.length;i++){
+        var st=_stepStates[_trackedSteps[i]];
+        if(_terminalStatuses[st])count++;
+    }
+    return count;
+}
 function updateRadar(n,status){
-    if(status==='done'||status==='warning'){
-        _rDone++;
-        var pct=Math.min(Math.round(_rDone/_rTotal*100),100);
+    var stepId='s'+n;
+    if(_terminalStatuses[status]||status==='active')_stepStates[stepId]=status;
+
+    if(_terminalStatuses[status]){
+        var pct=Math.min(Math.round(completedStepsCount()/_trackedSteps.length*100),100);
         var el=document.getElementById('radar-pct');
         if(el)el.innerHTML=pct+'<span style="font-size:0.5em;opacity:0.6;">%</span>';
         // Update progress arc (circumference=452.4)
         var arc=document.getElementById('radar-arc');
         if(arc)arc.setAttribute('stroke-dashoffset',String(452.4*(1-pct/100)));
         // Update phase
-        var ph=_rPhaseMap[n];
+        var ph=_rPhaseMap[stepId];
         if(ph!==undefined&&ph>_rPhase){
             _rPhase=ph;
             var st=document.getElementById('radar-status');
             if(st)st.textContent=_rLabels[ph]||'';
+            updateStoryline(ph);
             // Update phase dots
-            for(var i=0;i<=4;i++){
+            for(var i=0;i<4;i++){
                 var dot=document.getElementById('rp'+i);
                 if(!dot)continue;
                 if(i<ph)dot.className='rp done';
@@ -491,11 +576,12 @@ function updateRadar(n,status){
         }
     }
     if(status==='active'){
-        var ph2=_rPhaseMap[n];
+        var ph2=_rPhaseMap[stepId];
         if(ph2!==undefined&&ph2>_rPhase){
             _rPhase=ph2;
             var st2=document.getElementById('radar-status');
             if(st2)st2.textContent=_rLabels[ph2]||'';
+            updateStoryline(ph2);
             var dot2=document.getElementById('rp'+ph2);
             if(dot2)dot2.className='rp active';
         }
@@ -505,7 +591,8 @@ function updateRadar(n,status){
         var center=document.getElementById('radar-center');if(center)center.style.display='none';
         var err=document.getElementById('radar-error');if(err)err.style.display='flex';
         var arc2=document.getElementById('radar-arc');if(arc2){arc2.setAttribute('stroke','#D44040');arc2.setAttribute('stroke-dashoffset','0');}
-        for(var j=0;j<=4;j++){var d=document.getElementById('rp'+j);if(d)d.className='rp fail';}
+        setPipelineNote('Разбор остановился на этапе подготовки отчёта. Проверьте сообщение об ошибке и повторите запуск.');
+        for(var j=0;j<4;j++){var d=document.getElementById('rp'+j);if(d)d.className='rp fail';}
     }
 }
 function radarSuccess(){
@@ -513,18 +600,25 @@ function radarSuccess(){
     var center=document.getElementById('radar-center');if(center)center.style.display='none';
     var suc=document.getElementById('radar-success');if(suc)suc.style.display='flex';
     var arc=document.getElementById('radar-arc');if(arc){arc.setAttribute('stroke','#3DB86A');arc.setAttribute('stroke-dashoffset','0');}
-    for(var i=0;i<=4;i++){var d=document.getElementById('rp'+i);if(d)d.className='rp done';}
+    setPipelineNote('Отчёт собран: теперь можно перейти к чтению и сразу идти в выводы, рынок или конкурентное поле.');
+    updateStoryline(4);
+    for(var i=0;i<4;i++){var d=document.getElementById('rp'+i);if(d)d.className='rp done';}
 }
 
 function setStep(n,status,text){
     var el=document.getElementById('s'+n);
     if(!el)return;
     el.className='step '+status;
-    if(text)el.querySelector('span').textContent=text;
+    if(text){
+        var detail=el.querySelector('.step-detail');
+        if(detail)detail.textContent=text;
+        setPipelineNote(text);
+    }
     var icon=el.querySelector('.step-icon');
     if(status==='done')icon.textContent='\u2713';
     else if(status==='fail')icon.textContent='\u2717';
     else if(status==='warning')icon.textContent='!';
+    else icon.textContent=/^\d+$/.test(String(n))?String(n):'\u00b7';
     updateRadar(n,status);
 }
 

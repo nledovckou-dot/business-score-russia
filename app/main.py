@@ -739,6 +739,65 @@ def _run_competitor_steps(sid: str):
                 company_info[key] = confirmed[key]
         data["company_info"] = company_info
 
+        # Step 3c: Checko.ru enrichment for main company (primary data source)
+        inn = company_info.get("inn") or data.get("fns_data", {}).get("fns_company", {}).get("inn", "")
+        if inn:
+            try:
+                from app.pipeline.enrichment.checko import get_company as checko_company, get_finances as checko_finances
+                _push_event(sid, "step", {"num": "3c", "status": "active", "text": "Checko.ru — данные компании..."})
+
+                checko_data = checko_company(inn)
+                if checko_data:
+                    data["checko_company"] = checko_data
+                    # Enrich company_info with Checko contacts
+                    if checko_data.get("contacts", {}).get("website"):
+                        company_info["website"] = company_info.get("website") or checko_data["contacts"]["website"]
+                    if checko_data.get("employees"):
+                        company_info["employees"] = checko_data["employees"]
+                    if checko_data.get("contacts", {}).get("phones"):
+                        company_info["phones"] = checko_data["contacts"]["phones"]
+                    data["company_info"] = company_info
+
+                checko_fin = checko_finances(inn)
+                if checko_fin:
+                    data["checko_finances"] = checko_fin
+                    # Convert to FNS-compatible format and merge into fns_data
+                    fns_data = data.get("fns_data", {})
+                    checko_financials = []
+                    for year_str, vals in sorted(checko_fin.items()):
+                        rev = vals.get("revenue")
+                        if rev is not None:
+                            rev = rev / 1000  # rubles → thousands
+                        profit = vals.get("net_profit")
+                        if profit is not None:
+                            profit = profit / 1000
+                        assets_val = vals.get("assets")
+                        if assets_val is not None:
+                            assets_val = assets_val / 1000
+                        checko_financials.append({
+                            "year": vals.get("year", int(year_str)),
+                            "revenue": rev,
+                            "net_profit": profit,
+                            "assets": assets_val,
+                            "source": "checko",
+                        })
+                    if checko_financials:
+                        fns_data["financials"] = checko_financials
+                        data["fns_data"] = fns_data
+
+                details = []
+                if checko_data:
+                    details.append(f"сотр: {checko_data.get('employees', '?')}")
+                    details.append(f"риски: {checko_data.get('risk_count', 0)}")
+                if checko_fin:
+                    details.append(f"финансы: {len(checko_fin)} лет")
+                _push_event(sid, "step", {"num": "3c", "status": "done",
+                    "text": f"Checko: {', '.join(details)}"})
+                logger.info("Checko OK for company INN %s: %s", inn, ", ".join(details))
+            except Exception as e:
+                logger.warning("Checko failed for company INN %s: %s", inn, str(e)[:200])
+                _push_event(sid, "step", {"num": "3c", "status": "warning", "text": f"Checko: {e}"})
+
         # Step 4: Find competitors + verify via web search
         _push_event(sid, "step", {"num": 4, "status": "active", "text": "Ищу конкурентов (GPT-5.2 Pro)..."})
         if mc:
@@ -1880,6 +1939,47 @@ def _run_full_pipeline_auto(sid: str, url: str):
 
         # AUTO-CONFIRM company (no user pause)
         session["data"]["confirmed_company"] = company_info
+
+        # Step 3c: Checko.ru enrichment for company
+        inn = company_info.get("inn") or session["data"].get("fns_data", {}).get("fns_company", {}).get("inn", "")
+        if inn:
+            try:
+                from app.pipeline.enrichment.checko import get_company as checko_company, get_finances as checko_finances
+                _push_event(sid, "step", {"num": "3c", "status": "active", "text": "Checko.ru — данные компании..."})
+                checko_data = checko_company(inn)
+                if checko_data:
+                    session["data"]["checko_company"] = checko_data
+                    if checko_data.get("employees"):
+                        company_info["employees"] = checko_data["employees"]
+                    session["data"]["company_info"] = company_info
+                checko_fin = checko_finances(inn)
+                if checko_fin:
+                    session["data"]["checko_finances"] = checko_fin
+                    fns_data = session["data"].get("fns_data", {})
+                    checko_financials = []
+                    for year_str, vals in sorted(checko_fin.items()):
+                        rev = vals.get("revenue")
+                        profit = vals.get("net_profit")
+                        assets_val = vals.get("assets")
+                        checko_financials.append({
+                            "year": vals.get("year", int(year_str)),
+                            "revenue": rev / 1000 if rev is not None else None,
+                            "net_profit": profit / 1000 if profit is not None else None,
+                            "assets": assets_val / 1000 if assets_val is not None else None,
+                            "source": "checko",
+                        })
+                    if checko_financials:
+                        fns_data["financials"] = checko_financials
+                        session["data"]["fns_data"] = fns_data
+                details = []
+                if checko_data:
+                    details.append(f"сотр: {checko_data.get('employees', '?')}")
+                if checko_fin:
+                    details.append(f"финансы: {len(checko_fin)} лет")
+                _push_event(sid, "step", {"num": "3c", "status": "done", "text": f"Checko: {', '.join(details)}"})
+            except Exception as e:
+                logger.warning("Checko auto failed: %s", str(e)[:200])
+                _push_event(sid, "step", {"num": "3c", "status": "warning", "text": f"Checko: {e}"})
 
         # Step 4: Find competitors
         _push_event(sid, "step", {"num": 4, "status": "active", "text": "Поиск конкурентов..."})
