@@ -478,80 +478,92 @@ async def admin_monitoring(request: Request):
     async def probe_openai():
         key = os.environ.get("OPENAI_API_KEY") or os.environ.get("FALLBACK_LLM_API_KEY", "")
         if not key:
-            return {"details": "Ключ не задан", "ok": False}
+            return {"details": "Ключ не задан", "ok": False, "quota": None}
         async with httpx.AsyncClient() as c:
             r = await c.get("https://api.openai.com/v1/models", headers={"Authorization": f"Bearer {key}"}, timeout=TIMEOUT)
             r.raise_for_status()
             models = r.json().get("data", [])
-            return {"details": f"{len(models)} моделей"}
+            # Try to get rate limit headers
+            rl_remaining = r.headers.get("x-ratelimit-remaining-requests")
+            rl_limit = r.headers.get("x-ratelimit-limit-requests")
+            quota = None
+            if rl_remaining and rl_limit:
+                quota = f"{rl_remaining}/{rl_limit} req"
+            return {"details": f"{len(models)} моделей", "quota": quota}
 
     async def probe_gemini():
         key = os.environ.get("GEMINI_API_KEY", "")
         if not key:
-            return {"details": "Ключ не задан", "ok": False}
+            return {"details": "Ключ не задан", "ok": False, "quota": None}
         async with httpx.AsyncClient() as c:
             r = await c.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={key}", timeout=TIMEOUT)
             r.raise_for_status()
             models = r.json().get("models", [])
-            return {"details": f"{len(models)} моделей"}
+            # Gemini: no quota endpoint, show known limits
+            return {"details": f"{len(models)} моделей", "quota": "1500 RPD (free tier)"}
 
     async def probe_anthropic():
         key = os.environ.get("ANTHROPIC_API_KEY", "")
         if not key:
-            return {"details": "Ключ не задан", "ok": False}
+            return {"details": "Ключ не задан", "ok": False, "quota": None}
         async with httpx.AsyncClient() as c:
             r = await c.get("https://api.anthropic.com/v1/models", headers={
-                "x-api-key": key,
-                "anthropic-version": "2023-06-01",
+                "x-api-key": key, "anthropic-version": "2023-06-01",
             }, timeout=TIMEOUT)
+            rl_remaining = r.headers.get("x-ratelimit-remaining-tokens") or r.headers.get("retry-after")
+            rl_req = r.headers.get("x-ratelimit-limit-requests")
+            quota = None
+            if rl_req:
+                rl_rem_req = r.headers.get("x-ratelimit-remaining-requests", "?")
+                quota = f"{rl_rem_req}/{rl_req} req"
             if r.status_code == 200:
                 models = r.json().get("data", [])
-                return {"details": f"{len(models)} моделей"}
-            # Some API plans don't support /models, try /messages dry-run
-            return {"details": f"HTTP {r.status_code} — ключ {'валиден' if r.status_code != 401 else 'невалиден'}"}
+                return {"details": f"{len(models)} моделей", "quota": quota}
+            return {"details": f"HTTP {r.status_code}", "quota": quota}
 
     async def probe_fns():
         key = os.environ.get("FNS_API_KEY", "")
         if not key:
-            return {"details": "Ключ не задан", "ok": False}
+            return {"details": "Ключ не задан", "ok": False, "quota": None}
         async with httpx.AsyncClient() as c:
-            # Ping with a known INN (Sberbank)
             r = await c.get(f"https://api-fns.ru/api/egr?req=7707083893&key={key}", timeout=TIMEOUT)
             if r.status_code == 200:
                 data = r.json()
                 items = data.get("items", [])
-                return {"details": f"OK — {len(items)} записей (тест ИНН)"}
-            return {"details": f"HTTP {r.status_code}", "ok": False}
+                return {"details": f"OK ({len(items)} записей)", "quota": "100 req/day"}
+            return {"details": f"HTTP {r.status_code}", "ok": False, "quota": None}
 
     async def probe_hh():
         token = os.environ.get("HH_APP_TOKEN", "")
         if not token:
-            return {"details": "Токен не задан", "ok": False}
+            return {"details": "Токен не задан", "ok": False, "quota": None}
         async with httpx.AsyncClient() as c:
             r = await c.get("https://api.hh.ru/vacancies", headers={
                 "Authorization": f"Bearer {token}",
                 "User-Agent": "EspacePlatform/1.0 (n.a.ledovskoy@gmail.com)",
             }, params={"text": "python", "per_page": 1}, timeout=TIMEOUT)
+            # HH rate limit headers
+            rl_remaining = r.headers.get("x-ratelimit-remaining")
+            rl_limit = r.headers.get("x-ratelimit-limit")
+            quota = f"{rl_remaining}/{rl_limit} req" if rl_remaining and rl_limit else None
             if r.status_code == 200:
                 found = r.json().get("found", 0)
-                return {"details": f"OK — {found:,} вакансий по запросу"}
-            if r.status_code == 403:
-                return {"details": "Токен OK (403 — норма для app token)"}
-            return {"details": f"HTTP {r.status_code}", "ok": False}
+                return {"details": f"OK ({found:,} вакансий)", "quota": quota}
+            return {"details": f"HTTP {r.status_code}", "ok": r.status_code == 403, "quota": quota}
 
     async def probe_twogis():
         key = os.environ.get("TWOGIS_API_KEY", "")
         if not key:
-            return {"details": "Ключ не задан", "ok": False}
+            return {"details": "Ключ не задан", "ok": False, "quota": None}
         async with httpx.AsyncClient() as c:
             r = await c.get("https://catalog.api.2gis.com/3.0/items", params={
-                "q": "Сбербанк", "type": "branch", "key": key,
+                "q": "test", "type": "branch", "key": key,
                 "fields": "items.point", "page_size": 1,
             }, timeout=TIMEOUT)
             if r.status_code == 200:
                 total = r.json().get("result", {}).get("total", 0)
-                return {"details": f"OK — {total:,} результатов"}
-            return {"details": f"HTTP {r.status_code}", "ok": False}
+                return {"details": f"OK ({total:,} результатов)", "quota": "10 req/sec"}
+            return {"details": f"HTTP {r.status_code}", "ok": False, "quota": None}
 
     async def probe_keyso():
         token = os.environ.get(
@@ -559,7 +571,7 @@ async def admin_monitoring(request: Request):
             "69b55d3c5ad036.282600972fbfa13f85beaece8e7d215ad21351f1",
         )
         if not token:
-            return {"details": "Токен не задан", "ok": False}
+            return {"details": "Токен не задан", "ok": False, "quota": None}
         async with httpx.AsyncClient() as c:
             r = await c.get("https://api.keys.so/report/domain/dashboard", params={
                 "domain": "sber.ru", "regionId": 1,
@@ -567,40 +579,40 @@ async def admin_monitoring(request: Request):
             if r.status_code == 200:
                 data = r.json()
                 if data.get("success") or data.get("data"):
-                    return {"details": "OK — API доступен"}
-                return {"details": "OK (пустые данные)"}
-            if r.status_code == 401 or r.status_code == 403:
-                return {"details": f"Токен невалиден ({r.status_code})", "ok": False}
-            return {"details": f"HTTP {r.status_code}", "ok": False}
+                    return {"details": "OK", "quota": "10 req/10s"}
+                return {"details": "OK", "quota": "10 req/10s"}
+            if r.status_code in (401, 403):
+                return {"details": f"Токен невалиден ({r.status_code})", "ok": False, "quota": None}
+            return {"details": f"HTTP {r.status_code}", "ok": False, "quota": None}
 
     async def probe_telegram():
         token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
         if not token:
-            return {"details": "Токен не задан", "ok": False}
+            return {"details": "Токен не задан", "ok": False, "quota": None}
         async with httpx.AsyncClient() as c:
             r = await c.get(f"https://api.telegram.org/bot{token}/getMe", timeout=TIMEOUT)
             r.raise_for_status()
             bot = r.json().get("result", {})
-            return {"details": f"@{bot.get('username', '?')}"}
+            return {"details": f"@{bot.get('username', '?')}", "quota": "30 msg/sec"}
 
     async def probe_bsr_self():
         async with httpx.AsyncClient() as c:
             r = await c.get("http://localhost:8083/api/health", timeout=5)
             if r.status_code == 200:
                 data = r.json()
-                return {"details": f"v{data.get('version', '?')} — {data.get('status', '?')}"}
-            return {"details": f"HTTP {r.status_code}", "ok": False}
+                return {"details": f"v{data.get('version', '?')}", "quota": None}
+            return {"details": f"HTTP {r.status_code}", "ok": False, "quota": None}
 
     tasks = [
         probe("OpenAI / GPT", "LLM", probe_openai()),
         probe("Google Gemini", "LLM", probe_gemini()),
         probe("Anthropic Claude", "LLM", probe_anthropic()),
-        probe("ФНС API", "Данные", probe_fns()),
-        probe("HeadHunter", "Данные", probe_hh()),
-        probe("2ГИС", "Данные", probe_twogis()),
+        probe("FNS API", "Data", probe_fns()),
+        probe("HeadHunter", "Data", probe_hh()),
+        probe("2GIS", "Data", probe_twogis()),
         probe("Keys.so", "SEO", probe_keyso()),
-        probe("Telegram Bot", "Инфра", probe_telegram()),
-        probe("BSR (self)", "Инфра", probe_bsr_self()),
+        probe("Telegram Bot", "Infra", probe_telegram()),
+        probe("BSR (self)", "Infra", probe_bsr_self()),
     ]
     results = await asyncio.gather(*tasks)
 
@@ -776,37 +788,27 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     </div>
 </div>
 
-<!-- Tabs -->
-<div style="background:#fff;border-bottom:1px solid #eee;padding:0 32px;display:flex;gap:0;">
-    <button class="tab active" onclick="switchTab('sessions')" id="tab-sessions" style="padding:12px 20px;border:none;background:none;font-size:14px;font-weight:500;cursor:pointer;border-bottom:2px solid #111;color:#111;">Сессии</button>
-    <button class="tab" onclick="switchTab('monitoring')" id="tab-monitoring" style="padding:12px 20px;border:none;background:none;font-size:14px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;color:#888;">Мониторинг API</button>
-</div>
-
 <div class="container">
-    <!-- Sessions tab -->
-    <div id="panel-sessions">
-        <div class="stats" id="stats">
-            <div class="loading">Загрузка...</div>
-        </div>
-
-        <div class="section-title">
-            Сессии <span class="count" id="sessionsCount">0</span>
-        </div>
-        <div id="sessionsContainer">
-            <div class="loading">Загрузка...</div>
-        </div>
+    <div class="stats" id="stats">
+        <div class="loading">Загрузка...</div>
     </div>
 
-    <!-- Monitoring tab -->
-    <div id="panel-monitoring" style="display:none;">
+    <div class="section-title">
+        Сессии <span class="count" id="sessionsCount">0</span>
+    </div>
+    <div id="sessionsContainer">
+        <div class="loading">Загрузка...</div>
+    </div>
+
+    <!-- API Monitoring Section -->
+    <div style="margin-top:40px;border-top:2px solid #eee;padding-top:32px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
             <div class="section-title" style="margin-bottom:0;">API Мониторинг <span class="count" id="monCount">0</span></div>
             <button id="monRefreshBtn" onclick="loadMonitoring()" style="background:#111;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-size:13px;cursor:pointer;">Проверить все</button>
         </div>
-        <div class="stats" id="monStats" style="margin-bottom:24px;">
-            <div class="stat-card"><div class="label">Статус</div><div class="value" style="font-size:18px;color:#888;">Нажмите «Проверить все»</div></div>
+        <div id="monResults">
+            <div style="text-align:center;padding:30px;color:#888;">Нажмите &laquo;Проверить все&raquo;</div>
         </div>
-        <div id="monResults"></div>
     </div>
 </div>
 
@@ -1004,112 +1006,58 @@ function showBoardResult(data) {
     document.body.appendChild(overlay);
 }
 
-// Tab switching
-function switchTab(tab) {
-    document.getElementById('panel-sessions').style.display = tab === 'sessions' ? '' : 'none';
-    document.getElementById('panel-monitoring').style.display = tab === 'monitoring' ? '' : 'none';
-    document.getElementById('tab-sessions').style.borderBottomColor = tab === 'sessions' ? '#111' : 'transparent';
-    document.getElementById('tab-sessions').style.color = tab === 'sessions' ? '#111' : '#888';
-    document.getElementById('tab-monitoring').style.borderBottomColor = tab === 'monitoring' ? '#111' : 'transparent';
-    document.getElementById('tab-monitoring').style.color = tab === 'monitoring' ? '#111' : '#888';
-    if (tab === 'monitoring' && !monLoaded) loadMonitoring();
-}
-
-let monLoaded = false;
-
 async function loadMonitoring() {
     const btn = document.getElementById('monRefreshBtn');
-    btn.textContent = 'Проверяю...';
+    btn.textContent = 'Checking...';
     btn.disabled = true;
     btn.style.opacity = '0.5';
-    document.getElementById('monResults').innerHTML = '<div class="loading">Проверяем все API сервисы...</div>';
+    document.getElementById('monResults').innerHTML = '<div class="loading">Checking all API services...</div>';
 
     try {
         const r = await fetch('/admin/api/monitoring');
         const d = await r.json();
         if (!d.ok) throw new Error(d.error);
 
-        monLoaded = true;
         const results = d.results;
         const okCount = results.filter(r => r.ok).length;
         const failCount = results.length - okCount;
-        const avgMs = Math.round(results.reduce((s, r) => s + r.ms, 0) / results.length);
 
         document.getElementById('monCount').textContent = results.length;
 
-        // Stats cards
-        document.getElementById('monStats').innerHTML = `
-            <div class="stat-card">
-                <div class="label">Общий статус</div>
-                <div class="value" style="font-size:18px;color:${failCount === 0 ? '#2e7d32' : '#d32f2f'};">${failCount === 0 ? '✓ Все ОК' : failCount + ' проблем'}</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">Сервисов</div>
-                <div class="value" style="color:#2e7d32">${okCount}<span style="color:#888;font-size:16px;"> / ${results.length}</span></div>
-            </div>
-            <div class="stat-card">
-                <div class="label">Среднее время</div>
-                <div class="value" style="color:${avgMs > 3000 ? '#d32f2f' : avgMs > 1000 ? '#e65100' : '#2e7d32'}">${avgMs}<span style="color:#888;font-size:14px;"> мс</span></div>
-            </div>
-            <div class="stat-card">
-                <div class="label">Ошибки</div>
-                <div class="value" style="color:${failCount > 0 ? '#d32f2f' : '#2e7d32'}">${failCount}</div>
-            </div>
-        `;
-
-        // Group by category
-        const cats = {};
+        // Render as card grid
+        let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;">';
         for (const r of results) {
-            const c = r.category || 'Другое';
-            if (!cats[c]) cats[c] = [];
-            cats[c].push(r);
-        }
-
-        let html = '';
-        for (const [catName, items] of Object.entries(cats)) {
-            const catFail = items.filter(i => !i.ok).length;
-            html += `<div style="background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.06);overflow:hidden;margin-bottom:16px;">
-                <div style="padding:12px 16px;background:#fafafa;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-weight:600;">${catName}</span>
-                    <span style="font-size:12px;padding:3px 10px;border-radius:6px;font-weight:600;${catFail > 0 ? 'background:#ffeef0;color:#d32f2f;' : 'background:#e8f5e9;color:#2e7d32;'}">${catFail > 0 ? catFail + ' ошибка' : 'Все ОК'}</span>
-                </div>
-                <table class="sessions-table" style="box-shadow:none;border-radius:0;">
-                    <thead><tr><th style="width:50px">Статус</th><th>Сервис</th><th style="width:80px;text-align:right">Время</th><th>Детали</th></tr></thead>
-                    <tbody>`;
-
-            for (const r of items) {
-                const msColor = r.ms > 3000 ? '#d32f2f' : r.ms > 1000 ? '#e65100' : '#2e7d32';
-                html += `<tr${!r.ok ? ' style="background:#fff8f8;"' : ''}>
-                    <td style="text-align:center;">${r.ok ? '<span style="color:#2e7d32;font-size:18px;">✓</span>' : '<span style="color:#d32f2f;font-size:18px;">✗</span>'}</td>
-                    <td style="font-weight:500;">${r.name}</td>
-                    <td style="text-align:right;font-family:monospace;font-size:13px;color:${msColor};">${r.ms} мс</td>
-                    <td style="color:#666;font-size:13px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.details || ''}</td>
-                </tr>`;
-            }
-            html += '</tbody></table></div>';
-        }
-
-        // Latency bar chart
-        const sorted = [...results].sort((a, b) => b.ms - a.ms);
-        const maxMs = sorted[0]?.ms || 1;
-        html += '<div style="background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.06);padding:20px;margin-bottom:16px;">';
-        html += '<div style="font-size:12px;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:14px;font-weight:600;">Время ответа (мс)</div>';
-        for (const r of sorted) {
-            const pct = Math.max(Math.round(r.ms / maxMs * 100), 1);
-            const barColor = !r.ok ? '#d32f2f' : r.ms > 3000 ? '#e65100' : r.ms > 1000 ? '#ffa000' : '#111';
-            html += `<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
-                <div style="width:120px;font-size:12px;font-weight:500;text-align:right;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.name}</div>
-                <div style="flex:1;height:18px;background:#f0f0f0;border-radius:4px;overflow:hidden;">
-                    <div style="height:100%;width:${pct}%;background:${barColor};border-radius:4px;transition:width 0.5s;min-width:2px;"></div>
-                </div>
-                <div style="width:55px;font-size:12px;font-family:monospace;color:${!r.ok ? '#d32f2f' : '#666'};">${r.ms} мс</div>
-            </div>`;
+            const border = r.ok ? '#e8f5e9' : '#ffeef0';
+            const statusDot = r.ok
+                ? '<span style="width:10px;height:10px;border-radius:50%;background:#2e7d32;display:inline-block;"></span>'
+                : '<span style="width:10px;height:10px;border-radius:50%;background:#d32f2f;display:inline-block;"></span>';
+            const msColor = r.ms > 3000 ? '#d32f2f' : r.ms > 1000 ? '#e65100' : '#2e7d32';
+            const quotaHtml = r.quota
+                ? '<div style="margin-top:8px;padding:6px 10px;background:#f5f5f5;border-radius:6px;font-size:12px;color:#555;"><span style="color:#888;">Limit:</span> ' + r.quota + '</div>'
+                : '';
+            html += '<div style="background:#fff;border-radius:12px;border:1px solid ' + border + ';padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.04);">'
+                + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
+                + '<div style="display:flex;align-items:center;gap:8px;">' + statusDot + '<span style="font-weight:600;font-size:14px;">' + r.name + '</span></div>'
+                + '<span style="font-family:monospace;font-size:12px;color:' + msColor + ';">' + r.ms + ' ms</span>'
+                + '</div>'
+                + '<div style="font-size:12px;color:#888;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:4px;">' + r.category + '</div>'
+                + '<div style="font-size:13px;color:#555;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (r.details || '') + '</div>'
+                + quotaHtml
+                + '</div>';
         }
         html += '</div>';
 
+        // Summary bar
+        const summaryColor = failCount === 0 ? '#2e7d32' : '#d32f2f';
+        const summaryText = failCount === 0 ? 'All ' + okCount + ' services OK' : failCount + ' of ' + results.length + ' failed';
+        html = '<div style="background:' + (failCount === 0 ? '#e8f5e9' : '#ffeef0') + ';border-radius:10px;padding:12px 20px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">'
+            + '<span style="font-weight:600;color:' + summaryColor + ';">' + summaryText + '</span>'
+            + '<span style="font-size:12px;color:#888;">' + new Date().toLocaleTimeString() + '</span>'
+            + '</div>' + html;
+
         document.getElementById('monResults').innerHTML = html;
     } catch (e) {
-        document.getElementById('monResults').innerHTML = '<div class="empty">Ошибка: ' + e.message + '</div>';
+        document.getElementById('monResults').innerHTML = '<div class="empty">Error: ' + e.message + '</div>';
     } finally {
         btn.textContent = 'Проверить все';
         btn.disabled = false;
