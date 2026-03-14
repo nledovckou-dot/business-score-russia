@@ -72,6 +72,10 @@ h1 b{font-weight:600;color:var(--gold)}
 .step.fail .step-icon{background:var(--red);border-color:var(--red);color:#fff}
 .step.warning .step-icon{background:var(--orange);border-color:var(--orange);color:#fff}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+.rp{width:24px;height:4px;border-radius:2px;background:#1E1A24;transition:background 0.6s,box-shadow 0.6s}
+.rp.active{background:#C9A44C;box-shadow:0 0 8px rgba(201,164,76,0.4)}
+.rp.done{background:#3DB86A;box-shadow:0 0 6px rgba(61,184,106,0.3)}
+.rp.fail{background:#D44040;box-shadow:0 0 6px rgba(212,64,64,0.3)}
 .step-group{padding:6px 18px 4px;font-size:0.72em;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;background:var(--bg2);border-bottom:1px solid var(--border)}
 
 /* ── Panels ── */
@@ -205,55 +209,57 @@ h1 b{font-weight:600;color:var(--gold)}
             <div class="url-tag" id="url-tag"></div>
         </div>
 
-        <!-- Animated radar visualization -->
-        <div id="radar-viz" style="display:flex;justify-content:center;padding:24px 0 16px;">
-            <svg width="180" height="180" viewBox="0 0 200 200" id="radar-svg">
-                <defs>
-                    <linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" style="stop-color:#C9A44C;stop-opacity:0.3"/>
-                        <stop offset="100%" style="stop-color:#4A8FE0;stop-opacity:0.3"/>
-                    </linearGradient>
-                </defs>
-                <!-- Background grid -->
-                <polygon points="100,30 166,65 150,140 50,140 34,65" fill="none" stroke="#2A2530" stroke-width="1" opacity="0.5"/>
-                <polygon points="100,50 148,75 137,130 63,130 52,75" fill="none" stroke="#2A2530" stroke-width="0.5" opacity="0.3"/>
-                <!-- Rotating scan line -->
-                <line x1="100" y1="100" x2="100" y2="30" stroke="#C9A44C" stroke-width="1.5" opacity="0.6" id="radar-scan">
-                    <animateTransform attributeName="transform" type="rotate" from="0 100 100" to="360 100 100" dur="4s" repeatCount="indefinite"/>
-                </line>
-                <!-- Data fill (grows as steps complete) -->
-                <polygon id="radar-fill" points="100,85 110,90 108,100 92,100 90,90" fill="url(#rg)" stroke="#C9A44C" stroke-width="1" opacity="0.6">
-                    <animate attributeName="opacity" values="0.3;0.7;0.3" dur="2s" repeatCount="indefinite"/>
-                </polygon>
-                <!-- Pentagon outline -->
-                <polygon points="100,30 166,65 150,140 50,140 34,65" fill="none" stroke="#C9A44C" stroke-width="1.5" opacity="0.8"/>
-                <!-- Corner dots (light up as steps complete) -->
-                <circle cx="100" cy="30" r="4" fill="#2A2530" stroke="#C9A44C" stroke-width="1" class="radar-dot" id="rd1"/>
-                <circle cx="166" cy="65" r="4" fill="#2A2530" stroke="#C9A44C" stroke-width="1" class="radar-dot" id="rd2"/>
-                <circle cx="150" cy="140" r="4" fill="#2A2530" stroke="#C9A44C" stroke-width="1" class="radar-dot" id="rd3"/>
-                <circle cx="50" cy="140" r="4" fill="#2A2530" stroke="#C9A44C" stroke-width="1" class="radar-dot" id="rd4"/>
-                <circle cx="34" cy="65" r="4" fill="#2A2530" stroke="#C9A44C" stroke-width="1" class="radar-dot" id="rd5"/>
-                <!-- Labels -->
-                <text x="100" y="22" text-anchor="middle" fill="#C9A44C" font-size="9" opacity="0.7">SEO</text>
-                <text x="175" y="63" text-anchor="start" fill="#C9A44C" font-size="9" opacity="0.7">Финансы</text>
-                <text x="158" y="152" text-anchor="start" fill="#C9A44C" font-size="9" opacity="0.7">Рынок</text>
-                <text x="42" y="152" text-anchor="end" fill="#C9A44C" font-size="9" opacity="0.7">Digital</text>
-                <text x="25" y="63" text-anchor="end" fill="#C9A44C" font-size="9" opacity="0.7">HR</text>
-                <!-- Center text -->
-                <text x="100" y="97" text-anchor="middle" fill="#C9A44C" font-size="11" font-weight="600" id="radar-pct">0%</text>
-                <text x="100" y="110" text-anchor="middle" fill="#8899AA" font-size="8" id="radar-status">сбор данных</text>
-                <!-- Error state (hidden by default) -->
-                <g id="radar-error" style="display:none;">
-                    <polygon points="100,30 166,65 150,140 50,140 34,65" fill="rgba(212,64,64,0.15)" stroke="#D44040" stroke-width="2"/>
-                    <text x="100" y="100" text-anchor="middle" fill="#D44040" font-size="28">&#x2717;</text>
-                    <text x="100" y="120" text-anchor="middle" fill="#D44040" font-size="10" id="radar-error-text">Ошибка</text>
-                </g>
-                <!-- Success state (hidden by default) -->
-                <g id="radar-success" style="display:none;">
-                    <polygon points="100,30 166,65 150,140 50,140 34,65" fill="rgba(61,184,106,0.15)" stroke="#3DB86A" stroke-width="2"/>
-                    <text x="100" y="105" text-anchor="middle" fill="#3DB86A" font-size="32">&#x2713;</text>
-                </g>
-            </svg>
+        <!-- Animated analysis visualization -->
+        <div id="radar-viz" style="display:flex;flex-direction:column;align-items:center;padding:28px 0 20px;gap:12px;">
+            <div style="position:relative;width:160px;height:160px;">
+                <!-- Outer ring (progress) -->
+                <svg width="160" height="160" viewBox="0 0 160 160" style="position:absolute;top:0;left:0;">
+                    <defs>
+                        <linearGradient id="rg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#C9A44C"/>
+                            <stop offset="100%" stop-color="#4A8FE0"/>
+                        </linearGradient>
+                        <filter id="rg-glow">
+                            <feGaussianBlur stdDeviation="3" result="blur"/>
+                            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                        </filter>
+                    </defs>
+                    <!-- Track -->
+                    <circle cx="80" cy="80" r="72" fill="none" stroke="#1E1A24" stroke-width="3"/>
+                    <!-- Progress arc -->
+                    <circle cx="80" cy="80" r="72" fill="none" stroke="url(#rg-grad)" stroke-width="3"
+                        stroke-dasharray="452.4" stroke-dashoffset="452.4" stroke-linecap="round"
+                        transform="rotate(-90 80 80)" id="radar-arc" filter="url(#rg-glow)"
+                        style="transition:stroke-dashoffset 0.8s ease-out;"/>
+                    <!-- Spinning dot -->
+                    <circle cx="80" cy="8" r="4" fill="#C9A44C" filter="url(#rg-glow)" id="radar-dot-spin">
+                        <animateTransform attributeName="transform" type="rotate" from="0 80 80" to="360 80 80" dur="3s" repeatCount="indefinite"/>
+                    </circle>
+                </svg>
+                <!-- Center content -->
+                <div id="radar-center" style="position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                    <div id="radar-pct" style="font-size:2.4em;font-weight:200;color:#C9A44C;line-height:1;letter-spacing:-0.02em;">0<span style="font-size:0.5em;opacity:0.6;">%</span></div>
+                    <div id="radar-status" style="font-size:0.72em;color:#8899AA;margin-top:4px;letter-spacing:0.04em;">сбор данных</div>
+                </div>
+                <!-- Error state -->
+                <div id="radar-error" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;align-items:center;justify-content:center;flex-direction:column;">
+                    <div style="font-size:3em;color:#D44040;">&#x2717;</div>
+                    <div id="radar-error-text" style="font-size:0.78em;color:#D44040;margin-top:4px;">ошибка анализа</div>
+                </div>
+                <!-- Success state -->
+                <div id="radar-success" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;align-items:center;justify-content:center;flex-direction:column;">
+                    <div style="font-size:3em;color:#3DB86A;">&#x2713;</div>
+                    <div style="font-size:0.78em;color:#3DB86A;margin-top:4px;">отчёт готов</div>
+                </div>
+            </div>
+            <!-- Phase indicators -->
+            <div id="radar-phases" style="display:flex;gap:6px;">
+                <div class="rp" id="rp0" title="Сбор данных"></div>
+                <div class="rp" id="rp1" title="Конкуренты"></div>
+                <div class="rp" id="rp2" title="Анализ"></div>
+                <div class="rp" id="rp3" title="Верификация"></div>
+                <div class="rp" id="rp4" title="Сборка"></div>
+            </div>
         </div>
 
         <div class="steps">
@@ -456,33 +462,58 @@ function confirmCompetitors(){
     fetch('/api/confirm-competitors/'+SID,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({competitors:sel})});
 }
 
-var _radarDone=0,_radarTotal=15;
-var _radarDots=['rd1','rd2','rd3','rd4','rd5'];
-var _radarPhases={s0:0,s1:0,s2:0,s3:0,s4:1,s1b:2,s1c:2,s4h:2,s4k:2,s4e:2,s5:2,s2a:3,s2b:3,s6a:3,sqa:4,s7:4};
-var _radarLabels=['сбор данных','конкуренты','глубокий анализ','верификация','сборка отчёта'];
+var _rDone=0,_rTotal=15,_rPhase=-1;
+var _rPhaseMap={s0:0,s1:0,s2:0,s3:0,s4:1,s1b:2,s1c:2,s4h:2,s4k:2,s4e:2,s5:2,s2a:3,s2b:3,s6a:3,sqa:4,s7:4};
+var _rLabels=['сбор данных','конкуренты','анализ','проверка','финализация'];
 function updateRadar(n,status){
-    if(status==='done'){_radarDone++;var pct=Math.min(Math.round(_radarDone/_radarTotal*100),100);
-    document.getElementById('radar-pct').textContent=pct+'%';
-    var phase=_radarPhases[n];if(phase!==undefined){
-    document.getElementById('radar-status').textContent=_radarLabels[phase]||'';
-    var dot=document.getElementById(_radarDots[phase]);if(dot)dot.setAttribute('fill','#C9A44C');}
-    // Grow radar fill polygon based on progress
-    var r=30+pct*0.7;var pts='100,'+(100-r)+' '+(100+r*0.6)+','+(100-r*0.3)+' '+(100+r*0.45)+','+(100+r*0.5)+' '+(100-r*0.45)+','+(100+r*0.5)+' '+(100-r*0.6)+','+(100-r*0.3);
-    document.getElementById('radar-fill').setAttribute('points',pts);}
+    if(status==='done'||status==='warning'){
+        _rDone++;
+        var pct=Math.min(Math.round(_rDone/_rTotal*100),100);
+        var el=document.getElementById('radar-pct');
+        if(el)el.innerHTML=pct+'<span style="font-size:0.5em;opacity:0.6;">%</span>';
+        // Update progress arc (circumference=452.4)
+        var arc=document.getElementById('radar-arc');
+        if(arc)arc.setAttribute('stroke-dashoffset',String(452.4*(1-pct/100)));
+        // Update phase
+        var ph=_rPhaseMap[n];
+        if(ph!==undefined&&ph>_rPhase){
+            _rPhase=ph;
+            var st=document.getElementById('radar-status');
+            if(st)st.textContent=_rLabels[ph]||'';
+            // Update phase dots
+            for(var i=0;i<=4;i++){
+                var dot=document.getElementById('rp'+i);
+                if(!dot)continue;
+                if(i<ph)dot.className='rp done';
+                else if(i===ph)dot.className='rp active';
+                else dot.className='rp';
+            }
+        }
+    }
+    if(status==='active'){
+        var ph2=_rPhaseMap[n];
+        if(ph2!==undefined&&ph2>_rPhase){
+            _rPhase=ph2;
+            var st2=document.getElementById('radar-status');
+            if(st2)st2.textContent=_rLabels[ph2]||'';
+            var dot2=document.getElementById('rp'+ph2);
+            if(dot2)dot2.className='rp active';
+        }
+    }
     if(status==='fail'){
-    document.getElementById('radar-scan').style.display='none';
-    document.getElementById('radar-fill').style.display='none';
-    document.getElementById('radar-error').style.display='block';
-    var errEl=document.getElementById('radar-error-text');if(errEl)errEl.textContent='Ошибка анализа';}
+        var spin=document.getElementById('radar-dot-spin');if(spin)spin.style.display='none';
+        var center=document.getElementById('radar-center');if(center)center.style.display='none';
+        var err=document.getElementById('radar-error');if(err)err.style.display='flex';
+        var arc2=document.getElementById('radar-arc');if(arc2){arc2.setAttribute('stroke','#D44040');arc2.setAttribute('stroke-dashoffset','0');}
+        for(var j=0;j<=4;j++){var d=document.getElementById('rp'+j);if(d)d.className='rp fail';}
+    }
 }
 function radarSuccess(){
-    document.getElementById('radar-scan').style.display='none';
-    document.getElementById('radar-fill').style.display='none';
-    document.getElementById('radar-error').style.display='none';
-    document.getElementById('radar-success').style.display='block';
-    document.getElementById('radar-pct').style.display='none';
-    document.getElementById('radar-status').style.display='none';
-    _radarDots.forEach(function(id){var d=document.getElementById(id);if(d)d.setAttribute('fill','#3DB86A');});
+    var spin=document.getElementById('radar-dot-spin');if(spin)spin.style.display='none';
+    var center=document.getElementById('radar-center');if(center)center.style.display='none';
+    var suc=document.getElementById('radar-success');if(suc)suc.style.display='flex';
+    var arc=document.getElementById('radar-arc');if(arc){arc.setAttribute('stroke','#3DB86A');arc.setAttribute('stroke-dashoffset','0');}
+    for(var i=0;i<=4;i++){var d=document.getElementById('rp'+i);if(d)d.className='rp done';}
 }
 
 function setStep(n,status,text){
