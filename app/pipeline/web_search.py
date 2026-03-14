@@ -175,7 +175,7 @@ def _search_via_gemini(query: str) -> list[dict]:
 
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/"
-        f"models/gemini-2.5-flash:generateContent?key={api_key}"
+        f"models/gemini-2.0-flash:generateContent?key={api_key}"
     )
 
     # Prompt designed to force actual web search — ask for current/specific data
@@ -220,10 +220,20 @@ def _search_via_gemini(query: str) -> list[dict]:
                 uri = web.get("uri", "")
                 title = web.get("title", "")
                 if uri:
+                    # Resolve Google grounding redirect URLs
+                    actual_url = uri
+                    if "grounding-api-redirect" in uri and title:
+                        # Title contains the domain (e.g. "rusprofile.ru")
+                        # Construct a plausible URL from it
+                        domain = title.strip().rstrip("/")
+                        if not domain.startswith("http"):
+                            actual_url = f"https://{domain}"
+                        else:
+                            actual_url = domain
                     results.append({
                         "title": title,
-                        "url": uri,
-                        "display_url": uri,
+                        "url": actual_url,
+                        "display_url": actual_url,
                         "snippet": "",
                     })
 
@@ -383,13 +393,13 @@ def _search_duckduckgo(query: str, max_retries: int = 2) -> list[dict]:
                 _DDG_FAILURE_THRESHOLD,
             )
 
-    # 2. Try DDG via Russian proxy
-    results = _search_via_proxy(query)
+    # 2. Gemini with Google Search grounding (primary fallback — works reliably)
+    results = _search_via_gemini(query)
     if results:
         return results
 
-    # 3. Fallback to Gemini with Google Search grounding
-    results = _search_via_gemini(query)
+    # 3. Last resort: Yandex via Russian proxy (may hit captcha)
+    results = _search_via_proxy(query)
     if results:
         return results
 

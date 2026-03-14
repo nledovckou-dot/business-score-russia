@@ -136,7 +136,7 @@ jobs:
             echo "--- GEMINI SEARCH GROUNDING ---"
             GKEY=$(grep "^GEMINI_API_KEY=" .env 2>/dev/null | head -1 | cut -d= -f2 | tr -d '"' | tr -d "'" | tr -d ' ')
             if [ -n "$GKEY" ]; then
-              RESP=$(timeout 25 curl -sS -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$GKEY" -H "Content-Type: application/json" -d '{"contents":[{"parts":[{"text":"Найди ИНН компании Додо Пицца"}]}],"tools":[{"google_search":{}}],"generationConfig":{"temperature":0,"maxOutputTokens":256}}' 2>&1)
+              RESP=$(timeout 25 curl -sS -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$GKEY" -H "Content-Type: application/json" -d '{"contents":[{"parts":[{"text":"Найди ИНН компании Додо Пицца"}]}],"tools":[{"google_search":{}}],"generationConfig":{"temperature":0,"maxOutputTokens":256}}' 2>&1)
               echo "$RESP" | "$APP_DIR/.venv/bin/python3" -c "import sys,json; d=json.load(sys.stdin); c=d.get('candidates',[{}])[0]; gm=c.get('groundingMetadata',{}); chunks=gm.get('groundingChunks',[]); print(f'Grounding chunks: {len(chunks)}'); [print(f'  - {ch.get(\"web\",{}).get(\"title\",\"\")[:60]} | {ch.get(\"web\",{}).get(\"uri\",\"\")}') for ch in chunks[:5]]; print(f'Answer: {c.get(\"content\",{}).get(\"parts\",[{}])[0].get(\"text\",\"\")[:300]}')" 2>/dev/null || echo "Gemini raw: $(echo $RESP | head -c 500)"
             else
               echo "SKIP - no GEMINI_API_KEY"
@@ -159,9 +159,5 @@ jobs:
             echo "--- RECENT ERRORS ---"
             sudo -n journalctl -u bsr --no-pager -n 100 --since "5 min ago" 2>/dev/null | grep -i "error\|exception\|traceback" | tail -10
 
-            echo ""
-            echo "--- LAUNCH TEST ---"
-            RESP=$(curl -s -X POST http://localhost:8083/api/analyze -H "Content-Type: application/json" -d '{"url":"https://dodopizza.ru","company_name":"Додо Пицца"}')
-            echo "$RESP"
 
 
