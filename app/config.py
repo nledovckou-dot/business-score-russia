@@ -136,18 +136,18 @@ KPI_BY_TYPE: dict[BusinessType, list[str]] = {
 }
 
 
-# Default color theme (gold dark)
+# Default color theme (navy + gold — РУССКОР brand)
 THEME_DEFAULT = {
-    "bg": "#0D0B0E",
-    "bg2": "#151217",
-    "bg3": "#1C1820",
-    "card": "#1A1620",
-    "card2": "#211D28",
-    "border": "#2E2838",
-    "border2": "#3D3548",
-    "text": "#E8E4EC",
-    "text2": "#A8A0B0",
-    "text3": "#706880",
+    "bg": "#0B1120",
+    "bg2": "#0F1629",
+    "bg3": "#141C35",
+    "card": "#131A30",
+    "card2": "#1A2240",
+    "border": "#1F2D4D",
+    "border2": "#2A3A5E",
+    "text": "#E2E8F4",
+    "text2": "#8B99B3",
+    "text3": "#5A6A85",
     "gold": "#C9A44C",
     "gold2": "#E8C46A",
     "red": "#D44040",
