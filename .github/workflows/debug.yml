@@ -6,28 +6,26 @@ jobs:
   debug:
     runs-on: ubuntu-latest
     steps:
-      - name: Launch 2 test reports via SSH
+      - name: Check report status via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          command_timeout: 5m
+          command_timeout: 2m
           script: |
             echo "=== Service status ==="
             systemctl status bsr --no-pager | head -5
             echo ""
-            echo "=== Launch B2C_SERVICE test (dns-shop.ru) ==="
-            curl -s -X POST http://127.0.0.1:8083/api/analyze \
-              -H "Content-Type: application/json" \
-              -d '{"url":"https://dns-shop.ru"}'
+            echo "=== Reports in storage ==="
+            ls -lah /opt/business-score-russia/app/storage/reports/ 2>/dev/null | tail -20
             echo ""
-            echo "=== Wait 10s to avoid FNS rate limit ==="
-            sleep 10
-            echo "=== Launch B2B_SERVICE test (cdek.ru) ==="
-            curl -s -X POST http://127.0.0.1:8083/api/analyze \
-              -H "Content-Type: application/json" \
-              -d '{"url":"https://cdek.ru"}'
+            echo "=== Check DNS session ==="
+            curl -s http://127.0.0.1:8083/api/analyze/e9d8a1c5a5f7 2>/dev/null | head -c 500
             echo ""
-            echo "=== Both launched ==="
+            echo "=== Check CDEK session ==="
+            curl -s http://127.0.0.1:8083/api/analyze/4445e5a3ecdc 2>/dev/null | head -c 500
+            echo ""
+            echo "=== Recent journal logs ==="
+            journalctl -u bsr --since "25 min ago" --no-pager | grep -i -E "error|fail|complete|report.*saved|board|quality" | tail -20
