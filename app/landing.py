@@ -157,7 +157,38 @@ h1 b{font-weight:600;color:var(--gold)}
 /* ── Footer ── */
 .footer{text-align:center;padding:32px 0 16px;color:var(--text3);font-size:0.75em;margin-top:auto;width:100%}
 
-/* ── Background subtle ── */
+/* ── Landing sections ── */
+.landing-sections{max-width:820px;margin:0 auto;padding:0 20px}
+.landing-divider{width:48px;height:2px;background:linear-gradient(90deg,var(--navy),var(--gold));margin:48px auto;border-radius:1px;opacity:0.5}
+.lsection{margin-bottom:48px}
+.lsection h2{font-size:1.3em;font-weight:700;color:var(--navy);text-align:center;margin-bottom:6px}
+.lsection .lsub{font-size:0.88em;color:var(--text2);text-align:center;margin-bottom:28px;line-height:1.55}
+.feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.feature-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:22px 18px;transition:border-color 0.2s,box-shadow 0.2s}
+.feature-card:hover{border-color:var(--border2);box-shadow:0 2px 12px rgba(26,43,74,0.06)}
+.feature-card .fc-icon{font-size:1.6em;margin-bottom:10px}
+.feature-card .fc-title{font-weight:600;font-size:0.92em;color:var(--navy);margin-bottom:4px}
+.feature-card .fc-desc{font-size:0.8em;color:var(--text2);line-height:1.5}
+.source-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.source-item{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;transition:border-color 0.2s}
+.source-item:hover{border-color:var(--border2)}
+.source-item .si-icon{font-size:1.3em;margin-bottom:6px}
+.source-item .si-name{font-weight:600;font-size:0.82em;color:var(--text)}
+.source-item .si-desc{font-size:0.72em;color:var(--text3);margin-top:2px}
+.how-steps{display:flex;gap:0;align-items:flex-start;justify-content:center;position:relative}
+.how-step{flex:1;max-width:200px;text-align:center;position:relative;padding:0 12px}
+.how-step .hs-num{width:36px;height:36px;border-radius:50%;background:var(--navy);color:#fff;font-weight:700;font-size:0.95em;display:flex;align-items:center;justify-content:center;margin:0 auto 10px}
+.how-step .hs-title{font-weight:600;font-size:0.88em;color:var(--text);margin-bottom:4px}
+.how-step .hs-desc{font-size:0.78em;color:var(--text2);line-height:1.45}
+.how-arrow{color:var(--text3);font-size:1.4em;padding-top:8px;flex-shrink:0}
+.stats-row{display:flex;justify-content:center;gap:40px;flex-wrap:wrap}
+.stat-item{text-align:center}
+.stat-item .st-num{font-size:2em;font-weight:200;color:var(--navy);line-height:1}
+.stat-item .st-label{font-size:0.78em;color:var(--text3);margin-top:4px}
+.cta-box{text-align:center;background:linear-gradient(135deg,rgba(26,43,74,0.06),rgba(201,164,76,0.06));border:1px solid var(--border);border-radius:16px;padding:36px 24px}
+.cta-box h2{font-size:1.2em;font-weight:600;color:var(--navy);margin-bottom:6px}
+.cta-box p{font-size:0.88em;color:var(--text2);margin-bottom:20px}
+.cta-box .btn{font-size:1em;padding:14px 40px}
 
 @media(max-width:600px){
     #phase-url{margin-top:10vh}
@@ -169,6 +200,11 @@ h1 b{font-weight:600;color:var(--gold)}
     .field-row{grid-template-columns:1fr}
     .auth-bar{padding:6px 12px}
     .modal{margin:16px;padding:24px 18px}
+    .feature-grid{grid-template-columns:1fr}
+    .source-grid{grid-template-columns:repeat(2,1fr)}
+    .how-steps{flex-direction:column;align-items:center;gap:16px}
+    .how-arrow{transform:rotate(90deg);padding:0}
+    .stats-row{gap:24px}
 }
 </style>
 </head>
@@ -234,6 +270,157 @@ h1 b{font-weight:600;color:var(--gold)}
             <button class="btn" id="gobtn" onclick="startAnalysis()">Анализировать</button>
         </div>
         <div class="hint">Официальные сведения, рынок, конкуренты, кадровые и digital-сигналы</div>
+
+        <!-- Landing content sections -->
+        <div class="landing-sections">
+
+        <div class="landing-divider"></div>
+
+        <!-- What's in the report -->
+        <div class="lsection">
+            <h2>Что в отчёте</h2>
+            <p class="lsub">Полная картина бизнеса — от юридического профиля до стратегических выводов</p>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="fc-icon">&#x1f3e2;</div>
+                    <div class="fc-title">Профиль компании</div>
+                    <div class="fc-desc">Юрлицо, ИНН, ОКВЭД, адрес, выручка, прибыль, активы. Всё из официальных реестров.</div>
+                </div>
+                <div class="feature-card">
+                    <div class="fc-icon">&#x2694;&#xFE0F;</div>
+                    <div class="fc-title">Конкурентное поле</div>
+                    <div class="fc-desc">8-12 прямых конкурентов с финансами, каналами продаж и оценкой угрозы.</div>
+                </div>
+                <div class="feature-card">
+                    <div class="fc-icon">&#x1f4c8;</div>
+                    <div class="fc-title">Финансовый разбор</div>
+                    <div class="fc-desc">Выручка, прибыль, рентабельность, динамика за 3 года. Сравнение с конкурентами.</div>
+                </div>
+                <div class="feature-card">
+                    <div class="fc-icon">&#x1f310;</div>
+                    <div class="fc-title">Digital-присутствие</div>
+                    <div class="fc-desc">SEO-видимость, трафик, соцсети, рейтинги на картах и маркетплейсах.</div>
+                </div>
+                <div class="feature-card">
+                    <div class="fc-icon">&#x1f465;</div>
+                    <div class="fc-title">Кадровые сигналы</div>
+                    <div class="fc-desc">Вакансии, зарплаты, команда — понимаем фазу бизнеса и точки роста.</div>
+                </div>
+                <div class="feature-card">
+                    <div class="fc-icon">&#x1f3af;</div>
+                    <div class="fc-title">Стратегия и выводы</div>
+                    <div class="fc-desc">SWOT, рекомендации, риски и возможности. Готовый план действий.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="landing-divider"></div>
+
+        <!-- Data sources -->
+        <div class="lsection">
+            <h2>Откуда данные</h2>
+            <p class="lsub">Собираем из 10+ официальных и отраслевых источников, перекрёстно верифицируем</p>
+            <div class="source-grid">
+                <div class="source-item">
+                    <div class="si-icon">&#x1f3db;&#xFE0F;</div>
+                    <div class="si-name">ФНС / ЕГРЮЛ</div>
+                    <div class="si-desc">Финансы, реквизиты</div>
+                </div>
+                <div class="source-item">
+                    <div class="si-icon">&#x1f4ca;</div>
+                    <div class="si-name">Checko.ru</div>
+                    <div class="si-desc">Бухотчётность, суды</div>
+                </div>
+                <div class="source-item">
+                    <div class="si-icon">&#x1f50d;</div>
+                    <div class="si-name">Keys.so</div>
+                    <div class="si-desc">SEO, трафик, реклама</div>
+                </div>
+                <div class="source-item">
+                    <div class="si-icon">&#x1f4cd;</div>
+                    <div class="si-name">2ГИС / Я.Карты</div>
+                    <div class="si-desc">Рейтинги, отзывы</div>
+                </div>
+                <div class="source-item">
+                    <div class="si-icon">&#x1f4bc;</div>
+                    <div class="si-name">HH.ru</div>
+                    <div class="si-desc">Вакансии, зарплаты</div>
+                </div>
+                <div class="source-item">
+                    <div class="si-icon">&#x1f4f0;</div>
+                    <div class="si-name">СМИ и отрасль</div>
+                    <div class="si-desc">Новости, тренды</div>
+                </div>
+                <div class="source-item">
+                    <div class="si-icon">&#x1f6d2;</div>
+                    <div class="si-name">Маркетплейсы</div>
+                    <div class="si-desc">WB, Ozon, Я.Маркет</div>
+                </div>
+                <div class="source-item">
+                    <div class="si-icon">&#x1f916;</div>
+                    <div class="si-name">AI-аналитика</div>
+                    <div class="si-desc">GPT + Gemini + o3</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="landing-divider"></div>
+
+        <!-- How it works -->
+        <div class="lsection">
+            <h2>Как это работает</h2>
+            <p class="lsub">От ссылки до готового отчёта — 4 шага за 5-10 минут</p>
+            <div class="how-steps">
+                <div class="how-step">
+                    <div class="hs-num">1</div>
+                    <div class="hs-title">Вставьте ссылку</div>
+                    <div class="hs-desc">Укажите сайт компании — мы определим бренд, юрлицо и тип бизнеса</div>
+                </div>
+                <div class="how-arrow">&#x2192;</div>
+                <div class="how-step">
+                    <div class="hs-num">2</div>
+                    <div class="hs-title">Уточните данные</div>
+                    <div class="hs-desc">Проверьте название, ИНН и список конкурентов — поправьте если нужно</div>
+                </div>
+                <div class="how-arrow">&#x2192;</div>
+                <div class="how-step">
+                    <div class="hs-num">3</div>
+                    <div class="hs-title">AI собирает отчёт</div>
+                    <div class="hs-desc">Сбор данных из 10+ источников, верификация фактов, визуализация</div>
+                </div>
+                <div class="how-arrow">&#x2192;</div>
+                <div class="how-step">
+                    <div class="hs-num">4</div>
+                    <div class="hs-title">Получите отчёт</div>
+                    <div class="hs-desc">HTML-документ с графиками, таблицами и стратегическими выводами</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="landing-divider"></div>
+
+        <!-- Stats -->
+        <div class="lsection">
+            <div class="stats-row">
+                <div class="stat-item"><div class="st-num">10+</div><div class="st-label">источников данных</div></div>
+                <div class="stat-item"><div class="st-num">40+</div><div class="st-label">проверяемых фактов</div></div>
+                <div class="stat-item"><div class="st-num">9</div><div class="st-label">разделов отчёта</div></div>
+                <div class="stat-item"><div class="st-num">5-10</div><div class="st-label">минут на анализ</div></div>
+            </div>
+        </div>
+
+        <div class="landing-divider"></div>
+
+        <!-- CTA -->
+        <div class="lsection">
+            <div class="cta-box">
+                <h2>Попробуйте бесплатно</h2>
+                <p>5 полных отчётов без оплаты. Вставьте ссылку выше или нажмите кнопку.</p>
+                <button class="btn" onclick="window.scrollTo({top:0,behavior:'smooth'});setTimeout(function(){document.getElementById('url').focus()},400)">Начать анализ</button>
+            </div>
+        </div>
+
+        </div><!-- /landing-sections -->
     </div>
 
     <div id="phase-pipeline">
