@@ -16,8 +16,8 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 2m
           script: |
-            echo "=== Session 727d8a9e18e8 ==="
-            curl -s http://localhost:8083/api/analyze/727d8a9e18e8 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "Session not found or finished"
+            echo "=== Session 8bb590b1e8b8 ==="
+            curl -s http://localhost:8083/api/analyze/8bb590b1e8b8 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "Session not found or finished"
 
             echo ""
             echo "=== Search Fallback Logs ==="

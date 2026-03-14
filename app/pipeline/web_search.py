@@ -59,57 +59,105 @@ _AUTHORITY_DOMAINS = (
 
 
 def _search_via_proxy(query: str) -> list[dict]:
-    """Search DuckDuckGo via Russian proxy (bypasses VPS network blocks).
+    """Search Yandex via Russian proxy (Yandex Cloud VPS).
 
-    Returns list of {title, url, display_url, snippet} — same format as DDG.
+    Yandex search is guaranteed accessible from Yandex Cloud.
+    Returns list of {title, url, display_url, snippet}.
     """
     proxy_url = "http://158.160.158.164:8888/scrape"
-    ddg_url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
+    yandex_url = f"https://yandex.ru/search/?text={quote_plus(query)}&lr=213"
 
     try:
         resp = requests.post(
             proxy_url,
-            json={"url": ddg_url},
+            json={"url": yandex_url},
             headers={
                 "X-Proxy-Token": "bsr-proxy-2026",
                 "Content-Type": "application/json",
             },
-            timeout=15,
+            timeout=20,
         )
         data = resp.json()
         html = data.get("html") or data.get("text") or ""
         if not html or data.get("status", 0) != 200:
+            logger.warning(
+                "Proxy Yandex: status=%s, html_len=%d",
+                data.get("status"), len(html),
+            )
             return []
 
         soup = BeautifulSoup(html, "lxml")
         results = []
-        for result_div in soup.select(".result__body"):
-            title_el = result_div.select_one(".result__a")
-            snippet_el = result_div.select_one(".result__snippet")
-            if not title_el:
-                continue
-            title = title_el.get_text(strip=True)
-            href = title_el.get("href", "")
-            snippet = snippet_el.get_text(strip=True) if snippet_el else ""
-            actual_url = href
-            if "uddg=" in href:
-                m = re.search(r"uddg=([^&]+)", href)
-                if m:
-                    from urllib.parse import unquote
-                    actual_url = unquote(m.group(1))
-            results.append({
-                "title": title,
-                "url": actual_url,
-                "display_url": "",
-                "snippet": snippet,
-            })
+
+        # Yandex search result selectors (multiple formats)
+        for selector in [
+            "li.serp-item",
+            "div.organic",
+            "div[data-fast-name='organic']",
+        ]:
+            items = soup.select(selector)
+            if items:
+                for item in items[:15]:
+                    # Title + URL
+                    link = item.select_one("a[href]")
+                    if not link:
+                        continue
+                    href = link.get("href", "")
+                    title = link.get_text(strip=True)
+
+                    # Skip Yandex internal links
+                    if not href or "yandex.ru" in href and "/search" in href:
+                        continue
+
+                    # Extract real URL from Yandex redirect
+                    if "/search/redirect?" in href or "clck.yandex.ru" in href:
+                        url_match = re.search(r"url=([^&]+)", href)
+                        if url_match:
+                            from urllib.parse import unquote
+                            href = unquote(url_match.group(1))
+
+                    # Snippet
+                    snippet_el = item.select_one(
+                        "div.text-container, span.OrganicTextContentSpan, "
+                        "div.organic__content-wrapper, div.TextContainer"
+                    )
+                    snippet = snippet_el.get_text(strip=True)[:300] if snippet_el else ""
+
+                    if href.startswith("http"):
+                        results.append({
+                            "title": title[:200],
+                            "url": href,
+                            "display_url": href,
+                            "snippet": snippet,
+                        })
+
+                if results:
+                    break
+
+        # Fallback: extract any external links from the page
+        if not results:
+            for a_tag in soup.find_all("a", href=True):
+                href = a_tag.get("href", "")
+                if href.startswith("http") and "yandex" not in href:
+                    title = a_tag.get_text(strip=True)
+                    if title and len(title) > 5:
+                        results.append({
+                            "title": title[:200],
+                            "url": href,
+                            "display_url": href,
+                            "snippet": "",
+                        })
+                        if len(results) >= 10:
+                            break
 
         if results:
-            logger.info("Proxy DDG returned %d results for '%s'", len(results), query[:80])
+            logger.info("Proxy Yandex: %d results for '%s'", len(results), query[:80])
+        else:
+            logger.warning("Proxy Yandex: 0 results for '%s' (html_len=%d)", query[:80], len(html))
         return results
 
     except Exception as e:
-        logger.warning("Proxy DDG search failed for '%s': %s", query[:80], str(e)[:200])
+        logger.warning("Proxy Yandex search failed for '%s': %s", query[:80], str(e)[:200])
         return []
 
 
