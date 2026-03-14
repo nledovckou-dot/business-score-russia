@@ -6,17 +6,28 @@ jobs:
   debug:
     runs-on: ubuntu-latest
     steps:
-      - name: Launch single report via SSH
+      - name: Launch 2 test reports via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          command_timeout: 2m
+          command_timeout: 5m
           script: |
-            echo "=== Launch DNS ==="
-            curl -s -X POST http://127.0.0.1:8083/api/analyze -H "Content-Type: application/json" -d '{"url":"https://dns-shop.ru"}'
-            echo ""
             echo "=== Service status ==="
             systemctl status bsr --no-pager | head -5
+            echo ""
+            echo "=== Launch B2C_SERVICE test (dns-shop.ru) ==="
+            curl -s -X POST http://127.0.0.1:8083/api/analyze \
+              -H "Content-Type: application/json" \
+              -d '{"url":"https://dns-shop.ru"}'
+            echo ""
+            echo "=== Wait 10s to avoid FNS rate limit ==="
+            sleep 10
+            echo "=== Launch B2B_SERVICE test (cdek.ru) ==="
+            curl -s -X POST http://127.0.0.1:8083/api/analyze \
+              -H "Content-Type: application/json" \
+              -d '{"url":"https://cdek.ru"}'
+            echo ""
+            echo "=== Both launched ==="
