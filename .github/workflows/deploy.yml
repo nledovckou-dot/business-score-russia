@@ -145,6 +145,12 @@ jobs:
             echo "--- Frontend files ---"
             ls -la "$APP_DIR/frontend/out/index.html" 2>/dev/null && echo "frontend/out/index.html EXISTS" || echo "frontend/out/index.html MISSING"
             ls "$APP_DIR/frontend/out/_next/static/" 2>/dev/null | head -5 || echo "_next/static MISSING"
+            echo "--- BSR startup log ---"
+            sudo -n journalctl -u bsr --no-pager -n 5 | grep -i "frontend\|BSR\|use_next" || echo "no frontend log"
+            echo "--- External access test ---"
+            EXTERNAL_IP=$(curl -s ifconfig.me)
+            curl -s -o /dev/null -w "external :8090 health: %{http_code}" "http://$EXTERNAL_IP:8090/api/health" 2>/dev/null || echo "external test failed"
+            echo ""
             echo "--- _next CSS check ---"
             curl -s -o /dev/null -w "CSS: %{http_code}" http://localhost:8083/_next/static/css/f3d501abebb70e4c.css
             echo ""

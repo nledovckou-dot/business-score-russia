@@ -22,9 +22,10 @@ from app.config import REPORTS_DIR, BusinessType
 from app.landing import LANDING_HTML  # fallback
 
 # New Next.js landing
-_FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend", "out")
+_FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "out")
 _FRONTEND_INDEX = os.path.join(_FRONTEND_DIR, "index.html")
 _USE_NEXT_LANDING = os.path.exists(_FRONTEND_INDEX)
+print(f"[BSR] Frontend: dir={_FRONTEND_DIR} exists={os.path.exists(_FRONTEND_INDEX)} use_next={_USE_NEXT_LANDING}")
 from app.metrics import MetricsCollector, get_aggregate_stats
 from app.pipeline.release import add_blocking_issue, finalize_release, set_report_status
 from app.security import (
