@@ -604,6 +604,11 @@ async def start_session(request: Request):
     session = store.get(sid)
     session["data"]["url"] = url
     session["data"]["_auth_token"] = auth_token  # track for quota
+    # Save user email for notifications
+    if auth_token:
+        user_info = auth_manager.check_token(auth_token)
+        if user_info and user_info.get("email"):
+            session["data"]["_user_email"] = user_info["email"]
     session["status"] = "scraping"
 
     # Run steps 1-3 in background thread
@@ -1398,6 +1403,14 @@ def _run_analysis_steps(sid: str):
         # Sanitize LLM output first
         report_data = _sanitize_llm_output(report_data)
 
+        # Consistency check: unify metrics, deduplicate competitors, sanitize social
+        try:
+            from app.pipeline.steps.step_consistency import run as consistency_check
+            report_data = consistency_check(report_data, company_info)
+            logger.info("Consistency check completed")
+        except Exception as e:
+            logger.warning("Consistency check failed: %s", str(e)[:200])
+
         # CRITICAL: If LLM returned 0 competitors, inject enriched data from step4.5
         llm_competitors = report_data.get("competitors", [])
         if not llm_competitors and confirmed_competitors:
@@ -1852,6 +1865,16 @@ def _run_analysis_steps(sid: str):
                 done_data["reports_remaining"] = user_info["reports_remaining"]
         _push_event(sid, "done", done_data)
         store.save(sid)  # persist final state
+
+        # Send email notification (fire-and-forget)
+        user_email = data.get("_user_email", "")
+        if user_email:
+            try:
+                from app.email_notify import send_report_ready_async
+                company_name = report_data.get("company", {}).get("name", "")
+                send_report_ready_async(user_email, company_name or "компания", f"/reports/{filename}")
+            except Exception as e:
+                logger.debug("Email notification skipped: %s", str(e)[:100])
 
     except Exception as e:
         import traceback

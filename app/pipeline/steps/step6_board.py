@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from typing import Any
 
@@ -20,7 +21,7 @@ from app.pipeline.release import add_blocking_issue, set_report_status
 logger = logging.getLogger(__name__)
 
 # ── Максимальный размер отчёта для промпта (символов) ──
-_MAX_REPORT_CHARS = 80_000
+_MAX_REPORT_CHARS = int(os.environ.get("BOARD_MAX_REPORT_CHARS", "200000"))
 
 
 # ── Определения экспертов ──
@@ -286,8 +287,12 @@ def _truncate_report(report_data: dict, max_chars: int = _MAX_REPORT_CHARS) -> s
     # Постепенно убираем тяжёлые секции
     trimmed = dict(report_data)
     heavy_keys = [
-        "opinions", "founders", "factcheck", "digital_verification",
-        "glossary", "methodology", "products", "menu", "tenders",
+        "products", "menu", "tenders",              # low value, high volume — first to trim
+        "implementation_timeline",
+        "digital_verification",
+        "glossary",
+        "opinions",                                   # nice-to-have
+        # NOT trimmed early: founders, factcheck, methodology, calc_traces, financials
     ]
 
     for key in heavy_keys:
@@ -628,7 +633,7 @@ def run_review(report_data: dict, panel: list[dict]) -> dict:
     ceo_prompt = (
         f"Ты — {ceo_expert['name']} ({ceo_expert['role']}). "
         "Перед тобой бизнес-аналитический отчёт и рецензии пяти экспертов.\n\n"
-        f"=== ОТЧЁТ (сокращённо) ===\n{report_json[:40000]}\n"
+        f"=== ОТЧЁТ (сокращённо) ===\n{report_json[:150000]}\n"
         "=== КОНЕЦ ОТЧЁТА ===\n\n"
         "=== РЕЦЕНЗИИ ЭКСПЕРТОВ ===\n"
         + "\n".join(expert_summaries) +
@@ -638,7 +643,7 @@ def run_review(report_data: dict, panel: list[dict]) -> dict:
     )
 
     t1 = time.monotonic()
-    ceo_raw = call_board_llm(prompt=ceo_prompt, system=ceo_expert["system"], use_opus=True)
+    ceo_raw = call_board_llm(prompt=ceo_prompt, system=ceo_expert["system"], use_opus=True, max_tokens=16000)
     elapsed_ceo = round(time.monotonic() - t1, 2)
 
     if ceo_raw.startswith("[Board LLM Error]"):

@@ -338,18 +338,26 @@ def call_llm_json(
 # ── Board of Directors LLM (T28) ──
 
 
-def call_board_llm(prompt: str, system: str | None = None, use_opus: bool = False) -> str:
+def call_board_llm(
+    prompt: str,
+    system: str | None = None,
+    use_opus: bool = False,
+    max_tokens: int | None = None,
+) -> str:
     """Вызов LLM для совета директоров.
 
     Cost optimization: Sonnet по умолчанию (~5x дешевле Opus).
     Opus только для CEO (use_opus=True) — финальный вердикт.
 
     Chain: Sonnet/Opus → GPT → Gemini.
+
+    Args:
+        max_tokens: Override для лимита токенов. По умолчанию BOARD_LLM_MAX_TOKENS из config.
     """
     from app.config import BOARD_LLM_TEMPERATURE, BOARD_LLM_MAX_TOKENS
 
     temperature = BOARD_LLM_TEMPERATURE
-    max_tokens = BOARD_LLM_MAX_TOKENS
+    max_tokens = max_tokens if max_tokens is not None else BOARD_LLM_MAX_TOKENS
 
     # Choose model: Opus for CEO, Sonnet for other experts
     model = MODEL_OPUS if use_opus else "claude-sonnet-4-6"
