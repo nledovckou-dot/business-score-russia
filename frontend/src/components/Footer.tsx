@@ -1,3 +1,7 @@
+"use client";
+
+import { GlobeLogo } from "./GlobeLogo";
+
 export function Footer() {
   return (
     <footer className="border-t border-border bg-card px-6 pt-16 pb-8">
@@ -6,11 +10,11 @@ export function Footer() {
           {/* Brand */}
           <div className="max-w-xs">
             <div className="flex items-center gap-3">
-              <img src="/logo.png" alt="РУССКОР" width={28} height={28} />
+              <GlobeLogo size={32} />
               <span className="text-base font-semibold text-navy">РУССКОР</span>
             </div>
             <p className="mt-4 text-sm leading-relaxed text-muted">
-              Анализ бизнеса 360. Полная картина компании за 10 минут из официальных и рыночных источников.
+              Анализ бизнеса 360. Полная картина компании из официальных и рыночных источников.
             </p>
           </div>
 

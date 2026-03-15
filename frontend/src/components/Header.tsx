@@ -1,11 +1,13 @@
 "use client";
 
+import { GlobeLogo } from "./GlobeLogo";
+
 export function Header() {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
         <a href="#" className="flex items-center gap-3">
-          <img src="/logo.png" alt="РУССКОР" width={36} height={36} />
+          <GlobeLogo size={38} />
           <span className="text-lg font-semibold tracking-tight text-navy">РУССКОР</span>
         </a>
 

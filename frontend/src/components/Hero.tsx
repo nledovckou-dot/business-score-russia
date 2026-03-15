@@ -1,12 +1,13 @@
 "use client";
 
 import { ArrowRight } from "lucide-react";
+import { Globe } from "./Globe";
 
 export function Hero() {
   return (
     <section className="relative px-6 pt-28 pb-24 lg:pt-40 lg:pb-32" id="start">
       <div className="mx-auto max-w-6xl">
-        <div className="grid gap-16 lg:grid-cols-2 lg:items-center">
+        <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
           {/* Copy */}
           <div>
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-border px-4 py-1.5 text-xs font-semibold tracking-widest uppercase text-accent">
@@ -44,64 +45,10 @@ export function Hero() {
             </div>
           </div>
 
-          {/* Preview — process of analysis */}
-          <div className="relative">
-            <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
-              {/* Window chrome */}
-              <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-                <div className="size-2.5 rounded-full bg-red/40" />
-                <div className="size-2.5 rounded-full bg-accent/40" />
-                <div className="size-2.5 rounded-full bg-green/40" />
-                <span className="ml-3 text-xs text-muted-foreground font-mono">анализ · в процессе</span>
-              </div>
-
-              {/* Analysis process */}
-              <div className="p-6 space-y-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold tracking-widest uppercase text-accent">Сбор данных</span>
-                  <span className="text-xs font-mono text-muted-foreground">72%</span>
-                </div>
-
-                {/* Progress bar */}
-                <div className="h-1 w-full rounded-full bg-border overflow-hidden">
-                  <div className="h-full w-[72%] rounded-full bg-gradient-to-r from-accent to-accent/60" />
-                </div>
-
-                {/* Steps */}
-                <div className="space-y-3 pt-2">
-                  {[
-                    { status: "done", label: "Сайт и продукт", detail: "бренд определён, тип бизнеса — B2C" },
-                    { status: "done", label: "Юридический профиль", detail: "ИНН найден, выручка — 48М ₽" },
-                    { status: "done", label: "Конкурентное поле", detail: "9 игроков, 3 прямых конкурента" },
-                    { status: "done", label: "Финансы и динамика", detail: "рост выручки +23% за год" },
-                    { status: "active", label: "Digital и видимость", detail: "собираем SEO, трафик, соцсети..." },
-                    { status: "pending", label: "Кадровые сигналы", detail: "" },
-                    { status: "pending", label: "Стратегический вывод", detail: "" },
-                  ].map((step) => (
-                    <div key={step.label} className="flex items-start gap-3">
-                      <div className={`mt-1 size-4 shrink-0 rounded-full border flex items-center justify-center text-[9px] ${
-                        step.status === "done"
-                          ? "bg-green border-green text-white"
-                          : step.status === "active"
-                          ? "border-accent text-accent animate-pulse"
-                          : "border-border text-transparent"
-                      }`}>
-                        {step.status === "done" ? "✓" : step.status === "active" ? "·" : ""}
-                      </div>
-                      <div className="min-w-0">
-                        <div className={`text-sm font-medium ${
-                          step.status === "pending" ? "text-muted-foreground" : "text-navy"
-                        }`}>{step.label}</div>
-                        {step.detail && (
-                          <div className={`text-xs mt-0.5 ${
-                            step.status === "active" ? "text-accent" : "text-muted"
-                          }`}>{step.detail}</div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+          {/* Globe */}
+          <div className="relative flex items-center justify-center">
+            <div className="w-full aspect-square max-w-[600px]">
+              <Globe />
             </div>
           </div>
         </div>
