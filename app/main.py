@@ -875,6 +875,9 @@ def _run_competitor_steps(sid: str):
         if not inn:
             ogrn = (data.get("scraped", {}).get("contacts", {}).get("ogrn")
                     or company_info.get("ogrn", ""))
+            logger.info("OGRN lookup: scraped_ogrn=%s, company_ogrn=%s, inn=%s",
+                        data.get("scraped", {}).get("contacts", {}).get("ogrn"),
+                        company_info.get("ogrn"), inn)
             if ogrn:
                 try:
                     import urllib.request, json as _json
