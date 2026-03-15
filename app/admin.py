@@ -848,12 +848,13 @@ async def admin_page(request: Request):
     """Admin dashboard HTML."""
     if not _check_admin(request):
         return HTMLResponse(content=_LOGIN_HTML)
-    # Robust encoding: strip any surrogates that may appear on some Python builds
-    html = _DASHBOARD_HTML
-    # Remove surrogate code points by roundtripping through utf-16
-    body = html.encode("utf-16", "surrogatepass").decode("utf-16", "replace").encode("utf-8", "replace")
-    from starlette.responses import Response
-    return Response(content=body, media_type="text/html; charset=utf-8")
+    try:
+        html = _DASHBOARD_HTML
+        body = html.encode("utf-16", "surrogatepass").decode("utf-16", "replace").encode("utf-8", "replace")
+        from starlette.responses import Response
+        return Response(content=body, media_type="text/html; charset=utf-8")
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e), "type": type(e).__name__})
 
 
 # ── Login form ──
