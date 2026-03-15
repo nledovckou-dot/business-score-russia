@@ -846,61 +846,18 @@ async def admin_diag_html(request: Request):
 @router.get("/", response_class=HTMLResponse)
 async def admin_page(request: Request):
     """Admin dashboard HTML."""
-    if not _check_admin(request):
-        return HTMLResponse(content=_LOGIN_HTML)
-    # Read HTML from file (avoids Python source encoding issues on VPS)
-    import pathlib
-    html_path = pathlib.Path(__file__).parent / "admin_dashboard.html"
-    body = html_path.read_bytes()  # raw bytes, no Python string encoding issues
     from starlette.responses import Response
+    if not _check_admin(request):
+        body = _LOGIN_HTML_PATH.read_bytes() if _LOGIN_HTML_PATH.exists() else b"<h1>Login</h1>"
+        return Response(content=body, media_type="text/html; charset=utf-8")
+    body = _DASHBOARD_HTML_PATH.read_bytes() if _DASHBOARD_HTML_PATH.exists() else b"<h1>Dashboard not found</h1>"
     return Response(content=body, media_type="text/html; charset=utf-8")
 
 
-# ── Login form ──
-
-_LOGIN_HTML = """<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BSR Admin</title>
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-.login { background: #fff; padding: 40px; border-radius: 12px; box-shadow: 0 2px 20px rgba(0,0,0,.08); width: 360px; }
-h1 { font-size: 20px; margin-bottom: 24px; color: #111; }
-input { width: 100%; padding: 12px 16px; border: 1px solid #ddd; border-radius: 8px; font-size: 15px; margin-bottom: 16px; outline: none; }
-input:focus { border-color: #111; }
-button { width: 100%; padding: 12px; background: #111; color: #fff; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; }
-button:hover { background: #333; }
-.err { color: #d44; font-size: 13px; margin-bottom: 12px; display: none; }
-</style>
-</head>
-<body>
-<div class="login">
-<h1>BSR Admin</h1>
-<div class="err" id="err">Неверный токен</div>
-<form onsubmit="return doLogin()">
-<input type="password" id="token" placeholder="Admin token" autocomplete="off">
-<button type="submit">Войти</button>
-</form>
-</div>
-<script>
-function doLogin() {
-  const token = document.getElementById('token').value.trim();
-  if (!token) return false;
-  document.cookie = 'bsr_admin=' + token + ';path=/;max-age=2592000';
-  location.reload();
-  return false;
-}
-</script>
-</body>
-</html>"""
-
-
-# ── Dashboard HTML (loaded from file to avoid VPS encoding issues) ──
+# ── HTML files (loaded from files to avoid VPS LANG=C surrogate issues) ──
 
 import pathlib as _pathlib
+_LOGIN_HTML_PATH = _pathlib.Path(__file__).parent / "admin_login.html"
 _DASHBOARD_HTML_PATH = _pathlib.Path(__file__).parent / "admin_dashboard.html"
 _DASHBOARD_HTML = _DASHBOARD_HTML_PATH.read_text(encoding="utf-8") if _DASHBOARD_HTML_PATH.exists() else "<h1>admin_dashboard.html not found</h1>"
 
