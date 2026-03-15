@@ -848,22 +848,12 @@ async def admin_page(request: Request):
     """Admin dashboard HTML."""
     if not _check_admin(request):
         return HTMLResponse(content=_LOGIN_HTML)
-    html = _DASHBOARD_HTML
-    # Debug: if request has ?diag=1, return diagnostic info
-    if request.query_params.get("diag") == "1":
-        surr = [(i, hex(ord(ch))) for i, ch in enumerate(html) if 0xD800 <= ord(ch) <= 0xDFFF]
-        ctx = repr(html[12250:12270]) if len(html) > 12270 else "too short"
-        return JSONResponse({"length": len(html), "surrogates": surr[:10], "ctx_12258": ctx})
-    # Build clean bytes: strip surrogates char by char
-    body = bytearray()
-    for ch in html:
-        cp = ord(ch)
-        if 0xD800 <= cp <= 0xDFFF:
-            body.extend(b'?')
-        else:
-            body.extend(ch.encode('utf-8'))
+    # Read HTML from file (avoids Python source encoding issues on VPS)
+    import pathlib
+    html_path = pathlib.Path(__file__).parent / "admin_dashboard.html"
+    body = html_path.read_bytes()  # raw bytes, no Python string encoding issues
     from starlette.responses import Response
-    return Response(content=bytes(body), media_type="text/html; charset=utf-8")
+    return Response(content=body, media_type="text/html; charset=utf-8")
 
 
 # ── Login form ──
