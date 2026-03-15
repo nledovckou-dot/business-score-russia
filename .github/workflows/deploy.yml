@@ -130,9 +130,13 @@ jobs:
             echo "nginx :8090 health -> HTTP $HTTP_CODE_NGINX"
             echo "--- Landing content check ---"
             curl -s http://localhost:8083/ | wc -c | xargs -I{} echo "uvicorn landing: {} bytes"
-            curl -s http://localhost:8090/ | wc -c | xargs -I{} echo "nginx landing: {} bytes"
-            curl -s http://localhost:8083/ | grep -o 'bg:#[A-Fa-f0-9]*' | head -1 | xargs -I{} echo "uvicorn bg: {}"
-            curl -s http://localhost:8090/ | grep -o 'bg:#[A-Fa-f0-9]*' | head -1 | xargs -I{} echo "nginx bg: {}"
+            curl -s http://localhost:8083/ | head -3
+            echo "--- Frontend files ---"
+            ls -la "$APP_DIR/frontend/out/index.html" 2>/dev/null && echo "frontend/out/index.html EXISTS" || echo "frontend/out/index.html MISSING"
+            ls "$APP_DIR/frontend/out/_next/static/" 2>/dev/null | head -5 || echo "_next/static MISSING"
+            echo "--- _next CSS check ---"
+            curl -s -o /dev/null -w "CSS: %{http_code}" http://localhost:8083/_next/static/css/f3d501abebb70e4c.css
+            echo ""
             echo "--- IPTABLES NAT ---"
             sudo -n iptables -t nat -L -n 2>/dev/null | grep -i "809\|808\|REDIRECT\|DNAT" | head -10
             echo "--- Listening ports ---"
