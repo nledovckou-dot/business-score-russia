@@ -19,7 +19,12 @@ from fastapi.staticfiles import StaticFiles
 
 from app.auth import AuthManager
 from app.config import REPORTS_DIR, BusinessType
-from app.landing import LANDING_HTML
+from app.landing import LANDING_HTML  # fallback
+
+# New Next.js landing
+_FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend", "out")
+_FRONTEND_INDEX = os.path.join(_FRONTEND_DIR, "index.html")
+_USE_NEXT_LANDING = os.path.exists(_FRONTEND_INDEX)
 from app.metrics import MetricsCollector, get_aggregate_stats
 from app.pipeline.release import add_blocking_issue, finalize_release, set_report_status
 from app.security import (
@@ -86,7 +91,7 @@ BETA_EMAILS = set(
 
 # Paths that don't require authentication
 PUBLIC_PATHS = {"/", "/login", "/api/auth/login", "/api/auth/register", "/api/auth/google", "/api/auth/yandex", "/api/auth/yandex/callback", "/api/auth/config", "/api/health", "/api/analyze", "/api/debug-rate"}
-PUBLIC_PREFIXES = ("/reports/", "/static/", "/_next/", "/api/analyze/")
+PUBLIC_PREFIXES = ("/reports/", "/static/", "/_next/", "/api/analyze/", "/logo.png", "/pavel.jpg")
 
 LOGIN_PAGE_HTML = """<!DOCTYPE html>
 <html lang="ru">
@@ -232,6 +237,10 @@ async def error_sanitization_middleware(request: Request, call_next):
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/reports", StaticFiles(directory=str(REPORTS_DIR)), name="reports")
 
+# Serve Next.js static assets (JS, CSS, images)
+if _USE_NEXT_LANDING:
+    app.mount("/_next", StaticFiles(directory=os.path.join(_FRONTEND_DIR, "_next")), name="next-static")
+
 # ── Admin dashboard ──
 app.include_router(admin_router)
 
@@ -339,7 +348,22 @@ async def diag_admin():
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
+    if _USE_NEXT_LANDING:
+        with open(_FRONTEND_INDEX, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
     return HTMLResponse(content=LANDING_HTML)
+
+
+if _USE_NEXT_LANDING:
+    from starlette.responses import FileResponse as _FileResponse
+
+    @app.get("/logo.png")
+    async def frontend_logo():
+        return _FileResponse(os.path.join(_FRONTEND_DIR, "logo.png"), media_type="image/png")
+
+    @app.get("/pavel.jpg")
+    async def frontend_pavel():
+        return _FileResponse(os.path.join(_FRONTEND_DIR, "pavel.jpg"), media_type="image/jpeg")
 
 
 # ── Auth endpoints ──
@@ -1268,7 +1292,7 @@ def _run_analysis_steps(sid: str):
             sse_status = status_map.get(status, "active")
             section_labels = {
                 "Анализ рынка": "рынок",
-                "Глубокий анализ конкурентов": "конкурентное поле",
+                "Глубокий анализ конкурентов": "игроки и сравнение",
                 "Анализ компании": "компания",
                 "Стратегический анализ": "стратегия",
                 "Приложения": "прозрачность",
@@ -1393,8 +1417,8 @@ def _run_analysis_steps(sid: str):
 
         report_data["digital"] = digital
 
-        # Executive Summary — generated AFTER all analysis, uses SWOT + recommendations
-        _push_event(sid, "step", {"num": "es", "status": "active", "text": "Executive Summary..."})
+        # Short summary is generated after the full report so it can rely on final findings.
+        _push_event(sid, "step", {"num": "es", "status": "active", "text": "Собираем короткий вывод..."})
         try:
             from app.pipeline.steps.step5_deep_analysis import analyze_executive_summary
 
@@ -1429,14 +1453,14 @@ def _run_analysis_steps(sid: str):
             if exec_summary and exec_summary.get("executive_summary"):
                 report_data["executive_summary"] = exec_summary["executive_summary"]
                 logger.info("Executive summary generated OK")
-                _push_event(sid, "step", {"num": "es", "status": "done", "text": "Executive Summary готов"})
+                _push_event(sid, "step", {"num": "es", "status": "done", "text": "Короткий вывод готов"})
             else:
                 logger.warning("Executive summary empty: %s", str(exec_summary)[:200])
-                _push_event(sid, "step", {"num": "es", "status": "warning", "text": "Executive Summary: пустой"})
+                _push_event(sid, "step", {"num": "es", "status": "warning", "text": "Короткий вывод требует внимания"})
         except Exception as e:
             import traceback
             logger.error("Executive summary error: %s\n%s", str(e)[:300], traceback.format_exc()[-500:])
-            _push_event(sid, "step", {"num": "es", "status": "warning", "text": f"Exec Summary: {str(e)[:60]}"})
+            _push_event(sid, "step", {"num": "es", "status": "warning", "text": "Короткий вывод требует внимания"})
 
         # Step 2a: Verification (pure Python)
         _push_event(sid, "step", {"num": "2a", "status": "active", "text": "Сверяем факты и расчёты..."})
