@@ -1193,13 +1193,19 @@ def _run_analysis_steps(sid: str):
             _push_event(sid, "step", {"num": "4h", "status": "active", "text": "Смотрим кадровые сигналы..."})
             try:
                 from app.pipeline.sources.hh_api import get_hr_data_for_company
+                # brand_name from scraped site title (may differ from legal name)
+                brand = data.get("scraped", {}).get("title", "").split("|")[0].split("—")[0].strip()
                 hh_data = get_hr_data_for_company(
                     company_name=company_name,
                     industry_keywords=bt,
+                    brand_name=brand if brand != company_name else "",
                 )
                 vcount = (hh_data or {}).get("vacancies_count", 0)
-                _push_event(sid, "step", {"num": "4h", "status": "done",
-                    "text": f"Кадровые сигналы: {vcount} вакансий"})
+                agency = (hh_data or {}).get("agency_count", 0)
+                detail = f"Кадровые сигналы: {vcount} вакансий"
+                if agency:
+                    detail += f" ({agency} через агентства)"
+                _push_event(sid, "step", {"num": "4h", "status": "done", "text": detail})
             except Exception as e:
                 _push_event(sid, "step", {"num": "4h", "status": "warning", "text": f"Кадровые сигналы: {e}"})
 
@@ -1286,6 +1292,59 @@ def _run_analysis_steps(sid: str):
         if mc:
             mc.stop_timer("step4_5_enrich")
 
+        # Step 4.6: Web Search Pool (centralized web context)
+        web_search_pool = None
+        _push_event(sid, "step", {"num": "4w", "status": "active", "text": "Собираем веб-контекст..."})
+        if mc:
+            mc.start_timer("step4_6_web_search")
+        try:
+            from app.pipeline.steps.step4_6_web_search_pool import run as web_search_pool_run
+            web_search_pool = web_search_pool_run(
+                company_info=company_info,
+                competitors=confirmed_competitors,
+                market_info=data.get("market_info", {}),
+                fns_data=data.get("fns_data", {}),
+                scraped=data.get("scraped", {}),
+            )
+            total_ws = sum(len(v) for v in (web_search_pool or {}).values())
+            _push_event(sid, "step", {"num": "4w", "status": "done",
+                "text": f"Веб-контекст: {total_ws} результатов"})
+        except Exception as e:
+            logger.warning("Web search pool failed (non-critical): %s", str(e)[:200])
+            _push_event(sid, "step", {"num": "4w", "status": "warning", "text": f"Веб-контекст: {e}"})
+        if mc:
+            mc.stop_timer("step4_6_web_search")
+
+        # Step 5.0: Mega-Context Brief (systematize ALL collected data)
+        mega_brief = None
+        _push_event(sid, "step", {"num": "5b", "status": "active", "text": "Систематизируем данные..."})
+        if mc:
+            mc.start_timer("step5_0_brief")
+        try:
+            from app.pipeline.steps.step5_0_brief import generate_brief
+            brief_result = generate_brief(
+                scraped=data.get("scraped", {}),
+                company_info=company_info,
+                fns_data=data.get("fns_data", {}),
+                competitors=confirmed_competitors,
+                market_info=data.get("market_info", {}),
+                deep_models=deep_models,
+                marketplace_data=marketplace_data,
+                hh_data=hh_data,
+                keyso_data=data.get("keyso"),
+                checko_data=data.get("checko_data"),
+                web_search_pool=web_search_pool,
+            )
+            mega_brief = brief_result.get("brief")
+            brief_quality = brief_result.get("brief_quality", "failed")
+            _push_event(sid, "step", {"num": "5b", "status": "done",
+                "text": f"Данные систематизированы ({brief_quality})"})
+        except Exception as e:
+            logger.warning("Brief generation failed (non-critical): %s", str(e)[:200])
+            _push_event(sid, "step", {"num": "5b", "status": "warning", "text": f"Систематизация: {e}"})
+        if mc:
+            mc.stop_timer("step5_0_brief")
+
         # Step 5: Build the management picture
         _push_event(sid, "step", {"num": 5, "status": "active", "text": "Собираем управленческую картину..."})
 
@@ -1329,6 +1388,8 @@ def _run_analysis_steps(sid: str):
             marketplace_data=marketplace_data,
             progress_callback=_step5_progress,
             hh_data=hh_data,
+            brief=mega_brief,
+            web_search_pool=web_search_pool,
         )
         if mc:
             mc.stop_timer("step5_deep_analysis")
@@ -1420,50 +1481,93 @@ def _run_analysis_steps(sid: str):
 
         report_data["digital"] = digital
 
-        # Short summary is generated after the full report so it can rely on final findings.
-        _push_event(sid, "step", {"num": "es", "status": "active", "text": "Собираем короткий вывод..."})
+        # Step 5.9: Synthesis pass — cross-section consistency + executive summary
+        synthesis_result = None
+        _push_event(sid, "step", {"num": "5s", "status": "active", "text": "Проверяем согласованность отчёта..."})
+        if mc:
+            mc.start_timer("step5_9_synthesis")
         try:
-            from app.pipeline.steps.step5_deep_analysis import analyze_executive_summary
-
-            # Convert Pydantic models to dicts if needed
-            swot_data = report_data.get("swot")
-            if swot_data and hasattr(swot_data, "model_dump"):
-                swot_data = swot_data.model_dump()
-            elif swot_data and hasattr(swot_data, "dict"):
-                swot_data = swot_data.dict()
-
-            recs_data = report_data.get("recommendations")
-            if recs_data and isinstance(recs_data, list):
-                clean_recs = []
-                for r in recs_data:
-                    if hasattr(r, "model_dump"):
-                        clean_recs.append(r.model_dump())
-                    elif hasattr(r, "dict"):
-                        clean_recs.append(r.dict())
-                    elif isinstance(r, dict):
-                        clean_recs.append(r)
-                recs_data = clean_recs
-
-            exec_summary = analyze_executive_summary(
-                scraped=data.get("scraped", {}),
-                company_info=company_info,
+            from app.pipeline.steps.step5_9_synthesis import synthesize, apply_auto_fixes
+            synthesis_result = synthesize(
+                report_data=report_data,
+                brief=mega_brief,
                 fns_data=data.get("fns_data", {}),
-                competitors=confirmed_competitors,
-                market_info=data.get("market_info", {}),
-                swot=swot_data,
-                recommendations=recs_data,
+                company_info=company_info,
             )
-            if exec_summary and exec_summary.get("executive_summary"):
-                report_data["executive_summary"] = exec_summary["executive_summary"]
-                logger.info("Executive summary generated OK")
-                _push_event(sid, "step", {"num": "es", "status": "done", "text": "Короткий вывод готов"})
+            if synthesis_result:
+                report_data = apply_auto_fixes(report_data, synthesis_result, data.get("fns_data", {}))
+                quality = synthesis_result.get("quality_score", {})
+                n_issues = (len(synthesis_result.get("contradictions", []))
+                           + len(synthesis_result.get("number_mismatches", []))
+                           + len(synthesis_result.get("phantom_references", [])))
+                _push_event(sid, "step", {"num": "5s", "status": "done",
+                    "text": f"Согласованность: quality={quality.get('overall', '?')}, {n_issues} замечаний"})
             else:
-                logger.warning("Executive summary empty: %s", str(exec_summary)[:200])
-                _push_event(sid, "step", {"num": "es", "status": "warning", "text": "Короткий вывод требует внимания"})
+                _push_event(sid, "step", {"num": "5s", "status": "warning",
+                    "text": "Проверка согласованности: LLM недоступен"})
         except Exception as e:
-            import traceback
-            logger.error("Executive summary error: %s\n%s", str(e)[:300], traceback.format_exc()[-500:])
-            _push_event(sid, "step", {"num": "es", "status": "warning", "text": "Короткий вывод требует внимания"})
+            logger.warning("Synthesis pass failed (non-critical): %s", str(e)[:200])
+            _push_event(sid, "step", {"num": "5s", "status": "warning", "text": f"Согласованность: {e}"})
+        if mc:
+            mc.stop_timer("step5_9_synthesis")
+
+        # Executive summary: prefer from synthesis, fallback to dedicated call
+        _push_event(sid, "step", {"num": "es", "status": "active", "text": "Собираем короткий вывод..."})
+        exec_summary_done = False
+
+        # Try synthesis executive_summary first
+        if synthesis_result and synthesis_result.get("executive_summary"):
+            es = synthesis_result["executive_summary"]
+            if es.get("key_metrics") or es.get("highlights") or es.get("verdict"):
+                report_data["executive_summary"] = es
+                logger.info("Executive summary from synthesis pass OK")
+                _push_event(sid, "step", {"num": "es", "status": "done", "text": "Короткий вывод готов (synthesis)"})
+                exec_summary_done = True
+
+        # Fallback: dedicated LLM call (old way)
+        if not exec_summary_done:
+            try:
+                from app.pipeline.steps.step5_deep_analysis import analyze_executive_summary
+
+                # Convert Pydantic models to dicts if needed
+                swot_data = report_data.get("swot")
+                if swot_data and hasattr(swot_data, "model_dump"):
+                    swot_data = swot_data.model_dump()
+                elif swot_data and hasattr(swot_data, "dict"):
+                    swot_data = swot_data.dict()
+
+                recs_data = report_data.get("recommendations")
+                if recs_data and isinstance(recs_data, list):
+                    clean_recs = []
+                    for r in recs_data:
+                        if hasattr(r, "model_dump"):
+                            clean_recs.append(r.model_dump())
+                        elif hasattr(r, "dict"):
+                            clean_recs.append(r.dict())
+                        elif isinstance(r, dict):
+                            clean_recs.append(r)
+                    recs_data = clean_recs
+
+                exec_summary = analyze_executive_summary(
+                    scraped=data.get("scraped", {}),
+                    company_info=company_info,
+                    fns_data=data.get("fns_data", {}),
+                    competitors=confirmed_competitors,
+                    market_info=data.get("market_info", {}),
+                    swot=swot_data,
+                    recommendations=recs_data,
+                )
+                if exec_summary and exec_summary.get("executive_summary"):
+                    report_data["executive_summary"] = exec_summary["executive_summary"]
+                    logger.info("Executive summary generated OK (fallback)")
+                    _push_event(sid, "step", {"num": "es", "status": "done", "text": "Короткий вывод готов"})
+                else:
+                    logger.warning("Executive summary empty: %s", str(exec_summary)[:200])
+                    _push_event(sid, "step", {"num": "es", "status": "warning", "text": "Короткий вывод требует внимания"})
+            except Exception as e:
+                import traceback
+                logger.error("Executive summary error: %s\n%s", str(e)[:300], traceback.format_exc()[-500:])
+                _push_event(sid, "step", {"num": "es", "status": "warning", "text": "Короткий вывод требует внимания"})
 
         # Step 2a: Verification (pure Python)
         _push_event(sid, "step", {"num": "2a", "status": "active", "text": "Сверяем факты и расчёты..."})
