@@ -1654,6 +1654,7 @@ def _run_analysis_steps(sid: str):
         })
 
         # T7: Finalize metrics and log
+        metrics_record = {}
         if mc:
             mc.company = report_data.get("company", {}).get("name", mc.company)
             metrics_record = mc.finalize()
@@ -1664,6 +1665,27 @@ def _run_analysis_steps(sid: str):
                 metrics_record.get("llm_calls", 0),
                 metrics_record.get("total_cost_usd", 0),
             )
+
+        # Save per-report metadata (.meta.json) for persistent cost tracking
+        try:
+            meta_path = path.with_suffix(".meta.json")
+            meta = {
+                "company": company_info.get("name", ""),
+                "inn": company_info.get("inn", ""),
+                "url": data.get("url", ""),
+                "created_at": time.time(),
+                "duration_sec": round(metrics_record.get("total_time_sec", 0), 1),
+                "report_status": report_status,
+                "quality_score": report_data.get("quality_summary", {}).get("score", 0),
+                "llm_cost_usd": metrics_record.get("total_cost_usd", 0),
+                "llm_calls": metrics_record.get("llm_calls", 0),
+                "total_tokens": metrics_record.get("total_tokens_in", 0) + metrics_record.get("total_tokens_out", 0),
+                "models_used": list(metrics_record.get("model_totals", {}).keys()),
+            }
+            meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+            logger.info("Report meta saved: %s", meta_path.name)
+        except Exception:
+            logger.exception("Failed to save report meta for %s", filename)
 
         # Auth: increment report count for logged-in users
         auth_token = data.get("_auth_token")

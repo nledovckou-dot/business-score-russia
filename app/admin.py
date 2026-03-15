@@ -485,24 +485,36 @@ async def admin_list_reports(request: Request):
         llm_cost = None
         llm_calls = None
 
-        # Check session store
-        if sid:
+        # Read persistent .meta.json (survives restarts)
+        meta_path = f.with_suffix(".meta.json")
+        meta_data: dict = {}
+        if meta_path.exists():
+            try:
+                meta_data = json.loads(meta_path.read_text(encoding="utf-8"))
+                company_name = meta_data.get("company", "")
+                llm_cost = meta_data.get("llm_cost_usd")
+                llm_calls = meta_data.get("llm_calls")
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        # Fallback: check session store (for reports without .meta.json)
+        if not company_name and sid:
             s = store.get(sid)
             if s:
                 confirmed = s.get("data", {}).get("confirmed_company", {})
                 company_info = s.get("data", {}).get("company_info", {})
                 company_name = confirmed.get("name") or company_info.get("name", "")
 
-        # Check metrics for cost
-        if sid and sid in metrics_by_session:
+        # Fallback: check metrics for cost (for reports without .meta.json)
+        if llm_cost is None and sid and sid in metrics_by_session:
             m = metrics_by_session[sid]
             llm_cost = m.get("total_cost_usd")
             llm_calls = m.get("llm_calls")
             if not company_name:
                 company_name = m.get("company", "")
 
-        # Quality score from board review
-        quality_score = board_scores.get(f.name)
+        # Quality score: prefer .meta.json, fallback to board review
+        quality_score = meta_data.get("quality_score") or board_scores.get(f.name)
 
         reports.append({
             "filename": f.name,
