@@ -90,7 +90,7 @@ BETA_EMAILS = set(
 )
 
 # Paths that don't require authentication
-PUBLIC_PATHS = {"/", "/login", "/api/auth/login", "/api/auth/register", "/api/auth/google", "/api/auth/yandex", "/api/auth/yandex/callback", "/api/auth/config", "/api/health", "/api/analyze", "/api/debug-rate"}
+PUBLIC_PATHS = {"/", "/app", "/login", "/api/auth/login", "/api/auth/register", "/api/auth/google", "/api/auth/yandex", "/api/auth/yandex/callback", "/api/auth/config", "/api/health", "/api/analyze", "/api/debug-rate"}
 PUBLIC_PREFIXES = ("/reports/", "/static/", "/_next/", "/api/analyze/", "/logo.png", "/pavel.jpg")
 
 LOGIN_PAGE_HTML = """<!DOCTYPE html>
@@ -361,6 +361,12 @@ if _USE_NEXT_LANDING:
     @app.get("/pavel.jpg")
     async def frontend_pavel():
         return _FileResponse(os.path.join(_FRONTEND_DIR, "pavel.jpg"), media_type="image/jpeg")
+
+
+@app.get("/app", response_class=HTMLResponse)
+async def app_page():
+    """Analysis pipeline UI (old landing with URL input + SSE progress)."""
+    return HTMLResponse(content=LANDING_HTML)
 
 
 # ── Auth endpoints ──

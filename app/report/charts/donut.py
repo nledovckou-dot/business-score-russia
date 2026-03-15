@@ -72,15 +72,15 @@ def render_donut_svg(
             lx = cx + label_r * math.cos(mid_angle)
             ly = cy + label_r * math.sin(mid_angle)
             anchor = "start" if lx > cx else "end"
-            lines.append(f'  <text x="{lx:.1f}" y="{ly:.1f}" text-anchor="{anchor}" fill="#A8A0B0" font-size="10" font-family="Segoe UI, system-ui, sans-serif">{seg["label"]} ({pct:.0%})</text>')
+            lines.append(f'  <text x="{lx:.1f}" y="{ly:.1f}" text-anchor="{anchor}" fill="#5a6880" font-size="10" font-family="Inter, system-ui, sans-serif">{seg["label"]} ({pct:.0%})</text>')
 
         angle += sweep
 
     # Center text
     if center_value:
-        lines.append(f'  <text x="{cx}" y="{cy - 6}" text-anchor="middle" fill="#C9A44C" font-size="22" font-weight="700" font-family="Segoe UI, system-ui, sans-serif">{center_value}</text>')
+        lines.append(f'  <text x="{cx}" y="{cy - 6}" text-anchor="middle" fill="#C9A44C" font-size="22" font-weight="700" font-family="Inter, system-ui, sans-serif">{center_value}</text>')
     if center_label:
-        lines.append(f'  <text x="{cx}" y="{cy + 16}" text-anchor="middle" fill="#706880" font-size="11" font-family="Segoe UI, system-ui, sans-serif">{center_label}</text>')
+        lines.append(f'  <text x="{cx}" y="{cy + 16}" text-anchor="middle" fill="#8a96a8" font-size="11" font-family="Inter, system-ui, sans-serif">{center_label}</text>')
 
     lines.append("</svg>")
     return "\n".join(lines)

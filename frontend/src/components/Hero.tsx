@@ -28,11 +28,22 @@ export function Hero() {
 
             <div className="mt-10 flex gap-3" id="url-input">
               <input
+                id="hero-url"
                 type="url"
                 placeholder="https://example.com"
                 className="flex-1 rounded-2xl border border-border bg-card px-5 py-4 text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-accent/50 focus:ring-2 focus:ring-accent/10"
+                onKeyDown={(e) => { if (e.key === "Enter") document.getElementById("hero-go")?.click() }}
               />
-              <button className="group flex items-center gap-2 rounded-2xl bg-navy px-7 py-4 font-semibold text-white transition-all hover:bg-navy/90 whitespace-nowrap">
+              <button
+                id="hero-go"
+                onClick={() => {
+                  const input = document.getElementById("hero-url") as HTMLInputElement;
+                  const url = input?.value?.trim();
+                  if (!url) { input?.focus(); return; }
+                  window.location.href = "/app?url=" + encodeURIComponent(url);
+                }}
+                className="group flex items-center gap-2 rounded-2xl bg-navy px-7 py-4 font-semibold text-white transition-all hover:bg-navy/90 whitespace-nowrap"
+              >
                 Анализировать
                 <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />
               </button>

@@ -1662,6 +1662,16 @@ function checkAuth(){fetch('/api/auth/me').then(function(r){return r.json()}).th
 document.addEventListener('click',function(e){if(e.target.classList.contains('modal-overlay'))e.target.classList.remove('open')});
 document.addEventListener('keydown',function(e){if(e.key==='Escape')document.querySelectorAll('.modal-overlay.open').forEach(function(m){m.classList.remove('open')})});
 checkAuth();
+/* Auto-fill URL from query param (from new landing) */
+(function(){
+    var params=new URLSearchParams(window.location.search);
+    var prefillUrl=params.get('url');
+    if(prefillUrl){
+        document.getElementById('url').value=decodeURIComponent(prefillUrl);
+        window.history.replaceState({},'','/app');
+        setTimeout(function(){startAnalysis()},500);
+    }
+})();
 /* Handle Yandex OAuth callback — auto-login after redirect */
 (function(){
     var params=new URLSearchParams(window.location.search);

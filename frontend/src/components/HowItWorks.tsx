@@ -34,31 +34,31 @@ export function HowItWorks() {
           <div className="mt-4 h-px w-16 bg-accent/40" />
         </div>
 
-        <div className="grid gap-12 md:grid-cols-[200px_1fr]">
-          {/* Timeline */}
-          <div className="relative hidden md:block">
-            <div className="absolute top-2 bottom-2 left-[5px] w-px bg-border" />
-            {steps.map((s, i) => (
-              <div key={i} className="group relative flex items-start gap-4 pb-20 last:pb-0">
-                <div
-                  className={`relative z-10 size-3 rounded-full border-2 transition-transform group-hover:scale-125 ${
-                    s.active ? "border-accent bg-accent" : "border-border bg-background"
-                  }`}
-                />
-                <span className={`text-xs font-mono ${s.active ? "text-accent" : "text-muted-foreground"}`}>
-                  {s.version}
-                </span>
-              </div>
-            ))}
-          </div>
+        {/* Timeline — dot + content aligned in same row */}
+        <div className="relative max-w-2xl">
+          {/* Vertical line */}
+          <div className="absolute top-3 bottom-3 left-[5px] w-px bg-border hidden md:block" />
 
-          {/* Content */}
-          <div className="space-y-16">
+          <div className="space-y-12">
             {steps.map((s) => (
-              <div key={s.title} className="group">
-                <span className="mb-2 block text-xs font-mono text-muted-foreground md:hidden">{s.version}</span>
-                <h3 className="mb-2 text-xl font-semibold text-navy transition-colors group-hover:text-accent">{s.title}</h3>
-                <p className="max-w-lg leading-relaxed text-muted">{s.description}</p>
+              <div key={s.title} className="group flex items-start gap-6">
+                {/* Dot */}
+                <div className="hidden md:flex flex-col items-center pt-1.5">
+                  <div
+                    className={`relative z-10 size-3 rounded-full border-2 transition-transform group-hover:scale-125 ${
+                      s.active ? "border-accent bg-accent" : "border-border bg-background"
+                    }`}
+                  />
+                </div>
+
+                {/* Content */}
+                <div className="flex-1">
+                  <span className={`mb-1 block text-xs font-mono ${s.active ? "text-accent" : "text-muted-foreground"}`}>
+                    {s.version}
+                  </span>
+                  <h3 className="mb-2 text-xl font-semibold text-navy transition-colors group-hover:text-accent">{s.title}</h3>
+                  <p className="max-w-lg leading-relaxed text-muted">{s.description}</p>
+                </div>
               </div>
             ))}
           </div>

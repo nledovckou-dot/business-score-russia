@@ -36,30 +36,30 @@ def render_scatter_svg(
     for i in range(0, 101, 25):
         x, y = to_px(i, 0)
         x2, y2 = to_px(i, 100)
-        lines.append(f'  <line x1="{x:.1f}" y1="{y:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="#2E2838" stroke-width="1"/>')
-        lines.append(f'  <text x="{x:.1f}" y="{height - 25}" text-anchor="middle" fill="#706880" font-size="10" font-family="Segoe UI, system-ui, sans-serif">{i}</text>')
+        lines.append(f'  <line x1="{x:.1f}" y1="{y:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="#e2e6ed" stroke-width="1"/>')
+        lines.append(f'  <text x="{x:.1f}" y="{height - 25}" text-anchor="middle" fill="#8a96a8" font-size="10" font-family="Inter, system-ui, sans-serif">{i}</text>')
 
     for i in range(0, 101, 25):
         x, y = to_px(0, i)
         x2, y2 = to_px(100, i)
-        lines.append(f'  <line x1="{x:.1f}" y1="{y:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="#2E2838" stroke-width="1"/>')
-        lines.append(f'  <text x="{margin["left"] - 10}" y="{y + 4:.1f}" text-anchor="end" fill="#706880" font-size="10" font-family="Segoe UI, system-ui, sans-serif">{i}</text>')
+        lines.append(f'  <line x1="{x:.1f}" y1="{y:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="#e2e6ed" stroke-width="1"/>')
+        lines.append(f'  <text x="{margin["left"] - 10}" y="{y + 4:.1f}" text-anchor="end" fill="#8a96a8" font-size="10" font-family="Inter, system-ui, sans-serif">{i}</text>')
 
     # Axis labels
-    lines.append(f'  <text x="{margin["left"] + chart_w / 2}" y="{height - 5}" text-anchor="middle" fill="#A8A0B0" font-size="12" font-weight="600" font-family="Segoe UI, system-ui, sans-serif">{x_label} &rarr;</text>')
-    lines.append(f'  <text x="14" y="{margin["top"] + chart_h / 2}" text-anchor="middle" fill="#A8A0B0" font-size="12" font-weight="600" font-family="Segoe UI, system-ui, sans-serif" transform="rotate(-90 14 {margin["top"] + chart_h / 2})">{y_label} &rarr;</text>')
+    lines.append(f'  <text x="{margin["left"] + chart_w / 2}" y="{height - 5}" text-anchor="middle" fill="#5a6880" font-size="12" font-weight="600" font-family="Inter, system-ui, sans-serif">{x_label} &rarr;</text>')
+    lines.append(f'  <text x="14" y="{margin["top"] + chart_h / 2}" text-anchor="middle" fill="#5a6880" font-size="12" font-weight="600" font-family="Inter, system-ui, sans-serif" transform="rotate(-90 14 {margin["top"] + chart_h / 2})">{y_label} &rarr;</text>')
 
     # Quadrant labels (faint)
     mid_x_left, mid_y_top = to_px(20, 85)
     mid_x_right, mid_y_bottom = to_px(80, 15)
-    lines.append(f'  <text x="{mid_x_left:.1f}" y="{mid_y_top:.1f}" fill="#2E2838" font-size="14" font-weight="700" font-family="Segoe UI, system-ui, sans-serif">Нишевые</text>')
+    lines.append(f'  <text x="{mid_x_left:.1f}" y="{mid_y_top:.1f}" fill="#e2e6ed" font-size="14" font-weight="700" font-family="Inter, system-ui, sans-serif">Нишевые</text>')
     right_x, bottom_y = to_px(75, 85)
-    lines.append(f'  <text x="{right_x:.1f}" y="{bottom_y:.1f}" fill="#2E2838" font-size="14" font-weight="700" font-family="Segoe UI, system-ui, sans-serif">Лидеры</text>')
+    lines.append(f'  <text x="{right_x:.1f}" y="{bottom_y:.1f}" fill="#e2e6ed" font-size="14" font-weight="700" font-family="Inter, system-ui, sans-serif">Лидеры</text>')
 
     # Points
     for idx, pt in enumerate(points):
         px, py = to_px(pt["x"], pt["y"])
-        color = pt.get("color", "#A8A0B0")
+        color = pt.get("color", "#5a6880")
         size = pt.get("size", 7)
         name = pt["name"]
         is_highlight = highlight_name and name == highlight_name
@@ -76,7 +76,7 @@ def render_scatter_svg(
 
         # Name label
         label_y = py - r - 6
-        lines.append(f'  <text x="{px:.1f}" y="{label_y:.1f}" text-anchor="middle" fill="{color}" font-size="10" font-weight="{"700" if is_highlight else "400"}" font-family="Segoe UI, system-ui, sans-serif">{name}</text>')
+        lines.append(f'  <text x="{px:.1f}" y="{label_y:.1f}" text-anchor="middle" fill="{color}" font-size="10" font-weight="{"700" if is_highlight else "400"}" font-family="Inter, system-ui, sans-serif">{name}</text>')
 
     lines.append("</svg>")
     return "\n".join(lines)

@@ -41,12 +41,12 @@ def render_radar_svg(
         for i in range(n):
             angle = -math.pi / 2 + i * angle_step
             pts.append(f"{cx + r * math.cos(angle):.1f},{cy + r * math.sin(angle):.1f}")
-        lines.append(f'  <polygon points="{" ".join(pts)}" fill="none" stroke="#2E2838" stroke-width="1" opacity="0.6"/>')
+        lines.append(f'  <polygon points="{" ".join(pts)}" fill="none" stroke="#e2e6ed" stroke-width="1" opacity="0.6"/>')
 
     # Axis lines + labels
     for i, dim in enumerate(dimensions):
         x, y = polar(i, max_val)
-        lines.append(f'  <line x1="{cx}" y1="{cy}" x2="{x:.1f}" y2="{y:.1f}" stroke="#2E2838" stroke-width="1" opacity="0.4"/>')
+        lines.append(f'  <line x1="{cx}" y1="{cy}" x2="{x:.1f}" y2="{y:.1f}" stroke="#e2e6ed" stroke-width="1" opacity="0.4"/>')
         # Label position (slightly beyond max)
         lx, ly = polar(i, max_val * 1.18)
         anchor = "middle"
@@ -54,7 +54,7 @@ def render_radar_svg(
             anchor = "end"
         elif lx > cx + 10:
             anchor = "start"
-        lines.append(f'  <text x="{lx:.1f}" y="{ly:.1f}" text-anchor="{anchor}" fill="#A8A0B0" font-size="11" font-family="Segoe UI, system-ui, sans-serif">{dim}</text>')
+        lines.append(f'  <text x="{lx:.1f}" y="{ly:.1f}" text-anchor="{anchor}" fill="#5a6880" font-size="11" font-family="Inter, system-ui, sans-serif">{dim}</text>')
 
     # Data polygons
     for ds_idx, ds in enumerate(datasets):

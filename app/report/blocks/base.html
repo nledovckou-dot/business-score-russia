@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <title>{{ company.name }} — Бизнес-анализ 360°</title>
 <style>
 /* ===== CSS Variables ===== */
@@ -24,7 +27,7 @@
 /* ===== Reset ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
-    font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     background: var(--bg); color: var(--text); line-height: 1.65;
     -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
 }
@@ -33,17 +36,18 @@ body {
 /* ===== Hero ===== */
 .hero {
     text-align: center; padding: 70px 24px 50px;
-    background: linear-gradient(180deg, var(--card) 0%, var(--bg) 100%);
+    background: linear-gradient(180deg, var(--bg2) 0%, var(--bg) 100%);
     border-bottom: 1px solid var(--gold-border);
     position: relative; overflow: hidden;
 }
 .hero::before {
     content: ''; position: absolute; top: -60%; left: 50%; transform: translateX(-50%);
     width: 800px; height: 800px;
-    background: radial-gradient(circle, rgba(201,164,76,0.08) 0%, transparent 70%);
+    background: radial-gradient(circle, rgba(201,164,76,0.05) 0%, transparent 70%);
     pointer-events: none;
 }
 .hero h1 {
+    font-family: 'Playfair Display', Georgia, serif;
     font-size: 2.6em; font-weight: 300; letter-spacing: 0.15em;
     text-transform: uppercase; color: var(--gold);
     position: relative; margin-bottom: 8px;
@@ -105,6 +109,7 @@ body {
     font-weight: 800; font-size: 1.1em;
 }
 .section-head h2 {
+    font-family: 'Playfair Display', Georgia, serif;
     font-size: 1.45em; font-weight: 400;
     letter-spacing: 0.02em; color: var(--text);
 }
@@ -119,8 +124,8 @@ body {
     border-radius: 12px; padding: 24px; margin: 16px 0;
     transition: border-color 0.2s;
 }
-.card:hover { border-color: var(--border2); box-shadow: 0 4px 24px rgba(0,0,0,0.2); }
-.card h3 { color: var(--gold2); font-size: 1.1em; font-weight: 600; margin-bottom: 12px; }
+.card:hover { border-color: var(--border2); box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
+.card h3 { font-family: 'Playfair Display', Georgia, serif; color: var(--gold2); font-size: 1.1em; font-weight: 600; margin-bottom: 12px; }
 .card-gold { border-color: var(--gold-border); background: var(--gold-bg); }
 .card-red { border-left: 4px solid var(--red); }
 .card-green { border-left: 4px solid var(--green); }
@@ -283,7 +288,7 @@ tr:hover { background: rgba(201,164,76,0.03); }
 }
 .quote-footer {
     display: flex; justify-content: space-between; align-items: center;
-    padding: 10px 20px; border-top: 1px solid var(--border); background: rgba(0,0,0,0.15);
+    padding: 10px 20px; border-top: 1px solid var(--border); background: var(--bg2);
 }
 .quote-date { font-size: 0.78em; color: var(--text3); }
 .quote-source { font-size: 0.78em; color: var(--blue); }
@@ -305,15 +310,15 @@ tr:hover { background: rgba(201,164,76,0.03); }
 /* ===== Chart Container ===== */
 .chart-container {
     background: var(--card); border: 1px solid rgba(201,164,76,0.15);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.06);
     border-radius: 16px; padding: 36px 32px; margin: 16px 0;
 }
-.chart-container h3 { font-size: 1.15em; font-weight: 600; color: var(--gold); margin-bottom: 6px; }
+.chart-container h3 { font-family: 'Playfair Display', Georgia, serif; font-size: 1.15em; font-weight: 600; color: var(--gold); margin-bottom: 6px; }
 .chart-container .subtitle { font-size: 0.82em; color: var(--text3); margin-bottom: 24px; }
 .chart-svg { width: 100%; height: auto; display: block; }
 .chart-legend {
     display: flex; flex-wrap: wrap; gap: 16px 28px; margin-top: 20px;
-    padding-top: 16px; border-top: 1px solid rgba(232,228,236,0.07);
+    padding-top: 16px; border-top: 1px solid var(--border);
 }
 .chart-legend .leg-item { display: flex; align-items: center; gap: 8px; font-size: 0.78em; color: var(--text2); }
 .chart-legend .leg-swatch { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
@@ -338,7 +343,7 @@ tr:hover { background: rgba(201,164,76,0.03); }
 /* ===== Correlation Matrix ===== */
 .corr-high { background: rgba(61,184,106,0.2); color: var(--green); font-weight: 700; text-align: center; }
 .corr-med { background: rgba(232,196,106,0.15); color: var(--gold2); text-align: center; }
-.corr-low { background: rgba(28,24,32,0.5); color: var(--text3); text-align: center; }
+.corr-low { background: rgba(0,0,0,0.03); color: var(--text3); text-align: center; }
 .corr-neg { background: rgba(212,64,64,0.2); color: var(--red); font-weight: 700; text-align: center; }
 
 /* ===== Overview Tab ===== */
@@ -356,7 +361,7 @@ tr:hover { background: rgba(201,164,76,0.03); }
     background: var(--card); border: 1px solid var(--border);
     border-radius: 12px; padding: 24px; margin: 16px 0;
 }
-.ov-block h3 { color: var(--gold2); font-size: 1.15em; font-weight: 600; margin-bottom: 14px; }
+.ov-block h3 { font-family: 'Playfair Display', Georgia, serif; color: var(--gold2); font-size: 1.15em; font-weight: 600; margin-bottom: 14px; }
 .ov-verdict {
     display: flex; align-items: center; gap: 12px;
     padding: 14px 18px; border-radius: 10px; margin: 8px 0; font-size: 0.92em;
@@ -396,7 +401,7 @@ tr:hover { background: rgba(201,164,76,0.03); }
 .source-tag.st-fact .st-icon { background: rgba(61,184,106,0.15); color: var(--green); }
 .source-tag.st-calc .st-icon { background: rgba(74,143,224,0.15); color: var(--blue); }
 .source-tag.st-estimate .st-icon { background: rgba(224,128,64,0.15); color: var(--orange); }
-.source-tag .st-popup { display: none; position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); min-width: 260px; max-width: 360px; background: var(--card2); border: 1px solid var(--border2); border-radius: 10px; padding: 12px 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 100; font-size: 0.82em; line-height: 1.5; color: var(--text); }
+.source-tag .st-popup { display: none; position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); min-width: 260px; max-width: 360px; background: var(--card2); border: 1px solid var(--border2); border-radius: 10px; padding: 12px 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); z-index: 100; font-size: 0.82em; line-height: 1.5; color: var(--text); }
 .source-tag .st-popup::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-top-color: var(--border2); }
 .source-tag:hover .st-popup { display: flex; flex-direction: column; gap: 4px; }
 .st-popup-title { font-weight: 700; color: var(--gold); font-size: 0.95em; margin-bottom: 4px; }
@@ -411,7 +416,7 @@ tr:hover { background: rgba(201,164,76,0.03); }
 .ct-table td { padding: 10px 12px; font-size: 0.88em; vertical-align: top; }
 .ct-table .ct-metric { font-weight: 600; color: var(--text); }
 .ct-table .ct-value { color: var(--gold2); font-weight: 600; font-variant-numeric: tabular-nums; }
-.ct-table .ct-formula { color: var(--text2); font-size: 0.85em; font-family: 'SF Mono', 'Menlo', monospace; }
+.ct-table .ct-formula { color: var(--text2); font-size: 0.85em; font-family: 'JetBrains Mono', 'SF Mono', 'Menlo', monospace; }
 .ct-table .ct-inputs { font-size: 0.82em; color: var(--text3); margin-top: 4px; }
 .ct-table .ct-sources { font-size: 0.82em; color: var(--text3); }
 
@@ -450,12 +455,12 @@ footer {
     padding: 14px 24px; border-radius: 50px; cursor: pointer;
     font-family: inherit; font-size: 0.92em; font-weight: 600;
     letter-spacing: 0.03em;
-    box-shadow: 0 4px 20px rgba(201,164,76,0.35), 0 2px 8px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 20px rgba(201,164,76,0.2), 0 2px 8px rgba(0,0,0,0.08);
     transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
 }
 .print-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 28px rgba(201,164,76,0.5), 0 4px 12px rgba(0,0,0,0.4);
+    box-shadow: 0 6px 28px rgba(201,164,76,0.3), 0 4px 12px rgba(0,0,0,0.1);
     background: var(--gold2);
 }
 .print-btn:active { transform: translateY(0); }
@@ -651,7 +656,7 @@ footer {
     {% endif %}
 </div>
 {% if blocking_issues %}
-<div style="background:rgba(13,11,14,0.92);border-bottom:1px solid var(--border);padding:10px 24px 14px;">
+<div style="background:rgba(240,242,245,0.95);border-bottom:1px solid var(--border);padding:10px 24px 14px;">
     <div style="max-width:980px;margin:0 auto;">
         <div style="font-size:0.78em;letter-spacing:0.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;">Блокирующие замечания</div>
         <ul style="margin:0;padding-left:20px;color:var(--text2);line-height:1.5;">

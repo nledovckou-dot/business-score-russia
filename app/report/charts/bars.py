@@ -48,14 +48,14 @@ def render_horizontal_bars_svg(
         display_val = item.get("display", f"{val:,.0f}")
 
         # Label
-        lines.append(f'  <text x="{label_w - 8}" y="{y + bar_height / 2 + 4}" text-anchor="end" fill="#A8A0B0" font-size="12" font-family="Segoe UI, system-ui, sans-serif">{lbl}</text>')
+        lines.append(f'  <text x="{label_w - 8}" y="{y + bar_height / 2 + 4}" text-anchor="end" fill="#5a6880" font-size="12" font-family="Inter, system-ui, sans-serif">{lbl}</text>')
         # Track
-        lines.append(f'  <rect x="{label_w}" y="{y}" width="{chart_w}" height="{bar_height}" rx="4" fill="#1C1820"/>')
+        lines.append(f'  <rect x="{label_w}" y="{y}" width="{chart_w}" height="{bar_height}" rx="4" fill="#f0f2f5"/>')
         # Fill
         delay = idx * 0.1
         lines.append(f'  <rect x="{label_w}" y="{y}" width="{bar_w:.1f}" height="{bar_height}" rx="4" fill="{c}" class="bar-animated" style="animation-delay:{delay:.1f}s"/>')
         # Value
-        lines.append(f'  <text x="{label_w + chart_w + 10}" y="{y + bar_height / 2 + 4}" fill="#E8E4EC" font-size="12" font-weight="600" font-family="Segoe UI, system-ui, sans-serif">{display_val}</text>')
+        lines.append(f'  <text x="{label_w + chart_w + 10}" y="{y + bar_height / 2 + 4}" fill="#1a2b4a" font-size="12" font-weight="600" font-family="Inter, system-ui, sans-serif">{display_val}</text>')
 
     lines.append("</svg>")
     return "\n".join(lines)
@@ -107,16 +107,16 @@ def render_grouped_bars_svg(
     for i in range(n_ticks + 1):
         y_val = max_val * i / n_ticks
         y_pos = margin["top"] + chart_h - (chart_h * i / n_ticks)
-        lines.append(f'  <line x1="{margin["left"]}" y1="{y_pos:.1f}" x2="{width - margin["right"]}" y2="{y_pos:.1f}" stroke="#2E2838" stroke-width="1"/>')
+        lines.append(f'  <line x1="{margin["left"]}" y1="{y_pos:.1f}" x2="{width - margin["right"]}" y2="{y_pos:.1f}" stroke="#e2e6ed" stroke-width="1"/>')
         display = f"{y_val:,.0f}" if y_val >= 1 else f"{y_val:.2f}"
-        lines.append(f'  <text x="{margin["left"] - 8}" y="{y_pos + 4:.1f}" text-anchor="end" fill="#706880" font-size="10" font-family="Segoe UI, system-ui, sans-serif">{display}</text>')
+        lines.append(f'  <text x="{margin["left"] - 8}" y="{y_pos + 4:.1f}" text-anchor="end" fill="#8a96a8" font-size="10" font-family="Inter, system-ui, sans-serif">{display}</text>')
 
     # Bars
     for cat_idx, cat in enumerate(categories):
         group_x = margin["left"] + cat_idx * group_w
         # Category label
         label_x = group_x + group_w / 2
-        lines.append(f'  <text x="{label_x:.1f}" y="{height - 15}" text-anchor="middle" fill="#A8A0B0" font-size="11" font-family="Segoe UI, system-ui, sans-serif">{cat}</text>')
+        lines.append(f'  <text x="{label_x:.1f}" y="{height - 15}" text-anchor="middle" fill="#5a6880" font-size="11" font-family="Inter, system-ui, sans-serif">{cat}</text>')
 
         for s_idx, s in enumerate(series):
             val = s["values"][cat_idx] if cat_idx < len(s["values"]) else 0
@@ -133,7 +133,7 @@ def render_grouped_bars_svg(
     for s_idx, s in enumerate(series):
         lx = margin["left"] + s_idx * 140
         lines.append(f'  <rect x="{lx}" y="{legend_y - 8}" width="12" height="12" rx="2" fill="{s.get("color", "#C9A44C")}"/>')
-        lines.append(f'  <text x="{lx + 18}" y="{legend_y}" fill="#A8A0B0" font-size="10" font-family="Segoe UI, system-ui, sans-serif">{s["label"]}</text>')
+        lines.append(f'  <text x="{lx + 18}" y="{legend_y}" fill="#5a6880" font-size="10" font-family="Inter, system-ui, sans-serif">{s["label"]}</text>')
 
     lines.append("</svg>")
     return "\n".join(lines)
