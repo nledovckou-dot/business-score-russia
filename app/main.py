@@ -871,14 +871,11 @@ def _run_competitor_steps(sid: str):
         # Step 3c: Checko.ru enrichment for main company (primary data source)
         inn = company_info.get("inn") or data.get("fns_data", {}).get("fns_company", {}).get("inn", "")
 
-        # If no INN yet — try OGRN from scraper (often found on site)
-        if not inn:
-            ogrn = (data.get("scraped", {}).get("contacts", {}).get("ogrn")
-                    or company_info.get("ogrn", ""))
-            logger.info("OGRN lookup: scraped_ogrn=%s, company_ogrn=%s, inn=%s",
-                        data.get("scraped", {}).get("contacts", {}).get("ogrn"),
-                        company_info.get("ogrn"), inn)
-            if ogrn:
+        # ALWAYS try OGRN → INN (more reliable than name search)
+        ogrn = (data.get("scraped", {}).get("contacts", {}).get("ogrn")
+                or company_info.get("ogrn", ""))
+        logger.info("INN/OGRN state: inn=%s, ogrn=%s", inn, ogrn)
+        if ogrn:
                 try:
                     import urllib.request, json as _json
                     _checko_url = f"https://api.checko.ru/v2/company?key=dHL2dcu0gcn3Hqfz&ogrn={ogrn}"
