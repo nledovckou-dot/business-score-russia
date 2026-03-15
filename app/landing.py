@@ -786,7 +786,11 @@ function showCompanyPanel(d){
 }
 
 function confirmCompany(){
-    document.getElementById('panel-company').style.display='none';
+    var panel=document.getElementById('panel-company');
+    var name=document.getElementById('c-name').value||'компания';
+    // Show confirmation feedback
+    panel.innerHTML='<div style="text-align:center;padding:24px;"><div style="font-size:1.5em;color:var(--green);margin-bottom:8px;">\u2713</div><div style="color:var(--text2);">Профиль <strong>'+name+'</strong> принят. Ищем конкурентов\u2026</div></div>';
+    setTimeout(function(){panel.style.display='none'},2000);
     fetch('/api/confirm-company/'+SID,{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({name:document.getElementById('c-name').value,inn:document.getElementById('c-inn').value,
             legal_name:document.getElementById('c-legal').value,address:document.getElementById('c-address').value,
@@ -820,7 +824,9 @@ function toggleComp(i){competitorData[i]._enabled=competitorData[i]._enabled===f
 
 function confirmCompetitors(){
     var sel=competitorData.filter(function(c){return c._enabled!==false});
-    document.getElementById('panel-competitors').style.display='none';
+    var panel=document.getElementById('panel-competitors');
+    panel.innerHTML='<div style="text-align:center;padding:24px;"><div style="font-size:1.5em;color:var(--green);margin-bottom:8px;">\u2713</div><div style="color:var(--text2);">'+sel.length+' конкурентов выбрано. Запускаем глубокий анализ\u2026</div></div>';
+    setTimeout(function(){panel.style.display='none'},2000);
     fetch('/api/confirm-competitors/'+SID,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({competitors:sel})});
 }
 
