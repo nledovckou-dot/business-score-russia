@@ -44,7 +44,7 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple
 #phase-url{text-align:center;margin-top:18vh}
 .logo{margin-bottom:20px;opacity:0;animation:logoIn 0.8s ease-out 0.2s forwards}
 @keyframes logoIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
-h1{font-weight:300;font-size:1.9em;margin-bottom:8px;letter-spacing:-0.02em;color:var(--navy)}
+h1{font-weight:300;font-size:1.9em;margin-bottom:8px;letter-spacing:-0.02em;color:var(--navy);font-family:'Playfair Display',Georgia,serif}
 h1 b{font-weight:600;color:var(--gold)}
 .sub{color:var(--text2);font-size:0.9em;margin-bottom:32px;line-height:1.6}
 
@@ -59,19 +59,19 @@ h1 b{font-weight:600;color:var(--gold)}
 .hint{font-size:0.78em;color:var(--text3)}
 
 /* ── Pipeline ── */
-#phase-pipeline{display:none}
+#phase-pipeline{display:none;max-width:720px;margin:0 auto}
 .pipeline-header{text-align:center;margin-bottom:18px}
-.pipeline-header h2{font-size:1.18em;font-weight:600;margin-bottom:6px;color:var(--text)}
+.pipeline-header h2{font-size:1.18em;font-weight:600;margin-bottom:6px;color:var(--text);font-family:'Playfair Display',Georgia,serif}
 .pipeline-header .pipeline-sub{max-width:620px;margin:0 auto 8px;color:var(--text2);font-size:0.86em;line-height:1.5}
 .pipeline-header .url-tag{color:var(--text3);font-size:0.82em}
-.storyline{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:0 auto 16px;max-width:980px}
+.storyline{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:0 auto 16px}
 .story-card{border:1px solid var(--border);border-radius:12px;background:var(--card);padding:14px 16px;text-align:left;box-shadow:0 1px 4px rgba(0,0,0,0.04);transition:border-color 0.2s,transform 0.2s,box-shadow 0.2s}
 .story-card.active{border-color:#c9a44c;box-shadow:0 10px 24px rgba(201,164,76,0.12);transform:translateY(-1px)}
 .story-card.done{border-color:#9dd9b2;background:#f7fcf8}
 .story-card-kicker{font-size:0.7em;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text3);margin-bottom:6px}
 .story-card-title{font-size:0.95em;font-weight:600;color:var(--navy);margin-bottom:4px}
 .story-card-copy{font-size:0.78em;line-height:1.45;color:var(--text2)}
-.pipeline-note{display:flex;align-items:flex-start;gap:12px;border:1px solid var(--border);border-radius:12px;background:linear-gradient(135deg,#fff 0%, #f7f9fc 100%);padding:14px 16px;margin:0 auto 18px;max-width:980px;box-shadow:0 1px 4px rgba(0,0,0,0.04)}
+.pipeline-note{display:flex;align-items:flex-start;gap:12px;border:1px solid var(--border);border-radius:12px;background:linear-gradient(135deg,#fff 0%, #f7f9fc 100%);padding:14px 16px;margin:0 auto 18px;box-shadow:0 1px 4px rgba(0,0,0,0.04)}
 .pipeline-note-label{font-size:0.7em;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--gold);padding-top:2px;flex-shrink:0}
 .pipeline-note-text{font-size:0.84em;line-height:1.5;color:var(--navy);text-align:left}
 .steps{border:1px solid var(--border);border-radius:12px;margin-bottom:16px;overflow:hidden;background:var(--card);box-shadow:0 1px 4px rgba(0,0,0,0.04)}
@@ -660,9 +660,9 @@ h1 b{font-weight:600;color:var(--gold)}
         </div>
 
         <!-- Animated analysis visualization -->
-        <div id="radar-viz" style="display:flex;flex-direction:column;align-items:center;padding:28px 0 20px;gap:16px;">
-            <canvas id="globe-canvas" width="320" height="320" style="width:160px;height:160px;"></canvas>
-            <div id="radar-pct" style="font-size:1.8em;font-weight:200;color:var(--gold);line-height:1;letter-spacing:-0.02em;">0<span style="font-size:0.5em;opacity:0.6;">%</span></div>
+        <div id="radar-viz" style="display:flex;flex-direction:column;align-items:center;padding:32px 0 20px;gap:8px;text-align:center;">
+            <canvas id="globe-canvas" width="320" height="320" style="width:160px;height:160px;display:block;margin:0 auto;"></canvas>
+            <div id="radar-pct" style="font-size:1.8em;font-weight:200;color:var(--gold);line-height:1;letter-spacing:-0.02em;margin-top:8px;">0<span style="font-size:0.5em;opacity:0.6;">%</span></div>
             <div id="radar-status" style="font-size:0.72em;color:var(--text3);letter-spacing:0.04em;">сбор данных</div>
             <!-- Error state -->
             <div id="radar-error" style="display:none;text-align:center;">
