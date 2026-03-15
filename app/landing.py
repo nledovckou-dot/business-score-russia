@@ -539,31 +539,7 @@ h1 b{font-weight:600;color:var(--gold)}
             </div>
         </div>
 
-        <div class="steps">
-            <div class="step-group">Портрет компании</div>
-            <div class="step" id="s0"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Стартуем исследование</div><div class="step-detail">Собираем базовый контур и готовим маршрут разбора компании.</div></div></div>
-            <div class="step" id="s1"><div class="step-icon">1</div><div class="step-body"><div class="step-title">Изучаем сайт и продукт</div><div class="step-detail">Собираем первичное представление о предложении и языке бренда.</div></div></div>
-            <div class="step" id="s2"><div class="step-icon">2</div><div class="step-body"><div class="step-title">Уточняем профиль компании</div><div class="step-detail">Выделяем бренд, юрлицо, тип бизнеса и рабочий контур.</div></div></div>
-            <div class="step" id="s3"><div class="step-icon">3</div><div class="step-body"><div class="step-title">Собираем официальные сведения</div><div class="step-detail">Проверяем юридический профиль и опорные реквизиты.</div></div></div>
-            <div class="step-group">Рынок и игроки</div>
-            <div class="step" id="s4"><div class="step-icon">4</div><div class="step-body"><div class="step-title">Формируем конкурентное поле</div><div class="step-detail">Собираем тех, с кем компанию действительно нужно сравнивать.</div></div></div>
-            <div class="step" id="s1b"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Проверяем площадки продаж</div><div class="step-detail">Смотрим витрины, маркетплейсы и внешние каналы присутствия.</div></div></div>
-            <div class="step" id="s1c"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Разбираем каналы продаж</div><div class="step-detail">Понимаем, как компания собирает и монетизирует спрос.</div></div></div>
-            <div class="step" id="s4k"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Смотрим поисковую видимость</div><div class="step-detail">Оцениваем заметность бренда и силу присутствия в поиске.</div></div></div>
-            <div class="step" id="s4e"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Обогащаем профили игроков</div><div class="step-detail">Добавляем масштаб, каналы и внешние сигналы по компании и конкурентам.</div></div></div>
-            <div class="step-group">Сигналы бизнеса</div>
-            <div class="step" id="s4h"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Смотрим кадровые сигналы</div><div class="step-detail">Вакансии и найм помогают понять фазу бизнеса и точки усиления.</div></div></div>
-            <div class="step" id="s5"><div class="step-icon">5</div><div class="step-body"><div class="step-title">Собираем управленческую картину</div><div class="step-detail">Связываем рынок, финансы, digital, команду и риски в одну логику.</div></div></div>
-            <div class="step-group">Финальный вывод</div>
-            <div class="step" id="s2a"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Сверяем факты и расчёты</div><div class="step-detail">Проверяем, на чём держатся ключевые выводы и цифры.</div></div></div>
-            <div class="step" id="s2b"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Убираем лишний шум</div><div class="step-detail">Оставляем только релевантные блоки и опорные сигналы.</div></div></div>
-            <div class="step" id="s6a"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Формируем финальный вердикт</div><div class="step-detail">Сводим главные выводы, риски и возможности в один вывод.</div></div></div>
-            <div class="step" id="s6b"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Уточняем спорные места</div><div class="step-detail">Дорабатываем разделы, где нужна дополнительная осторожность.</div></div></div>
-            <div class="step" id="sqa"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Проверяем силу отчёта</div><div class="step-detail">Смотрим, где материал уже силён, а где ещё нужны оговорки.</div></div></div>
-            <div class="step" id="s7"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Готовим итоговый документ</div><div class="step-detail">Собираем отчёт в читаемый финальный материал.</div></div></div>
-        </div>
-
-        <div class="panel" id="panel-company">
+        <div class="panel" id="panel-company" style="display:none;">
             <h3>Уточните компанию</h3>
             <p class="panel-sub">Проверьте, что отчёт строится по нужному бренду и юридическому контуру.</p>
             <div id="fns-status"></div>
@@ -589,11 +565,35 @@ h1 b{font-weight:600;color:var(--gold)}
             <div style="margin-top:8px"><button class="btn" onclick="confirmCompany()">Продолжить</button></div>
         </div>
 
-        <div class="panel" id="panel-competitors">
+        <div class="panel" id="panel-competitors" style="display:none;">
             <h3>Согласуйте конкурентное поле <span id="market-name" style="font-weight:400;color:var(--text3);font-size:0.85em"></span></h3>
             <p class="panel-sub">Оставьте только тех, с кем компанию действительно стоит сравнивать в отчёте.</p>
             <div class="comp-list" id="comp-list"></div>
             <button class="btn" onclick="confirmCompetitors()">Подтвердить и продолжить</button>
+        </div>
+
+        <div class="steps">
+            <div class="step-group">Портрет компании</div>
+            <div class="step" id="s0"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Стартуем исследование</div><div class="step-detail">Собираем базовый контур и готовим маршрут разбора компании.</div></div></div>
+            <div class="step" id="s1"><div class="step-icon">1</div><div class="step-body"><div class="step-title">Изучаем сайт и продукт</div><div class="step-detail">Собираем первичное представление о предложении и языке бренда.</div></div></div>
+            <div class="step" id="s2"><div class="step-icon">2</div><div class="step-body"><div class="step-title">Уточняем профиль компании</div><div class="step-detail">Выделяем бренд, юрлицо, тип бизнеса и рабочий контур.</div></div></div>
+            <div class="step" id="s3"><div class="step-icon">3</div><div class="step-body"><div class="step-title">Собираем официальные сведения</div><div class="step-detail">Проверяем юридический профиль и опорные реквизиты.</div></div></div>
+            <div class="step-group">Рынок и игроки</div>
+            <div class="step" id="s4"><div class="step-icon">4</div><div class="step-body"><div class="step-title">Формируем конкурентное поле</div><div class="step-detail">Собираем тех, с кем компанию действительно нужно сравнивать.</div></div></div>
+            <div class="step" id="s1b"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Проверяем площадки продаж</div><div class="step-detail">Смотрим витрины, маркетплейсы и внешние каналы присутствия.</div></div></div>
+            <div class="step" id="s1c"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Разбираем каналы продаж</div><div class="step-detail">Понимаем, как компания собирает и монетизирует спрос.</div></div></div>
+            <div class="step" id="s4k"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Смотрим поисковую видимость</div><div class="step-detail">Оцениваем заметность бренда и силу присутствия в поиске.</div></div></div>
+            <div class="step" id="s4e"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Обогащаем профили игроков</div><div class="step-detail">Добавляем масштаб, каналы и внешние сигналы по компании и конкурентам.</div></div></div>
+            <div class="step-group">Сигналы бизнеса</div>
+            <div class="step" id="s4h"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Смотрим кадровые сигналы</div><div class="step-detail">Вакансии и найм помогают понять фазу бизнеса и точки усиления.</div></div></div>
+            <div class="step" id="s5"><div class="step-icon">5</div><div class="step-body"><div class="step-title">Собираем управленческую картину</div><div class="step-detail">Связываем рынок, финансы, digital, команду и риски в одну логику.</div></div></div>
+            <div class="step-group">Финальный вывод</div>
+            <div class="step" id="s2a"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Сверяем факты и расчёты</div><div class="step-detail">Проверяем, на чём держатся ключевые выводы и цифры.</div></div></div>
+            <div class="step" id="s2b"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Убираем лишний шум</div><div class="step-detail">Оставляем только релевантные блоки и опорные сигналы.</div></div></div>
+            <div class="step" id="s6a"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Формируем финальный вердикт</div><div class="step-detail">Сводим главные выводы, риски и возможности в один вывод.</div></div></div>
+            <div class="step" id="s6b"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Уточняем спорные места</div><div class="step-detail">Дорабатываем разделы, где нужна дополнительная осторожность.</div></div></div>
+            <div class="step" id="sqa"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Проверяем силу отчёта</div><div class="step-detail">Смотрим, где материал уже силён, а где ещё нужны оговорки.</div></div></div>
+            <div class="step" id="s7"><div class="step-icon">&middot;</div><div class="step-body"><div class="step-title">Готовим итоговый документ</div><div class="step-detail">Собираем отчёт в читаемый финальный материал.</div></div></div>
         </div>
 
         <div class="error" id="error"></div>
@@ -782,14 +782,26 @@ function showCompanyPanel(d){
     if(mm&&mm.has_mismatch){s.innerHTML+='<br><span style="color:var(--orange)">\u26A0 Бренд сайта \u00AB'+mm.brand_name+'\u00BB и найденное юрлицо \u00AB'+mm.legal_name+'\u00BB отличаются. Проверьте, что отчёт строится по нужной компании.</span>'}
     var panel=document.getElementById('panel-company');
     panel.style.display='block';
+    // Update progress ring to show "needs confirmation"
+    var pctEl=document.getElementById('radar-pct');
+    if(pctEl)pctEl.innerHTML='\u270B';
+    var stEl=document.getElementById('radar-status');
+    if(stEl)stEl.textContent='подтвердите компанию';
+    // Pause spinning dot
+    var spin=document.getElementById('radar-dot-spin');
+    if(spin)spin.style.animationPlayState='paused';
     setTimeout(function(){panel.scrollIntoView({behavior:'smooth',block:'center'})},300);
 }
 
+function _resumeRing(){
+    var spin=document.getElementById('radar-dot-spin');if(spin)spin.style.animationPlayState='running';
+    var stEl=document.getElementById('radar-status');if(stEl)stEl.textContent='анализ...';
+}
 function confirmCompany(){
     var panel=document.getElementById('panel-company');
     var name=document.getElementById('c-name').value||'компания';
-    // Show confirmation feedback
     panel.innerHTML='<div style="text-align:center;padding:24px;"><div style="font-size:1.5em;color:var(--green);margin-bottom:8px;">\u2713</div><div style="color:var(--text2);">Профиль <strong>'+name+'</strong> принят. Ищем конкурентов\u2026</div></div>';
+    _resumeRing();
     setTimeout(function(){panel.style.display='none'},2000);
     fetch('/api/confirm-company/'+SID,{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({name:document.getElementById('c-name').value,inn:document.getElementById('c-inn').value,
@@ -803,6 +815,12 @@ function showCompetitorPanel(d){
     renderCompetitors();
     var cp=document.getElementById('panel-competitors');
     cp.style.display='block';
+    var pctEl=document.getElementById('radar-pct');
+    if(pctEl)pctEl.innerHTML='\u270B';
+    var stEl=document.getElementById('radar-status');
+    if(stEl)stEl.textContent='выберите конкурентов';
+    var spin=document.getElementById('radar-dot-spin');
+    if(spin)spin.style.animationPlayState='paused';
     setTimeout(function(){cp.scrollIntoView({behavior:'smooth',block:'center'})},300);
 }
 
@@ -826,6 +844,7 @@ function confirmCompetitors(){
     var sel=competitorData.filter(function(c){return c._enabled!==false});
     var panel=document.getElementById('panel-competitors');
     panel.innerHTML='<div style="text-align:center;padding:24px;"><div style="font-size:1.5em;color:var(--green);margin-bottom:8px;">\u2713</div><div style="color:var(--text2);">'+sel.length+' конкурентов выбрано. Запускаем глубокий анализ\u2026</div></div>';
+    _resumeRing();
     setTimeout(function(){panel.style.display='none'},2000);
     fetch('/api/confirm-competitors/'+SID,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({competitors:sel})});
 }
