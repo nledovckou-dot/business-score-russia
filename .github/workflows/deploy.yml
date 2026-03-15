@@ -118,9 +118,16 @@ jobs:
             sudo -n systemctl start bsr
             sleep 5
 
-            # Firewall
+            # Firewall — allow :8090, remove any NAT/REDIRECT rules that conflict
             sudo -n ufw allow 8090/tcp 2>/dev/null || true
             sudo -n iptables -C INPUT -p tcp --dport 8090 -j ACCEPT 2>/dev/null || sudo -n iptables -I INPUT -p tcp --dport 8090 -j ACCEPT
+            # Remove ALL NAT REDIRECT/DNAT rules for port 8090 (they break external access)
+            sudo -n iptables -t nat -S 2>/dev/null | grep "8090" | while read rule; do
+              echo "Removing NAT rule: $rule"
+              sudo -n iptables -t nat $(echo "$rule" | sed 's/^-A/-D/') 2>/dev/null || true
+            done
+            echo "--- NAT rules after cleanup ---"
+            sudo -n iptables -t nat -L -n 2>/dev/null | grep -E "809|808|REDIRECT|DNAT" | head -10 || echo "no NAT rules"
 
             # Verify deploy
             echo "=== Deploy verification ==="
