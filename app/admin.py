@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Admin dashboard: view all sessions, reports, metrics, board review.
 
 Simple admin panel with env-based auth (BSR_ADMIN_TOKEN).
