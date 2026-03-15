@@ -847,8 +847,13 @@ async def admin_page(request: Request):
     """Admin dashboard HTML."""
     if not _check_admin(request):
         return HTMLResponse(content=_LOGIN_HTML)
-    # Encode with xmlcharrefreplace to avoid surrogate errors on some Python builds
-    body = _DASHBOARD_HTML.encode("utf-8", errors="xmlcharrefreplace")
+    # Strip surrogates then encode (fixes emoji/surrogate issues on VPS Python builds)
+    html = _DASHBOARD_HTML
+    try:
+        body = html.encode("utf-8")
+    except UnicodeEncodeError:
+        clean = html.encode("utf-16", "surrogatepass").decode("utf-16", "replace")
+        body = clean.encode("utf-8", errors="replace")
     from starlette.responses import Response
     return Response(content=body, media_type="text/html; charset=utf-8")
 
