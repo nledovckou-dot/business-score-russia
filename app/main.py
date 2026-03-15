@@ -897,9 +897,15 @@ def _run_competitor_steps(sid: str):
         if not inn:
             try:
                 from app.pipeline.enrichment.checko import search_company as checko_search
+                import re as _re
                 company_name = company_info.get("name", "")
                 legal_name = company_info.get("legal_name", "")
-                for search_term in [legal_name, company_name, company_name.upper()]:
+                # Extract clean name from legal_name: "ООО «ГРАНДИС»" → "ГРАНДИС"
+                clean_legal = ""
+                if legal_name:
+                    m = _re.search(r'[«"\'](.*?)[»"\']', legal_name)
+                    clean_legal = m.group(1) if m else legal_name.replace("ООО", "").replace("АО", "").replace("ПАО", "").strip()
+                for search_term in [clean_legal, legal_name, company_name, company_name.upper()]:
                     if not search_term or len(search_term) < 4:
                         continue
                     found = checko_search(search_term, limit=3)
