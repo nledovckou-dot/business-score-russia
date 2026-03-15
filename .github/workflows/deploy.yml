@@ -105,7 +105,7 @@ jobs:
               echo "Removing conflicting nginx config: $f"
               sudo -n rm -f "$f"
             done
-            sudo -n nginx -t && sudo -n systemctl reload nginx || echo "nginx reload failed, check config"
+            sudo -n nginx -t && sudo -n systemctl restart nginx || echo "nginx restart failed, check config"
 
             # Stop service and kill ALL stale uvicorn processes
             sudo -n systemctl stop bsr 2>/dev/null || true
