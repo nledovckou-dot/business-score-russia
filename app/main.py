@@ -947,6 +947,40 @@ def _run_competitor_steps(sid: str):
                 logger.warning("Checko failed for company INN %s: %s", inn, str(e)[:200])
                 _push_event(sid, "step", {"num": "3c", "status": "warning", "text": f"Официальный контур: {e}"})
 
+        # Step 3d: FNS fallback for financials (if Checko didn't return them)
+        has_financials = bool(data.get("fns_data", {}).get("financials"))
+        if inn and not has_financials:
+            try:
+                from app.pipeline.fns import get_financials as fns_get_financials
+                _push_event(sid, "step", {"num": "3d", "status": "active", "text": "Ищем финансы в ФНС (fallback)..."})
+                fns_fin = fns_get_financials(inn)
+                if fns_fin:
+                    fns_data = data.get("fns_data", {})
+                    fns_data["financials"] = fns_fin
+                    data["fns_data"] = fns_data
+                    has_financials = True
+                    _push_event(sid, "step", {"num": "3d", "status": "done",
+                        "text": f"ФНС: финансы за {len(fns_fin)} лет"})
+                else:
+                    _push_event(sid, "step", {"num": "3d", "status": "warning",
+                        "text": "ФНС: финансовые данные не найдены"})
+            except Exception as e:
+                logger.warning("FNS financials fallback failed: %s", str(e)[:200])
+                _push_event(sid, "step", {"num": "3d", "status": "warning",
+                    "text": f"ФНС fallback: {e}"})
+
+        # If NO financials from any source — warn user
+        if not has_financials:
+            warning_text = (
+                "Финансовые данные не найдены ни в Checko, ни в ФНС"
+                + (f" для ИНН {inn}." if inn else ". ИНН компании не определён.")
+                + " Проверьте юрлицо — возможно, бизнес ведётся через другое ООО или ИП."
+            )
+            _push_event(sid, "step", {"num": "3d", "status": "warning", "text": warning_text})
+            # Add to open questions for the report
+            report_questions = data.setdefault("_finance_warnings", [])
+            report_questions.append(warning_text)
+
         # Step 4: Find competitors + verify via web search
         _push_event(sid, "step", {"num": 4, "status": "active", "text": "Формируем конкурентное поле..."})
         if mc:
@@ -2384,6 +2418,25 @@ def _run_full_pipeline_auto(sid: str, url: str):
             except Exception as e:
                 logger.warning("Checko auto failed: %s", str(e)[:200])
                 _push_event(sid, "step", {"num": "3c", "status": "warning", "text": f"Официальный контур: {e}"})
+
+        # Step 3d: FNS fallback for financials
+        has_fin = bool(session["data"].get("fns_data", {}).get("financials"))
+        if inn and not has_fin:
+            try:
+                from app.pipeline.fns import get_financials as fns_get_fin
+                fns_fin = fns_get_fin(inn)
+                if fns_fin:
+                    fd = session["data"].get("fns_data", {})
+                    fd["financials"] = fns_fin
+                    session["data"]["fns_data"] = fd
+                    has_fin = True
+                    _push_event(sid, "step", {"num": "3d", "status": "done", "text": f"ФНС fallback: финансы за {len(fns_fin)} лет"})
+            except Exception as e:
+                logger.warning("FNS auto fallback failed: %s", str(e)[:200])
+
+        if not has_fin:
+            _push_event(sid, "step", {"num": "3d", "status": "warning",
+                "text": "Финансы не найдены. Проверьте юрлицо — возможно, бизнес ведётся через другое ООО."})
 
         # Step 4: Find competitors
         _push_event(sid, "step", {"num": 4, "status": "active", "text": "Формируем конкурентное поле..."})
