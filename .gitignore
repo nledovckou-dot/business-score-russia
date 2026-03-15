@@ -20,3 +20,9 @@ scripts/board_strategy.md
 scripts/demo_results.json
 scripts/sprint1_results.json
 1/*
+frontend/node_modules/
+frontend/.next/
+!frontend/public/*.png
+!frontend/public/*.jpg
+!frontend/out/*.png
+!frontend/out/*.jpg
