@@ -898,9 +898,13 @@ function doLogin() {
 </html>"""
 
 
-# ── Dashboard HTML ──
+# ── Dashboard HTML (loaded from file to avoid VPS encoding issues) ──
 
-_DASHBOARD_HTML = """<!DOCTYPE html>
+import pathlib as _pathlib
+_DASHBOARD_HTML_PATH = _pathlib.Path(__file__).parent / "admin_dashboard.html"
+_DASHBOARD_HTML = _DASHBOARD_HTML_PATH.read_text(encoding="utf-8") if _DASHBOARD_HTML_PATH.exists() else "<h1>admin_dashboard.html not found</h1>"
+
+_DASHBOARD_HTML_UNUSED = """REMOVED — see admin_dashboard.html
 <html lang="ru">
 <head>
 <meta charset="utf-8">
