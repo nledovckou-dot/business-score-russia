@@ -314,11 +314,8 @@ def _set_auth_cookie(response: JSONResponse, token: str) -> JSONResponse:
 
 @app.get("/api/health")
 async def health():
-    from app.session_store import get_store
-    store = get_store()
     uptime_sec = int(time.monotonic() - APP_START_TIME)
-    active = sum(1 for s in store.list_sessions() if s.get("status") in ("running", "pending"))
-    return {"ok": True, "version": APP_VERSION, "uptime_sec": uptime_sec, "active_sessions": active}
+    return {"ok": True, "version": APP_VERSION, "uptime_sec": uptime_sec}
 
 
 @app.get("/api/auth/config")
