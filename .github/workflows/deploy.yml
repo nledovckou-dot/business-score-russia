@@ -95,8 +95,16 @@ jobs:
 
             # Nginx config — always update timeout, preserve SSL certs
             sudo -n mkdir -p /etc/nginx/sites-enabled
-            # Always update nginx config (SSL certs are referenced from scripts/nginx-bsr.conf)
+            # Always update nginx config — remove default, ensure only BSR
+            sudo -n rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
+            sudo -n ls /etc/nginx/sites-enabled/ | xargs -I{} echo "nginx site: {}"
             sudo -n cp "$APP_DIR/scripts/nginx-bsr.conf" /etc/nginx/sites-enabled/bsr.conf
+            # Remove any conflicting configs
+            for f in /etc/nginx/sites-enabled/*; do
+              [ "$f" = "/etc/nginx/sites-enabled/bsr.conf" ] && continue
+              echo "Removing conflicting nginx config: $f"
+              sudo -n rm -f "$f"
+            done
             sudo -n nginx -t && sudo -n systemctl reload nginx || echo "nginx reload failed, check config"
 
             # Stop service and kill ALL stale uvicorn processes
