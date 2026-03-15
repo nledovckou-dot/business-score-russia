@@ -870,7 +870,30 @@ def _run_competitor_steps(sid: str):
 
         # Step 3c: Checko.ru enrichment for main company (primary data source)
         inn = company_info.get("inn") or data.get("fns_data", {}).get("fns_company", {}).get("inn", "")
-        # If no INN yet — try Checko search by company name (Russian + English)
+
+        # If no INN yet — try OGRN from scraper (often found on site)
+        if not inn:
+            ogrn = (data.get("scraped", {}).get("contacts", {}).get("ogrn")
+                    or company_info.get("ogrn", ""))
+            if ogrn:
+                try:
+                    import urllib.request, json as _json
+                    _checko_url = f"https://api.checko.ru/v2/company?key=dHL2dcu0gcn3Hqfz&ogrn={ogrn}"
+                    _req = urllib.request.Request(_checko_url, headers={"Accept": "application/json"})
+                    with urllib.request.urlopen(_req, timeout=10) as _resp:
+                        _d = _json.loads(_resp.read().decode("utf-8"))
+                        _found_inn = _d.get("data", {}).get("ИНН", "")
+                        if _found_inn:
+                            inn = _found_inn
+                            company_info["inn"] = inn
+                            company_info["ogrn"] = ogrn
+                            company_info["legal_name"] = _d.get("data", {}).get("НаимСокр", company_info.get("legal_name", ""))
+                            data["company_info"] = company_info
+                            logger.info("Found INN %s via OGRN %s from Checko", inn, ogrn)
+                except Exception as e:
+                    logger.warning("Checko OGRN lookup failed: %s", str(e)[:200])
+
+        # If still no INN — try Checko search by company name
         if not inn:
             try:
                 from app.pipeline.enrichment.checko import search_company as checko_search

@@ -172,11 +172,16 @@ Description: {scraped.get('description', '')}
         all_texts.append(page_text)
     full_text = "\n".join(all_texts)
 
-    # Check if scraper already found INN in contacts
+    # Check if scraper already found INN or OGRN in contacts
     scraped_inn = scraped.get("contacts", {}).get("inn")
     if scraped_inn and not result.get("inn"):
         result["inn"] = scraped_inn
         logger.info("Found INN %s from scraper contacts", scraped_inn)
+
+    scraped_ogrn = scraped.get("contacts", {}).get("ogrn")
+    if scraped_ogrn and not result.get("ogrn"):
+        result["ogrn"] = scraped_ogrn
+        logger.info("Found OGRN %s from scraper contacts", scraped_ogrn)
 
     if not result.get("inn"):
         inn_match = re.search(r"ИНН\s*:?\s*(\d{10,12})", full_text)
