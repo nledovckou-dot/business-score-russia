@@ -1665,6 +1665,19 @@ def _run_analysis_steps(sid: str):
                 )
             report_data["competitors"] = valid_competitors
 
+        # Ensure company is a proper dict (LLM sometimes returns just a string name)
+        if not isinstance(report_data.get("company"), dict):
+            report_data["company"] = {
+                "name": company_info.get("name", str(report_data.get("company", "?"))),
+                "legal_name": company_info.get("legal_name", ""),
+                "inn": company_info.get("inn", ""),
+                "business_type": company_info.get("business_type_guess", "B2B_SERVICE"),
+                "address": company_info.get("address", ""),
+                "website": data.get("url", ""),
+                "description": company_info.get("description", ""),
+            }
+            logger.warning("Rebuilt company field from company_info (was %s)", type(report_data.get("company")).__name__)
+
         rd = ReportData(**report_data)
         filename = f"report_{uuid.uuid4().hex[:8]}.html"
         path = save_report(rd, filename=filename)
