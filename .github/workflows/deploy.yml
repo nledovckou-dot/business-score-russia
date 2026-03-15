@@ -95,12 +95,8 @@ jobs:
 
             # Nginx config — always update timeout, preserve SSL certs
             sudo -n mkdir -p /etc/nginx/sites-enabled
-            if grep -q "ssl_certificate" /etc/nginx/sites-enabled/bsr.conf 2>/dev/null; then
-              # SSL exists — update only proxy_read_timeout (don't overwrite SSL config)
-              sudo -n sed -i 's/proxy_read_timeout [0-9]*s;/proxy_read_timeout 900s;/g' /etc/nginx/sites-enabled/bsr.conf
-            else
-              sudo -n cp "$APP_DIR/scripts/nginx-bsr.conf" /etc/nginx/sites-enabled/bsr.conf
-            fi
+            # Always update nginx config (SSL certs are referenced from scripts/nginx-bsr.conf)
+            sudo -n cp "$APP_DIR/scripts/nginx-bsr.conf" /etc/nginx/sites-enabled/bsr.conf
             sudo -n nginx -t && sudo -n systemctl reload nginx || echo "nginx reload failed, check config"
 
             # Stop service and kill ALL stale uvicorn processes
